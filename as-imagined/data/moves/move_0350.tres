@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Blast"
+description = "Hurls boulders at the foe 2 to 5 times in a row."
 type = 6
 power = 25
 accuracy = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aerial Ace"
+description = "An extremely speedy and unavoidable attack."
 type = 3
 power = 60
 accuracy = 0

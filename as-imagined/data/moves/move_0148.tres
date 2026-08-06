@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flash"
+description = "Looses a powerful blast of light that cuts accuracy."
 type = 1
 category = 2
 pp = 20

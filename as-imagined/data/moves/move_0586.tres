@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Boomburst"
+description = "Attacks everything with a destructive sound wave."
 type = 1
 category = 1
 power = 140

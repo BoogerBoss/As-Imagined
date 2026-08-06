@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stomping Tantrum"
+description = "Stomps around angrily. Stronger after a failure."
 type = 5
 power = 75
 pp = 10

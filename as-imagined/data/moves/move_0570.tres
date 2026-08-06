@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Parabolic Charge"
+description = "Damages adjacent Pokémon and heals up by half of it."
 type = 14
 category = 1
 power = 65

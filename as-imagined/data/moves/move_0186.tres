@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sweet Kiss"
+description = "Demands a kiss with a cute look. May cause confusion."
 type = 19
 category = 2
 accuracy = 75

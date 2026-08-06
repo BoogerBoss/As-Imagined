@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shore Up"
+description = "Restores the user's HP. More HP in a sandstorm."
 type = 5
 category = 2
 accuracy = 0

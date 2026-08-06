@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Burn"
+description = "A powerful 2-turn move that may inflict a burn."
 type = 16
 category = 1
 power = 140

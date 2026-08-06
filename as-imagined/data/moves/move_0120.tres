@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Self-Destruct"
+description = "Inflicts severe damage but makes the user faint."
 type = 1
 power = 200
 is_spread = true

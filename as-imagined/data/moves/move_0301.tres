@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Ball"
+description = "A 5-turn attack that gains power on successive hits."
 type = 16
 power = 30
 accuracy = 90

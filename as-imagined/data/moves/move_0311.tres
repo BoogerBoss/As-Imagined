@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Weather Ball"
+description = "The move's type and power change with the weather."
 type = 1
 category = 1
 power = 50

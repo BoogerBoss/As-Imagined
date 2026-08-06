@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Acupressure"
+description = "The user sharply raises one of its stats."
 type = 1
 category = 2
 accuracy = 0

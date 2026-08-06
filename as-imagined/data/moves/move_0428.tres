@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Zen Headbutt"
+description = "Hits with a strong head-butt. May cause flinching."
 type = 15
 power = 80
 accuracy = 90

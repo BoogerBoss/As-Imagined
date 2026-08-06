@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Magma Storm"
+description = "Traps the foe in a vortex of fire for 4 or 5 turns."
 type = 11
 category = 1
 power = 100

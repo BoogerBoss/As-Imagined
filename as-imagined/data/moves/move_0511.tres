@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Quash"
+description = "Suppresses the foe, making it move last."
 type = 18
 category = 2
 pp = 15

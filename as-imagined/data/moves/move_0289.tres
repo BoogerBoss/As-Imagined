@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snatch"
+description = "Steals the effects of the move the target uses next."
 type = 18
 category = 2
 accuracy = 0

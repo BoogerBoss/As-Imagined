@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bonemerang"
+description = "Throws a bone boomerang that strikes twice."
 type = 5
 power = 50
 accuracy = 90

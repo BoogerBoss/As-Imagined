@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Circle Throw"
+description = "Knocks foe away to switch it out or end wild battle."
 type = 2
 power = 60
 accuracy = 90

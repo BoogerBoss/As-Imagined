@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sand Tomb"
+description = "Traps and hurts the foe in quicksand for 4 or 5 turns."
 type = 5
 power = 35
 accuracy = 85

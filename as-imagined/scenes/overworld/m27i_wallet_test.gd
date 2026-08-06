@@ -9,7 +9,7 @@ extends Node
 ##   remove_coins -- all-or-nothing again
 ## Making them consistent would be tidier and wrong.
 
-const EXPECTED_TOTAL := 30
+const EXPECTED_TOTAL := 33
 
 var _total := 0
 var _failed := 0
@@ -110,19 +110,22 @@ func _test_opcodes() -> void:
 	vm.step()
 	_chk("C.04 addmoney gives", w.money == 300)
 
-	# ⚠️ NOT EVERY MONEY ARG IS A LITERAL, and finding that out is what this
-	# assertion is for. 6 corpus args are file-scoped assembler constants
-	# (`COINS_PRICE_500` = 10000, `MAGIKARP_PRICE` = 500) declared with `.equ`
-	# INSIDE the map script that uses them; the script compiler does not resolve
-	# them yet, so they arrive as names. 32 such constants exist region-wide and
-	# `REQUIRED_CAUGHT_MONS` is declared three times with three different values,
-	# so the fix belongs in the compiler with file scope, not in a global table.
+	# ⚠️ NOT EVERY MONEY ARG IS A LITERAL. 6 corpus args are file-scoped
+	# assembler constants (`COINS_PRICE_500` = 10000, `MAGIKARP_PRICE` = 500)
+	# declared with `.equ`/`.set` INSIDE the map script that uses them; the
+	# script compiler leaves them as bare names rather than resolving them.
 	#
-	# ⚠️ AND THE DEGRADE MUST FAIL CLOSED. Reading an unresolved price as 0 would
-	# make `checkmoney` say AFFORDABLE and the following `removemoney` charge
-	# nothing — free goods. Guessing from the name would be worse still:
-	# `COINS_PRICE_50` is 1000, so the suffix is the COIN count and would be
-	# wrong by 20x.
+	# ⚠️ [`checkplayergender`/`random`/etc. batch] `COINS_PRICE_500` USED TO BE
+	# THIS TEST'S "unresolvable" EXAMPLE, AND IT NO LONGER IS. A new
+	# `ScriptVM._SYMBOLIC_CONSTANTS` table now resolves it (and
+	# `COINS_PRICE_50`/`MAGIKARP_PRICE`, the only three that appear as money
+	# args anywhere in the corpus — confirmed by a direct grep over
+	# `data/map_scripts.json`, not the 3 flute-price names, which appear only
+	# as `subvar` operands, a different opcode). Leaving the old assertions in
+	# place would have them keep passing for the WRONG reason once the fix
+	# landed — this is a genuine correctness fix invalidating a stale test
+	# premise, not a regression, so C.05/C.05b/C.05c are rewritten below to
+	# confirm the real value rather than the old fail-closed path.
 	var flags2 := FlagStore.new()
 	var w2 := Wallet.new()
 	w2.earn(100000)
@@ -133,13 +136,38 @@ func _test_opcodes() -> void:
 	vm2.wallet = w2
 	vm2.start("A")
 	vm2.step()
-	_chk("C.05 an unresolvable price reports NOT affordable, not free",
-			flags2.var_get("VAR_RESULT") == 0)
-	_chk("C.05b and names itself rather than failing silently",
-			vm2.diagnostic.contains("COINS_PRICE_500"))
+	_chk("C.05 COINS_PRICE_500 now resolves to its real value, 10000",
+			flags2.var_get("VAR_RESULT") == 1)
+	_chk("C.05b and no diagnostic is left behind",
+			vm2.diagnostic == "")
 	vm2.step()
-	_chk("C.05c and charges nothing rather than charging zero for the goods",
-			w2.money == 100000)
+	_chk("C.05c and removemoney charges the real amount",
+			w2.money == 90000)
+
+	# ⚠️ THE FAIL-CLOSED DEGRADE ITSELF IS STILL REAL — for the ~26 remaining
+	# region-wide constants `_SYMBOLIC_CONSTANTS` does not carry (real
+	# examples: `TM_FLAMETHROWER_COINS`, `REQUIRED_CAUGHT_MONS`, both Game
+	# Corner / Roulette constants outside this project's own money-arg
+	# roster). Uses a synthetic name deliberately, so this assertion cannot
+	# be silently invalidated the next time a real constant is added to the
+	# table the way C.05 above just was.
+	var flags2b := FlagStore.new()
+	var w2b := Wallet.new()
+	w2b.earn(100000)
+	var vm2b := ScriptVM.new(_src({
+		"A": [_op("checkmoney", ["SOME_UNRESOLVED_PRICE_CONSTANT"]),
+			_op("removemoney", ["SOME_UNRESOLVED_PRICE_CONSTANT"]), _op("end")],
+	}), flags2b)
+	vm2b.wallet = w2b
+	vm2b.start("A")
+	vm2b.step()
+	_chk("C.05d a genuinely-unresolvable price reports NOT affordable, not free",
+			flags2b.var_get("VAR_RESULT") == 0)
+	_chk("C.05e and names itself rather than failing silently",
+			vm2b.diagnostic.contains("SOME_UNRESOLVED_PRICE_CONSTANT"))
+	vm2b.step()
+	_chk("C.05f and charges nothing rather than charging zero for the goods",
+			w2b.money == 100000)
 
 	# checkcoins writes into the NAMED var, not VAR_RESULT.
 	var flags3 := FlagStore.new()

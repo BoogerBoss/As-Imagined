@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sunny Day"
+description = "Boosts the power of Fire-type moves for 5 turns."
 type = 11
 category = 2
 accuracy = 0

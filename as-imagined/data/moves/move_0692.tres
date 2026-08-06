@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Jaw Lock"
+description = "Prevents the user and the target from escaping."
 type = 18
 power = 80
 pp = 10

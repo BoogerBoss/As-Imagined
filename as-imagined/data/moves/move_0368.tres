@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Metal Burst"
+description = "Retaliates any hit with greater power."
 type = 9
 power = 1
 pp = 10

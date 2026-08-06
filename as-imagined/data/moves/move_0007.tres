@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fire Punch"
+description = "A fiery punch that may burn the foe."
 type = 11
 power = 75
 pp = 15

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Psycho Cut"
+description = "Tears with psychic blades. High critical-hit ratio."
 type = 15
 power = 70
 pp = 20

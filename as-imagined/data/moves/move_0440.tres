@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Cross Poison"
+description = "A slash that may poison a foe and do critical damage."
 type = 4
 power = 70
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Meditate"
+description = "Meditates in a peaceful fashion to raise Attack."
 type = 15
 category = 2
 accuracy = 0

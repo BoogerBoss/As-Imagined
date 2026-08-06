@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Strange Steam"
+description = "Emits a strange steam to potentially confuse the foe."
 type = 19
 category = 1
 power = 90

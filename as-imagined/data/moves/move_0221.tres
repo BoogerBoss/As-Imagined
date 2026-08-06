@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sacred Fire"
+description = "A mystical fire attack that may inflict a burn."
 type = 11
 power = 100
 accuracy = 95

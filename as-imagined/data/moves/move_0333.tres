@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Icicle Spear"
+description = "Attacks the foe by firing 2 to 5 icicles in a row."
 type = 16
 power = 25
 pp = 30

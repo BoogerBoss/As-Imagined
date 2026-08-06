@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hex"
+description = "Does double damage if the foe has a status problem."
 type = 8
 category = 1
 power = 65

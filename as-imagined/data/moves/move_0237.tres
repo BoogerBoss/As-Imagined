@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hidden Power"
+description = "The type varies with the user."
 type = 1
 category = 1
 power = 60

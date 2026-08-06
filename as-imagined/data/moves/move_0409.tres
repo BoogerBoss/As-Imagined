@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Drain Punch"
+description = "An attack that absorbs half the damage inflicted."
 type = 2
 power = 75
 pp = 10

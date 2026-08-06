@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Roost"
+description = "Restores the user's HP by half of its max HP."
 type = 3
 category = 2
 accuracy = 0

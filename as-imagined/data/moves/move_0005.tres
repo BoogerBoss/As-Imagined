@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mega Punch"
+description = "A strong punch thrown with incredible power."
 type = 1
 power = 80
 accuracy = 85

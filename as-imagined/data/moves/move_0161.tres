@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tri Attack"
+description = "Fires three types of beams. May burn/paralyze/freeze."
 type = 1
 category = 1
 power = 80

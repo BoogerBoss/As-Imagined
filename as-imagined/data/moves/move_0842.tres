@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Alluring Voice"
+description = "Confuses foe if its stats were boosted this turn."
 type = 19
 category = 1
 power = 80

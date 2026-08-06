@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile reference field scripts into data/map_scripts.json for ScriptVM.
+"""Compile field scripts into data/map_scripts.json for ScriptVM.
 
 [M27F Stage 1] Companion to gen_map_texts.py. That one extracts what a script
 SAYS; this one extracts what it DOES.
@@ -20,6 +20,29 @@ waitbuttonpress/release/return). Expanding at compile time means the VM needs
 same "resolve at the boundary" choice gen_map_import makes for warp behaviours.
 
 The expansions below are transcribed from data/scripts/std_msgbox.inc.
+
+⚠️ [Field-script authoring fork] `REF` POINTS AT `field_script_source/`, A
+PROJECT-OWNED, TRACKED, HAND-EDITABLE COPY — NOT `reference/
+pokeemerald_expansion` ANY LONGER. This is deliberate, not a mistake to
+"fix" back: the whole point of the fork is that this project's own field
+scripts and dialogue are meant to be authored, and a generator reading from
+the read-only upstream reference clone can never reflect a hand edit — it
+would just regenerate the original content on the next run and silently
+discard whatever was changed.
+
+`field_script_source/data/` is a byte-for-byte copy of every `.inc`/`.s`
+file `reference/pokeemerald_expansion/data/` ever had (1025 files, taken
+2026-08-06, verified byte-identical output before any edit was made — see
+`docs/field_script_authoring.md`), in the SAME relative layout, which is
+why this file's own `iter_inc_files()` needed no change beyond the `REF`
+value itself. From here on this directory is the real, hand-authorable
+source for every field script and every line of dialogue in the game —
+edit it directly, then re-run this script (and `gen_map_texts.py`) to
+regenerate `data/map_scripts.json`/`data/map_texts.json`.
+
+DO NOT REPOINT `REF` BACK AT `reference/pokeemerald_expansion`. Doing so
+would silently discard every hand edit made to `field_script_source/` on
+the very next regeneration.
 """
 
 import json
@@ -30,8 +53,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from trainer_keys import canonical_key, is_trainer_constant
 
-REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "map_scripts.json")
+PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REF = os.path.join(PROJECT, "field_script_source")
+OUT = os.path.join(PROJECT, "data", "map_scripts.json")
 
 LABEL_RE = re.compile(r"^(\w+)::?\s*$", re.M)
 

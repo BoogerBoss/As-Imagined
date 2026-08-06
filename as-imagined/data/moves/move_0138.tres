@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dream Eater"
+description = "Takes one half the damage inflicted on a sleeping foe."
 type = 15
 category = 1
 power = 100

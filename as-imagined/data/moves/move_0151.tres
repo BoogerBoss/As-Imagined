@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Acid Armor"
+description = "Liquifies the user's body to sharply raise Defense."
 type = 4
 category = 2
 accuracy = 0

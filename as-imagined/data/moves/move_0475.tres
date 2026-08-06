@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Autotomize"
+description = "Sheds additional weight to sharply boost Speed."
 type = 9
 category = 2
 accuracy = 0

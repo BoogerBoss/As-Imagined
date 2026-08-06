@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Burning Bulwark"
+description = "Evades attack, and burns the foe if struck."
 type = 11
 category = 2
 accuracy = 0

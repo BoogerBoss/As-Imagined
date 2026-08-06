@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Destiny Bond"
+description = "If the user faints, the foe is also made to faint."
 type = 8
 category = 2
 accuracy = 0

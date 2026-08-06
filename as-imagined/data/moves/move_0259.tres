@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Torment"
+description = "Torments the foe and stops successive use of a move."
 type = 18
 category = 2
 pp = 15

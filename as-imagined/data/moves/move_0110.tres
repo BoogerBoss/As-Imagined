@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Withdraw"
+description = "Withdraws the body into its hard shell to raise Defense."
 type = 12
 category = 2
 accuracy = 0

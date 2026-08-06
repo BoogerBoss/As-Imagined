@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Wrecker"
+description = "Powerful, but leaves the user immobile the next turn."
 type = 6
 power = 150
 accuracy = 90

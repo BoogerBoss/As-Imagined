@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Venom Drench"
+description = "Lowers the Attack, Sp. Atk and Speed of poisoned foes."
 type = 4
 category = 2
 pp = 20

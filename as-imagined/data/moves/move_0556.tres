@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Icicle Crash"
+description = "Drops large icicles on the foe. May cause flinching."
 type = 16
 power = 85
 accuracy = 90

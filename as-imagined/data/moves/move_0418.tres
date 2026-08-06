@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bullet Punch"
+description = "Punches as fast as a bul-let. It always hits first."
 type = 9
 power = 40
 pp = 30

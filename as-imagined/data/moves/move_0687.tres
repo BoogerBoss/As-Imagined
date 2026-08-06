@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sparkly Swirl"
+description = "Wrap foe with whirlwind of scent. Heals party's status."
 type = 19
 category = 1
 power = 120

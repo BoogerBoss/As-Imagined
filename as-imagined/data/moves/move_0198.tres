@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bone Rush"
+description = "Strikes the foe with a bone in hand 2 to 5 times."
 type = 5
 power = 25
 accuracy = 90

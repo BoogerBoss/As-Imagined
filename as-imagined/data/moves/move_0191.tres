@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spikes"
+description = "Sets spikes that hurt a foe switching in."
 type = 5
 category = 2
 accuracy = 0

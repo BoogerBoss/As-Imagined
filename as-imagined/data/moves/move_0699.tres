@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Octolock"
+description = "Traps the foe to lower Def and Sp. Def each turn."
 type = 2
 category = 2
 pp = 15

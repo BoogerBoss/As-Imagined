@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Throat Chop"
+description = "Chops the throat to disable sound moves for 2 turns."
 type = 18
 power = 80
 pp = 15

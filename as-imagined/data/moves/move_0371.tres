@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Payback"
+description = "An attack that gains power if the user moves last."
 type = 18
 power = 50
 pp = 10

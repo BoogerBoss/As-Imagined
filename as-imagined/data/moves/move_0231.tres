@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Iron Tail"
+description = "Attacks with a rock-hard tail. May lower Defense."
 type = 9
 power = 100
 accuracy = 75

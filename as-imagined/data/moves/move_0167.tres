@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Triple Kick"
+description = "Kicks the foe 3 times in a row with rising intensity."
 type = 2
 power = 10
 accuracy = 90

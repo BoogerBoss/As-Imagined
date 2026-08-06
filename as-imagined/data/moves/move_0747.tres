@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Thunder Cage"
+description = "Traps the foe in a cage of electricity for 4 or 5 turns."
 type = 14
 category = 1
 power = 80

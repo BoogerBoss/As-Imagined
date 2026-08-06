@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Swift"
+description = "Sprays star-shaped rays that never miss."
 type = 1
 category = 1
 power = 60

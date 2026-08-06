@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Focus Punch"
+description = "Powerful attack, moves last. The user flinches if hit."
 type = 2
 power = 150
 pp = 20

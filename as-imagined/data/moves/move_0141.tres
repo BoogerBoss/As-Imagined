@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Leech Life"
+description = "An attack that steals half the damage inflicted."
 type = 7
 power = 80
 pp = 10

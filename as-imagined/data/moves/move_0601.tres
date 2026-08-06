@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Geomancy"
+description = "Raises Sp. Atk, Sp. Def and Speed on the 2nd turn."
 type = 19
 category = 2
 accuracy = 0

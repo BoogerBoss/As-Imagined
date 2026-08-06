@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hone Claws"
+description = "Sharpens its claws to raise Attack and Accuracy."
 type = 18
 category = 2
 accuracy = 0

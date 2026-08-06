@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Double Slap"
+description = "Repeatedly slaps the foe 2 to 5 times."
 type = 1
 power = 15
 accuracy = 85

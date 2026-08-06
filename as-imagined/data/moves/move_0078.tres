@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stun Spore"
+description = "Scatters a powder that may paralyze the foe."
 type = 13
 category = 2
 accuracy = 75

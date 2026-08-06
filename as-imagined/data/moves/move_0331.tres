@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bullet Seed"
+description = "Shoots 2 to 5 seeds in a row to strike the foe."
 type = 13
 power = 25
 pp = 30

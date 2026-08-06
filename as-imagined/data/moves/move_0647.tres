@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Smart Strike"
+description = "Hits with an accurate horn that never misses."
 type = 9
 power = 70
 accuracy = 0

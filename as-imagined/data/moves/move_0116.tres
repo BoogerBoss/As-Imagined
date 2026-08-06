@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Focus Energy"
+description = "Focuses power to raise the critical-hit ratio."
 type = 1
 category = 2
 accuracy = 0

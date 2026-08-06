@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Diamond Storm"
+description = "Whips up a storm of diamonds. May up Defense."
 type = 6
 power = 100
 accuracy = 95

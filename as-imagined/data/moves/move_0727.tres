@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Scale Shot"
+description = "Shoots scales 2 to 5 times. Ups Speed, lowers defense."
 type = 17
 power = 25
 accuracy = 90

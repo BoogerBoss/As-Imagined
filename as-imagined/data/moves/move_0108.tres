@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Smokescreen"
+description = "Lowers the foe's accuracy using smoke, ink, etc."
 type = 1
 category = 2
 pp = 20

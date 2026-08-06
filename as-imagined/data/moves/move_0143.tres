@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sky Attack"
+description = "2-turn attack. High critical hit ratio, and may flinch."
 type = 3
 power = 140
 accuracy = 90

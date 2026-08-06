@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Jump Kick"
+description = "A strong jumping kick. May miss and hurt the kicker."
 type = 2
 power = 100
 accuracy = 95

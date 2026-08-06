@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Calm Mind"
+description = "Raises Sp. Atk and Sp. Def by focusing the mind."
 type = 15
 category = 2
 accuracy = 0

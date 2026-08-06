@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Swagger"
+description = "Confuses the foe, but also sharply raises its Attack."
 type = 1
 category = 2
 accuracy = 85

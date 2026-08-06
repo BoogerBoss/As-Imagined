@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Blue Flare"
+description = "Engulfs the foe in a blue flame. May inflict a burn."
 type = 11
 category = 1
 power = 130

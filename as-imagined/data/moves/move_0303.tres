@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Slack Off"
+description = "Slacks off and restores half the maximum HP."
 type = 1
 category = 2
 accuracy = 0

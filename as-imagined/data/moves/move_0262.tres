@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Memento"
+description = "The user faints and harshly lowers foes Atk and Sp.Atk."
 type = 18
 category = 2
 pp = 10

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Cross Chop"
+description = "A double-chopping attack. High critical-hit ratio."
 type = 2
 power = 100
 accuracy = 80

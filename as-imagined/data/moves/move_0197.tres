@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Detect"
+description = "Evades attack, but may fail if used in succession."
 type = 2
 category = 2
 accuracy = 0

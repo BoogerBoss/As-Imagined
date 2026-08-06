@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sky Drop"
+description = "Takes the foe into the sky then drops it the next turn."
 type = 3
 power = 60
 pp = 10

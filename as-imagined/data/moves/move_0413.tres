@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Brave Bird"
+description = "A low altitude charge that also hurts the user."
 type = 3
 power = 120
 pp = 15

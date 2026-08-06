@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Refresh"
+description = "Heals poisoning, paralysis, or a burn."
 type = 1
 category = 2
 accuracy = 0

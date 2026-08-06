@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tail Whip"
+description = "Wags the tail to lower the foe's Defense."
 type = 1
 category = 2
 pp = 30

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aurora Beam"
+description = "Fires a rainbow-colored beam that may lower Attack."
 type = 16
 category = 1
 power = 65

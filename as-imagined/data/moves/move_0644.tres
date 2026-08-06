@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Power Trip"
+description = "It hits harder the more stat boosts the user has."
 type = 18
 power = 20
 pp = 10

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Struggle"
+description = "Used only if all PP are gone. Also hurts the user a little."
 type = 1
 power = 50
 accuracy = 0

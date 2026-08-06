@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flower Trick"
+description = "Rigged bouquet. Always gets a critical hit, never missing."
 type = 13
 power = 70
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Night Shade"
+description = "Inflicts damage identical to the user's level."
 type = 8
 category = 1
 power = 1

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Incinerate"
+description = "Burns up Berries and Gems preventing their use."
 type = 11
 category = 1
 power = 60

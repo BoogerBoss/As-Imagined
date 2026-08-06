@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poison Gas"
+description = "Envelops the foes in a toxic gas that may poison."
 type = 4
 category = 2
 accuracy = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Uproar"
+description = "Causes an uproar for 3 turns and prevents sleep."
 type = 1
 category = 1
 power = 90

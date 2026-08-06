@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tailwind"
+description = "Whips up a breeze, doubling ally Speed for 4 turns."
 type = 3
 category = 2
 accuracy = 0

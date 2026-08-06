@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Glaciate"
+description = "Blows very cold air at the foes. It lowers their Speed."
 type = 16
 category = 1
 power = 65

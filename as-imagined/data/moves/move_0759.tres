@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Springtide Storm"
+description = "Wraps a foe in fierce winds. Varies with the user's form."
 type = 19
 category = 1
 power = 100

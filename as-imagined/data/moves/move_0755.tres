@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dire Claw"
+description = "May poison, paralyze, or put the foe to sleep."
 type = 4
 power = 80
 pp = 15

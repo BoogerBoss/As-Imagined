@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Shard"
+description = "Hurls a chunk of ice that always strikes first."
 type = 16
 power = 40
 pp = 30

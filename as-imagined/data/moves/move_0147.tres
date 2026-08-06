@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spore"
+description = "Scatters a cloud of spores that always induce sleep."
 type = 13
 category = 2
 pp = 15

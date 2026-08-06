@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Constrict"
+description = "Constricts to inflict pain. May lower Speed."
 type = 1
 power = 10
 pp = 35

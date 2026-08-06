@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Copycat"
+description = "The user mimics the last move used by a foe."
 type = 1
 category = 2
 accuracy = 0

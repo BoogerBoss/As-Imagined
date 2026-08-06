@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mountain Gale"
+description = "Giant chunks of ice damage the foe. It may flinch."
 type = 16
 power = 100
 accuracy = 85

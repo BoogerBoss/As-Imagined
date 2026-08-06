@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Peck"
+description = "Attacks the foe with a jabbing beak, etc."
 type = 3
 power = 35
 pp = 35

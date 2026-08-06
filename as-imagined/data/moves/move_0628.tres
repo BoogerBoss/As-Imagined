@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Hammer"
+description = "Swings the fist to strike. Lowers the user's Speed."
 type = 16
 power = 100
 accuracy = 90

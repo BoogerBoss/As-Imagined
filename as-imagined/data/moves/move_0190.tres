@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Octazooka"
+description = "Fires a lump of ink to damage and cut accuracy."
 type = 12
 category = 1
 power = 65

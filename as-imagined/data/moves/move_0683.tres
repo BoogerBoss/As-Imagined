@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Glitzy Glow"
+description = "Telekinetic force that sets wall, lowering Sp. Atk damage."
 type = 15
 category = 1
 power = 80

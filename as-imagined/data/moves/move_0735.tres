@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Burning Jealousy"
+description = "Foes that have stats upped during the turn get burned."
 type = 11
 category = 1
 power = 70

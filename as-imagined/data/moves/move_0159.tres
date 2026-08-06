@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sharpen"
+description = "Reduces the polygon count and raises Attack."
 type = 1
 category = 2
 accuracy = 0

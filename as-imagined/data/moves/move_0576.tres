@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Topsy-Turvy"
+description = "Swaps all stat changes that affect the target."
 type = 18
 category = 2
 accuracy = 0

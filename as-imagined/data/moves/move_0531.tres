@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Heart Stamp"
+description = "A sudden blow after a cute act. May cause flinching."
 type = 15
 power = 60
 pp = 25

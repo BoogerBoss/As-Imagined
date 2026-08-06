@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Baton Pass"
+description = "Switches out the user while keeping effects in play."
 type = 1
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Metal Sound"
+description = "Emits a horrible screech that sharply lowers Sp. Def."
 type = 9
 category = 2
 accuracy = 85

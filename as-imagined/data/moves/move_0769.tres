@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bitter Malice"
+description = "A spine-chilling resentment. Lowers the foe's Attack."
 type = 8
 category = 1
 power = 75

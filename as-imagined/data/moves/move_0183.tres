@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mach Punch"
+description = "A punch is thrown at wicked speed to strike first."
 type = 2
 power = 40
 pp = 30

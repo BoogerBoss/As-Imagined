@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shock Wave"
+description = "A fast and unavoidable electric attack."
 type = 14
 category = 1
 power = 60

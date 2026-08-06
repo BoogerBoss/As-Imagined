@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stealth Rock"
+description = "Sets floating stones that hurt a foe switching in."
 type = 6
 category = 2
 accuracy = 0

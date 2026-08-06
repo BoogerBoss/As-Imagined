@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rage Powder"
+description = "Scatters powder to make foes attack only the user."
 type = 7
 category = 2
 accuracy = 0

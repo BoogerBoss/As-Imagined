@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Low Sweep"
+description = "Attacks the foe's legs lowering its Speed."
 type = 2
 power = 65
 pp = 20

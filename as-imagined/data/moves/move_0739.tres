@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Coaching"
+description = "Properly coaches allies to up their Attack and Defense."
 type = 2
 category = 2
 accuracy = 0

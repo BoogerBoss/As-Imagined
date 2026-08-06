@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Supercell Slam"
+description = "An electrified slam. If it misses, the user is hurt."
 type = 14
 power = 100
 accuracy = 95

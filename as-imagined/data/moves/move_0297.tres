@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Feather Dance"
+description = "Envelops the foe with down to sharply reduce Attack."
 type = 3
 category = 2
 pp = 15

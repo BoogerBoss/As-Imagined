@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flying Press"
+description = "This attack does Fighting and Flying-type damage."
 type = 2
 power = 100
 accuracy = 95

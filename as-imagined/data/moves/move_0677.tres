@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Splishy Splash"
+description = "A huge electrified wave that may paralyze the foes."
 type = 12
 category = 1
 power = 90

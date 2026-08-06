@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lava Plume"
+description = "Scarlet flames torch everything around the user."
 type = 11
 category = 1
 power = 80

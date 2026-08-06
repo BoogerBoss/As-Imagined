@@ -5,7 +5,21 @@ extends RefCounted
 ##
 ## Runs the scripts the importer already records on every placed entity
 ## (`OverworldEntity.script_label`) — 218 scripted entities across the corridor,
-## 192 distinct labels, 90 distinct commands of source's 237.
+## 192 distinct labels, 121 distinct commands of source's 237.
+##
+## [Trainer-battle family + small-opcode batch] Grew from 90 by closing the
+## trainer-battle family (`trainerbattle_no_intro`/`_double`/`_rematch`/
+## `_rematch_double`, 496 combined corpus uses — `trainerbattle_single` was
+## the only variant Stage 2 shipped), plus `checkplayergender`/`random`/
+## `setorcopyvar`, the `waitse`/`playmoncry`/`waitmoncry` audio no-ops,
+## `bufferboxname` (a real halt, not a no-op — see its own doc comment),
+## `fadescreenspeed`/`fadescreenswapbuffers` (the two `fadescreen` siblings
+## named but excluded when that opcode shipped), and a symbolic-constant
+## table closing `addvar`/`subvar`/`checkmoney`/`addmoney`/`removemoney`'s
+## own disclosed Hoenn-only-constant gap. Coverage was NOT re-measured after
+## this — the last recorded corpus-completion figure predates it and was
+## already stale (see `docs/m27_next_step_recon.md`); no rerunnable
+## coverage tool exists to produce a fresh one.
 ##
 ## ⚠️ STATE IS EXTERNAL, DELIBERATELY. `pc`, `current_op` and `pause_reason` are
 ## plain readable properties, never information that exists only inside a
@@ -48,6 +62,16 @@ enum Pause {
 	## result (the typed name) like WAIT_YES_NO does, so `resume()` alone is NOT
 	## enough — the caller must go through `answer_naming`.
 	WAIT_NAMING,
+	## [Map scripts] `warp` — a script-driven warp (`ScrCmd_warp`,
+	## `scrcmd.c`), distinct from the player stepping onto a `Warp` node. Like
+	## WAIT_MOVEMENT, carries no result, so a plain resume() is correct once
+	## the scene reports the warp finished.
+	WAIT_WARP,
+	## [M27G G2] `special ChoosePartyMon` — the real party screen is open in
+	## browse mode. Carries a result (the chosen slot, or "nothing chosen" on
+	## cancel) exactly like WAIT_NAMING/WAIT_BATTLE — `resume()` alone is NOT
+	## enough, the caller must go through `answer_party_choice`.
+	WAIT_PARTY_CHOICE,
 }
 
 ## The one multichoice list Stage 4 implements.
@@ -135,6 +159,23 @@ var pending_movements: Array[Dictionary] = []
 
 ## Whose movement `waitmovement` is waiting on. "" means "everything".
 var pending_wait_target: String = ""
+
+## [Map scripts] Set by `warp`. `map` is the raw `MAP_*` token — already the
+## exact string `Warp.dest_map` stores, so the scene's own MapConstants
+## lookup resolves it unchanged. `x`/`y` are the destination CELL, not a
+## warp id — source's `ScrCmd_warp` reads them literally.
+var pending_warp: Dictionary = {}
+
+## [Map scripts] Immediate object-event mutations the script has requested
+## (`setobjectxyperm`/`setobjectmovementtype`/`turnobject`/`addobject`) —
+## `{"op":"move"/"movement_type"/"turn"/"add"/"remove", "target":LOCALID, ...}`.
+## Queued rather than applied inline for the same reason `pending_movements`
+## is: the VM has no business resolving a LOCALID into a scene node, that is
+## the caller's job. `removeobject` still ALSO appends to the older
+## `removed_objects` below (an existing, separately-tested field) — this is
+## the second, functionally-consumed record of the same event, not a
+## replacement.
+var pending_object_ops: Array[Dictionary] = []
 
 ## Which entity this script belongs to, so `faceplayer` and friends have a
 ## subject. May be null for a map-level script.
@@ -234,6 +275,8 @@ func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	# fails SILENTLY in GDScript, a gotcha this project has paid for before.
 	pending_movements.clear()
 	pending_wait_target = ""
+	pending_warp = {}
+	pending_object_ops.clear()
 	if _source == null or not _source.has_script(label):
 		pause_reason = Pause.UNRESOLVED
 		diagnostic = "no script named '%s'" % label
@@ -249,7 +292,8 @@ func is_running() -> bool:
 
 func is_waiting() -> bool:
 	return pause_reason in [Pause.WAIT_MESSAGE, Pause.WAIT_BUTTON, Pause.WAIT_YES_NO,
-			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT, Pause.WAIT_NAMING]
+			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT, Pause.WAIT_NAMING, Pause.WAIT_WARP,
+			Pause.WAIT_PARTY_CHOICE]
 
 
 func is_finished() -> bool:
@@ -258,12 +302,14 @@ func is_finished() -> bool:
 
 ## The caller reports that whatever we were waiting on has happened.
 func resume() -> void:
-	# ⚠️ WAIT_BATTLE and WAIT_NAMING are deliberately NOT resumable this way. Both
-	# carry a RESULT: a battle's win/loss branch, and the typed nickname. Clearing
-	# either here would silently drop it and read as "the script just carried on".
-	# Use resume_after_battle() / answer_naming().
+	# ⚠️ WAIT_BATTLE, WAIT_NAMING and WAIT_PARTY_CHOICE are deliberately NOT
+	# resumable this way. Each carries a RESULT: a battle's win/loss branch,
+	# the typed nickname, the chosen party slot. Clearing any of them here
+	# would silently drop it and read as "the script just carried on". Use
+	# resume_after_battle() / answer_naming() / answer_party_choice().
 	if is_waiting() and pause_reason != Pause.WAIT_BATTLE \
-			and pause_reason != Pause.WAIT_NAMING:
+			and pause_reason != Pause.WAIT_NAMING \
+			and pause_reason != Pause.WAIT_PARTY_CHOICE:
 		pause_reason = Pause.NONE
 
 
@@ -293,6 +339,61 @@ func step() -> bool:
 			# concerns. Listed explicitly rather than falling through to
 			# UNKNOWN_OP so a real gap stays distinguishable from a known no-op.
 			return true
+
+		# [Map scripts] Region/Pokédex area-reveal bookkeeping
+		# (`FlagSetWorldMapFlag`) — no consumer exists anywhere in this
+		# project (no region map, no Pokédex UI), so this is a genuine no-op
+		# rather than a deferred mechanic. Listed explicitly, same reasoning
+		# as the Stage 1 no-ops above: several OnTransition map scripts open
+		# with this, and falling through to UNKNOWN_OP would halt the REST
+		# of the script (including the conditional dispatch that matters).
+		"setworldmapflag":
+			return true
+
+		# [Map scripts] `waitstate` (`scrcmd.c`) — the generic "an async
+		# field task is running" wait. It names no task of its own; whatever
+		# command started the task (here, only `warp`) is what actually set
+		# a Pause reason, so by the time execution reaches this op the real
+		# wait already happened. A pure passthrough, not a second wait.
+		"waitstate":
+			return true
+
+		# [Map scripts] Each entry of an OnFrame/OnWarp table compiles down
+		# to this op — the raw form of `MapHeaderCheckScriptTable`'s own
+		# `VarGet(v1) == VarGet(v2)` check (`script.c:339`). Reuses
+		# `goto_if_eq`'s exact 3-arg semantics — first match wins, a false
+		# entry falls through to the next one in program order — rather than
+		# a bespoke table-walker, since a sequence of these ops IS the
+		# table. `call_if_eq`'s call-stack push is deliberately NOT used:
+		# source starts the found script as the new running script, it does
+		# not return here afterward.
+		"map_script_2":
+			if args.size() < 3:
+				return true
+			var have := _flags.var_get(str(args[0])) if _flags != null else 0
+			last_compare = _cmp(have, _literal(str(args[1])))
+			if not _compare_holds("eq", last_compare):
+				return true
+			return _jump(str(args[2]))
+
+		# [Map scripts] `warp` (`ScrCmd_warp`, `scrcmd.c`) — a script-driven
+		# warp to an explicit CELL, not a warp id. ASYNCHRONOUS like
+		# `applymovement`/`trainerbattle_single`: the scene owns the actual
+		# teardown/fade/reload, the VM only records where to and waits.
+		# Args are (dest map constant, x, y); the map constant is already
+		# the exact string `Warp.dest_map` stores.
+		"warp":
+			if args.size() < 3:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "warp needs 3 args, got %d" % args.size()
+				return false
+			pending_warp = {
+				"map": str(args[0]),
+				"x": _resolve_number(str(args[1])),
+				"y": _resolve_number(str(args[2])),
+			}
+			pause_reason = Pause.WAIT_WARP
+			return false
 
 		"message":
 			var text_key := str(args[0]) if args.size() > 0 else ""
@@ -365,9 +466,78 @@ func step() -> bool:
 		# [M27K K-a] Remove an object event from the map — the Poke Ball you
 		# just took. `VAR_LAST_TALKED` is the object you interacted with, which
 		# is why this needs the interaction to have recorded it.
+		#
+		# [Map scripts] ALSO queued into `pending_object_ops` now — the caller
+		# hides the entity by setting its own `visibility_flag` (every entity
+		# `addobject`/`removeobject` target in the corpus already carries one,
+		# reused rather than invented), which is what makes taking a Pokéball
+		# actually make it disappear, and what makes `addobject`'s own
+		# counterpart below able to reverse the exact same mechanism.
 		"removeobject":
 			if args.size() > 0:
 				removed_objects.append(str(args[0]))
+				pending_object_ops.append({"op": "remove", "target": str(args[0])})
+			return true
+
+		# [Map scripts] The reverse of `removeobject` — an object event that
+		# starts absent and is spawned in by a script (`ScrCmd_addobject`,
+		# `scrcmd.c`). Both toggle the SAME mechanism, `visibility_flag`, so
+		# an entity using this idiom needs no second visibility system.
+		"addobject":
+			if args.size() > 0:
+				pending_object_ops.append({"op": "add", "target": str(args[0])})
+			return true
+
+		# [Map scripts] `setobjectxyperm` (`ScrCmd_setobjectxyperm`) — a
+		# PERMANENT reposition (a data update, not an animated walk), used to
+		# snap an entity to its resting spot after a scripted walk-in.
+		"setobjectxyperm":
+			if args.size() > 2:
+				pending_object_ops.append({"op": "move", "target": str(args[0]),
+						"x": _resolve_number(str(args[1])),
+						"y": _resolve_number(str(args[2]))})
+			return true
+
+		# [Map scripts] `setobjectmovementtype` — changes an NPC's own
+		# wander/idle behaviour outright (e.g. Oak going from his scripted
+		# walk-in to a plain FACE_DOWN once the cutscene parks him).
+		"setobjectmovementtype":
+			if args.size() > 1:
+				pending_object_ops.append({"op": "movement_type", "target": str(args[0]),
+						"value": str(args[1])})
+			return true
+
+		# [Map scripts] `turnobject` — a static, immediate facing change, no
+		# movement. Distinct from `applymovement`'s own FACE_* actions, which
+		# are queued and animated through the movement runner.
+		"turnobject":
+			if args.size() > 1:
+				pending_object_ops.append({"op": "turn", "target": str(args[0]),
+						"dir": str(args[1])})
+			return true
+
+		# [Map scripts] Door-tile open/close animation and its own wait.
+		# Cosmetic only — nothing in this project models a door's visual
+		# open/closed state, and the corridor's own collision rules are not
+		# gated on it, so skipping the animation loses nothing functional.
+		"opendoor", "closedoor", "waitdooranim":
+			return true
+
+		# [Map scripts] Snapshot the current BGM to restore later
+		# (`Cmd_savebgm`) — audio does not exist anywhere in this project
+		# (see the `playfanfare` group's own doc comment), so this is the
+		# same class of no-op.
+		"savebgm":
+			return true
+
+		# [M27G G1] `signmsg`/`normalmsg` — a message-box display-mode toggle
+		# (source's own docs: "used only in FireRed/LeafGreen"). NOT a
+		# simplification: `script_cmd_table.inc:227-228` dispatches BOTH to
+		# `ScrCmd_nop1` — Emerald never implemented either, and this
+		# FRLG-focused expansion doesn't either. A literal port of an
+		# already-inert function, found while tracing the Pewter Aide's real
+		# Running Shoes script (`docs/m27g_recon.md`).
+		"signmsg", "normalmsg":
 			return true
 
 		# [M27K K-a] Put a real Pokemon in the party.
@@ -421,6 +591,25 @@ func step() -> bool:
 			# display. Handled here so the pause lives with the other pauses.
 			if fn == FieldSpecials.NICKNAME_SPECIAL:
 				return _begin_nickname()
+			# [M27G G1] `BufferMonNickname` needs `party`, which `FieldSpecials`
+			# deliberately never touches (it is stateless by design — see its
+			# own file header). Same reason `ChangePokemonNickname` is
+			# intercepted here rather than folded into that registry.
+			if fn == "BufferMonNickname":
+				return _buffer_mon_nickname()
+			# [M27G G2] `ChoosePartyMon` opens the real party screen and waits
+			# for a pick — same "owns the display" reasoning as the nickname
+			# screen just above, checked before `FieldSpecials.run` for the
+			# same reason.
+			if fn == "ChoosePartyMon":
+				pause_reason = Pause.WAIT_PARTY_CHOICE
+				return false
+			# [M27G G3a] `CreateInGameTradePokemon` does the actual party
+			# mutation — real party context, so it lives here alongside
+			# `ChoosePartyMon`/`ScriptGetPartyMonSpecies`, not in the
+			# stateless `FieldSpecials` table.
+			if fn == "CreateInGameTradePokemon":
+				return _create_ingame_trade_pokemon()
 			if FieldSpecials.run(fn):
 				return true
 			pause_reason = Pause.UNKNOWN_OP
@@ -434,6 +623,30 @@ func step() -> bool:
 			# function and reports every call site as an unimplemented special.
 			var dest := str(args[0]) if args.size() > 0 else "VAR_RESULT"
 			var vfn := str(args[1]) if args.size() > 1 else ""
+			# [M27G G1] `ScriptGetPartyMonSpecies` needs `party` too — same
+			# reasoning as `BufferMonNickname` just above.
+			#
+			# [M27G G3a] `GetTradeSpecies` is the SAME lookup under a different
+			# name — source's own version additionally checks `MON_DATA_IS_EGG`
+			# and returns `SPECIES_NONE` for one, but this project models no
+			# eggs at all, so that check is unconditionally false and the two
+			# functions are behaviorally identical here. `party_menu.c:4630-
+			# 4637` vs. `field_specials.c:1641-1644` — different source files,
+			# same real operation: "what did VAR_0x8004 pick."
+			if vfn == "ScriptGetPartyMonSpecies" or vfn == "GetTradeSpecies":
+				if _flags != null:
+					_flags.var_set(dest, _party_mon_species(_flags.var_get("VAR_0x8004")))
+				return true
+			# [M27G G3a] `GetInGameTradeSpeciesInfo` needs both `party`
+			# (indirectly, via the row it looks up) AND `buffers` — writes
+			# STR_VAR_1/STR_VAR_2, which `FieldSpecials.specialvar_value`'s
+			# single-int-return shape cannot express, matching
+			# `bufferitemname`/`bufferspeciesname`'s own reasoning for living
+			# here rather than in that stateless table.
+			if vfn == "GetInGameTradeSpeciesInfo":
+				if _flags != null:
+					_flags.var_set(dest, _get_ingame_trade_species_info())
+				return true
 			if FieldSpecials.is_known_specialvar(vfn):
 				if _flags != null:
 					_flags.var_set(dest, FieldSpecials.specialvar_value(vfn))
@@ -576,16 +789,19 @@ func step() -> bool:
 			# The macro's second `disable` byte defaults to 0 and is never
 			# emitted by any corpus call, so a set one is not modelled.
 			var raw := str(args[0]) if args.size() > 0 else "0"
-			var amount := int(raw) if raw.is_valid_int() else -1
+			# ⚠️ `COINS_PRICE_50`/`_500`/`MAGIKARP_PRICE` resolve through
+			# `_SYMBOLIC_CONSTANTS` now (see its own doc comment) — this used
+			# to fail closed on all three. Anything still unresolved after
+			# that check is a genuinely unknown constant, not one of the
+			# three named corpus cases.
+			var amount := int(raw) if raw.is_valid_int() else \
+					int(_SYMBOLIC_CONSTANTS.get(raw, -1))
 			if amount < 0:
 				# ⚠️ FAIL CLOSED, AND THIS DIRECTION IS THE WHOLE POINT.
-				# 6 corpus money args are file-scoped assembler constants
-				# (`COINS_PRICE_500`) the script compiler does not resolve yet —
-				# see the note on `_money_arg_unresolved`. Treating an
-				# unresolvable price as 0 would make `checkmoney` report
-				# AFFORDABLE and the following `removemoney` charge nothing:
-				# free goods. Reporting "cannot afford" refuses the purchase
-				# instead, which is the recoverable direction.
+				# Treating an unresolvable price as 0 would make `checkmoney`
+				# report AFFORDABLE and the following `removemoney` charge
+				# nothing: free goods. Reporting "cannot afford" refuses the
+				# purchase instead, which is the recoverable direction.
 				diagnostic = "unresolved money amount '%s'" % raw
 				if current_op == "checkmoney":
 					_set_result(false)
@@ -709,6 +925,114 @@ func step() -> bool:
 		"trainerbattle_single":
 			return _trainer_battle(args)
 
+		# [Map scripts] `trainerbattle_no_intro trainer, lose_text` — the
+		# player never sees a "wants to battle" message. `WAIT_BATTLE`'s own
+		# driver already treats an empty `pending_pages` as "skip straight to
+		# the battle" (built for exactly this by `[M27F Stage 2]`'s own
+		# `_trainer_battle`, unused until now), so no separate no-intro
+		# branch was needed on the overworld side.
+		"trainerbattle_no_intro":
+			if args.size() < 2:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "trainerbattle_no_intro needs 2 args, got %d" % args.size()
+				return false
+			return _start_trainer_battle(str(args[0]), "", str(args[1]), "", false)
+
+		# [Map scripts] `trainerbattle_double trainer, intro, lose, not_enough
+		# [, event_script[, music]]`.
+		#
+		# ⚠️ `not_enough_pkmn_text` IS PARSED AND DISCARDED, NOT WIRED. The
+		# overworld's own trainer-party builder already flattens every
+		# doubles trainer to a singles fight — `OverworldParty.
+		# build_trainer_party`'s own comment: "the overworld has no
+		# two-active concept yet", a disclosed gap from `[M27D D5]`, not this
+		# opcode's to close. Dispatching this like an ordinary single battle
+		# is honest about what actually happens; inventing a doubles-aware
+		# use for this text would pretend otherwise.
+		"trainerbattle_double":
+			if args.size() < 4:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "trainerbattle_double needs 4+ args, got %d" % args.size()
+				return false
+			return _start_trainer_battle(str(args[0]), str(args[1]), str(args[2]),
+					_script_arg(args, 4), false)
+
+		# [Map scripts] `trainerbattle_rematch trainer, intro, lose` — see
+		# `_start_trainer_battle`'s own doc comment for the rematch-tier gap
+		# this deliberately does not attempt to close.
+		"trainerbattle_rematch":
+			if args.size() < 3:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "trainerbattle_rematch needs 3 args, got %d" % args.size()
+				return false
+			return _start_trainer_battle(str(args[0]), str(args[1]), str(args[2]), "", true)
+
+		# [Map scripts] `trainerbattle_rematch_double trainer, intro, lose,
+		# not_enough` — both gaps above at once (rematch-tier + doubles),
+		# same disclosed reasoning as each.
+		"trainerbattle_rematch_double":
+			if args.size() < 4:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "trainerbattle_rematch_double needs 4 args, got %d" % args.size()
+				return false
+			return _start_trainer_battle(str(args[0]), str(args[1]), str(args[2]), "", true)
+
+		# [Map scripts] `checkplayergender` — writes VAR_RESULT with the
+		# player's chosen gender (`ScrCmd_checkplayergender`, `scrcmd.c`).
+		# `PlayerIdentity.Gender.BOY`/`GIRL` are 0/1, the same values
+		# source's own `gSaveBlock2Ptr->playerGender` stores, so no
+		# remapping is needed.
+		"checkplayergender":
+			_set_result_value(TextBuffers.active_identity().gender)
+			return true
+
+		# [Map scripts] `random limit` — VAR_RESULT = a uniform roll in
+		# [0, limit) (`ScrCmd_random`, `scrcmd.c`: `Random() % max`). `limit`
+		# runs through `_resolve_number` since source resolves it via
+		# `VarGet` — the corpus carries both a literal and a var form.
+		# ⚠️ limit<=0 is defensive, not source-observed: C's `% 0` is
+		# undefined behaviour and no real script passes one.
+		"random":
+			var _limit := _resolve_number(str(args[0])) if args.size() > 0 else 0
+			_set_result_value(randi() % _limit if _limit > 0 else 0)
+			return true
+
+		# [Map scripts] `setorcopyvar dest, source` — the same VarGet-
+		# resolved copy `copyvar` already does. Source's own `ScrCmd_copyvar`
+		# reads the source's RAW storage while `ScrCmd_setorcopyvar` resolves
+		# it through `VarGet` — a real distinction in source, but this
+		# project's own `FlagStore.var_get` is already the single accessor
+		# every var read goes through regardless of opcode, so the two are
+		# indistinguishable here. Disclosed rather than silently assumed.
+		"setorcopyvar":
+			if _flags != null and args.size() > 1:
+				_flags.var_set(str(args[0]), _flags.var_get(str(args[1])))
+			return true
+
+		# [Map scripts] `waitse`/`playmoncry`/`waitmoncry` — the same
+		# audio-does-not-exist no-op class as the `playfanfare` group above.
+		"waitse", "playmoncry", "waitmoncry":
+			return true
+
+		# [Map scripts] `bufferboxname slot, box` — writes a PC box's name to
+		# a string buffer (`GetBoxNamePtr`, `scrcmd.c`). Halts rather than
+		# inventing a name, the same call `_begin_nickname`'s own PC branch
+		# already makes: there is no PC (I5-5, deferred past the slice), so
+		# there is no real box name to buffer.
+		"bufferboxname":
+			pause_reason = Pause.UNKNOWN_OP
+			diagnostic = "bufferboxname: no PC exists (I5-5)"
+			return false
+
+		# [Map scripts] The two `fadescreen` siblings named but deliberately
+		# excluded when that opcode shipped — see its own doc comment just
+		# below. Both are the same no-op for the same reason: the fade this
+		# family starts is never closed by a matching opcode in most of the
+		# corpus, so a faithful-looking fade here would leave the screen
+		# black for good.
+		"fadescreenspeed", "fadescreenswapbuffers":
+			return true
+
 		"return":
 			if _call_stack.is_empty():
 				pause_reason = Pause.DONE
@@ -756,22 +1080,49 @@ func _trainer_battle(args: Array) -> bool:
 		pause_reason = Pause.UNKNOWN_OP
 		diagnostic = "trainerbattle_single needs 3+ args, got %d" % args.size()
 		return false
+	return _start_trainer_battle(str(args[0]), str(args[1]), str(args[2]),
+			_script_arg(args, 3), false)
 
-	pending_trainer_key = str(args[0])
-	pending_battle_intro = str(args[1])
-	pending_battle_defeat_text = str(args[2])
-	pending_battle_script = _script_arg(args, 3)
+
+## [Map scripts] Shared mount, behind all five `trainerbattle_*` variants this
+## VM dispatches — extracted once the family grew past the single-battle case
+## `[M27F Stage 2]` shipped, so the already-beaten skip / intro-display /
+## continuation-routing logic exists in exactly one place.
+##
+## ⚠️ **REMATCH VARIANTS PASS `skip_already_beaten_check = true`, AND THE
+## REASON IS A REAL GAP, NOT A CONVENIENCE.** Source's own dispatch
+## (`BattleSetup_GetTrainerBattleScript`, `battle_setup.c:1144`) remaps the
+## trainer id through `GetRematchTrainerId` BEFORE the already-beaten check
+## is ever reached — a rematch-TIER lookup table this project does not have
+## (M35's full rematch/postgame progression system, still deferred). Without
+## it there is no stronger roster to remap to, so the disclosed simplification
+## is to re-fight the SAME trainer's existing static roster rather than
+## invent a tier. This is safe because the CALLING script is what decides
+## whether a rematch is even offered in the first place — the standard shape
+## upstream of a rematch trigger is a `goto_if_defeated` already gating it —
+## so this opcode does not need to re-derive that itself, and skipping its own
+## internal check does not open a rematch that shouldn't be reachable.
+func _start_trainer_battle(trainer: String, intro_label: String, defeat_label: String,
+		continuation_label: String, skip_already_beaten_check: bool) -> bool:
+	pending_trainer_key = trainer
+	pending_battle_intro = intro_label
+	pending_battle_defeat_text = defeat_label
+	pending_battle_script = continuation_label
 
 	# The already-beaten skip. Source checks `GetTrainerFlag` inside the shared
 	# script, one level below the command -- which is why Brock's own script has
 	# no guard of its own and would otherwise re-challenge forever.
-	if _flags != null and _flags.trainer_defeated(pending_trainer_key):
+	if not skip_already_beaten_check and _flags != null \
+			and _flags.trainer_defeated(trainer):
 		return true
 
 	# The intro speech. Source shows it before the battle
 	# (`EventScript_ShowTrainerIntroMsg`); the box belongs to the driver, so the
-	# pages are handed over the same way `message` hands them over.
-	pending_pages = _source.pages_for(pending_battle_intro) if _source != null \
+	# pages are handed over the same way `message` hands them over. Empty for
+	# `trainerbattle_no_intro`, whose own driver-side handling of a zero-page
+	# `pending_pages` (`WAIT_BATTLE`'s branch in `overworld.gd`) already skips
+	# straight to the battle.
+	pending_pages = _source.pages_for(intro_label) if _source != null and intro_label != "" \
 			else PackedStringArray()
 	pending_page_index = 0
 	pause_reason = Pause.WAIT_BATTLE
@@ -985,6 +1336,160 @@ func answer_naming(value: String) -> void:
 	pause_reason = Pause.NONE
 
 
+## [M27G G2] `PARTY_NOTHING_CHOSEN` (`include/constants/party_menu.h:5`) — the
+## sentinel `BufferMonSelection`/`CB2_ChooseMonForMoveRelearner` both write on
+## a cancel or an out-of-range pick. Deliberately DISTINCT from `PC_MON_CHOSEN`
+## above (0xFE vs 0xFF, both real source sentinels for two different things —
+## "the PC was chosen instead" vs "nothing was chosen at all").
+const PARTY_NOTHING_CHOSEN := 0xFF
+
+
+## [M27G G2] The caller reports what the real party screen (browse mode)
+## produced. Mirrors `answer_naming`'s own shape: `WAIT_PARTY_CHOICE` carries a
+## result, so a plain `resume()` cannot clear it (see `resume()`'s own guard).
+##
+## `index` is whatever `FieldPartyScreen.confirm()`/`.close()` already report —
+## a real 0-5 slot, or -1 on cancel (the screen's own "invalid" sentinel,
+## `[M27I I5-2]`'s `confirm()`). Both -1 AND an out-of-range index write
+## `PARTY_NOTHING_CHOSEN`, matching source's own `>= PARTY_SIZE` check
+## (`BufferMonSelection`, `party_menu.c:8046-8052`) rather than assuming the
+## screen's own -1 convention is the only "nothing chosen" shape a caller
+## could ever hand in.
+func answer_party_choice(index: int) -> void:
+	if pause_reason != Pause.WAIT_PARTY_CHOICE:
+		return
+	if _flags != null:
+		_flags.var_set("VAR_0x8004",
+				index if index >= 0 and index < party.members.size() else PARTY_NOTHING_CHOSEN)
+	pause_reason = Pause.NONE
+
+
+## [M27G G1] `ScriptGetPartyMonSpecies` — party-ONLY, unlike `BufferMonNickname`
+## just below. Source: `GetMonData(&gParties[B_TRAINER_PLAYER][
+## gSpecialVar_0x8004], MON_DATA_SPECIES_OR_EGG, NULL)` (`field_specials.c:
+## 1641-1644`) — no PC fallback exists in that function at all, so unlike
+## `_begin_nickname`'s own `PC_MON_CHOSEN` guard, there is no second branch to
+## refuse here; an out-of-range slot degrades to 0 (no species), the same
+## "unknown constant" shape `_literal` already uses elsewhere.
+func _party_mon_species(slot: int) -> int:
+	if slot < 0 or slot >= party.members.size():
+		return 0
+	var mon: BattlePokemon = party.members[slot]
+	if mon == null or mon.species == null:
+		return 0
+	return mon.species.national_dex_num
+
+
+## [M27G G1] `BufferMonNickname` — writes the chosen party member's nickname
+## into buffer slot 0 (`gStringVar1`). ⚠️ Source's own `GetSelectedBoxMonFromPcOrParty`
+## DOES support a PC fallback (`PC_MON_CHOSEN`, the same sentinel
+## `_begin_nickname` already guards) — this project has no PC (I5-5, still
+## deferred), so the PC branch halts rather than guessing, the identical
+## precedent `_begin_nickname`'s own PC branch already established.
+func _buffer_mon_nickname() -> bool:
+	var slot := 0
+	if _flags != null:
+		slot = _flags.var_get("VAR_0x8004")
+	if slot == PC_MON_CHOSEN:
+		pause_reason = Pause.UNKNOWN_OP
+		diagnostic = "BufferMonNickname: the PC path needs a PC (I5-5)"
+		return false
+	if slot < 0 or slot >= party.members.size():
+		pause_reason = Pause.UNKNOWN_OP
+		diagnostic = ("BufferMonNickname: VAR_0x8004 is %d, and the party "
+				+ "holds %d") % [slot, party.members.size()]
+		return false
+	var mon: BattlePokemon = party.members[slot]
+	buffers.set_slot(0, mon.display_name() if mon != null else "")
+	return true
+
+
+## [M27G G3a] Friendship a traded-in Pokémon always starts at, regardless of
+## the row — a CONSTANT in source, not per-entry data (`TradeMons`,
+## `src/trade.c:3104`: `friendship = 70;`, unconditional except for eggs,
+## which this project does not model).
+const TRADE_FRIENDSHIP := 70
+
+
+## [M27G G3a] `GetInGameTradeSpeciesInfo` (`src/trade.c:4545-4551`) — indexes
+## `data/ingame_trades.json` by `VAR_0x8005` (see `_INGAME_TRADE_IDS`'s own
+## doc comment for how that got set), buffers the REQUESTED species' name
+## into slot 0 (`STR_VAR_1`) and the GIVEN-AWAY species' name into slot 1
+## (`STR_VAR_2`) — source's own argument order, not alphabetical or by table
+## field order — and returns the requested species' dex as the specialvar
+## result. An out-of-range row degrades to empty buffers and 0, the same
+## shape `_party_mon_species`'s own out-of-range case already uses.
+func _get_ingame_trade_species_info() -> int:
+	var row := IngameTradeRegistry.entry(_flags.var_get("VAR_0x8005") if _flags != null else -1)
+	if row.is_empty():
+		buffers.set_slot(0, "")
+		buffers.set_slot(1, "")
+		return 0
+	buffers.set_slot(0, _species_name(str(int(row.get("requested_species", 0)))))
+	buffers.set_slot(1, _species_name(str(int(row.get("species", 0)))))
+	return int(row.get("requested_species", 0))
+
+
+## [M27G G3a] `CreateInGameTradePokemon` (`src/trade.c:4562-4610, 4639-4642`)
+## — builds the incoming Pokémon from the row `GetInGameTradeSpeciesInfo`
+## already indexed (`VAR_0x8005`, persisted across the whole script) and
+## swaps it into the SAME party slot the player's offered mon occupies
+## (`VAR_0x8004`, from `ChoosePartyMon`). A direct in-place replace, matching
+## source's own `SWAP(*playerMon, *partnerMon, sTradeAnim->tempMon)`
+## (`TradeMons`, `:3100`) — NOT a remove-then-append, which would move the
+## traded-in mon to a different slot than the one it actually landed in.
+##
+## Level is the OFFERED mon's own level (source: `CreateInGameTradePokemonInternal`
+## reads it off `playerMon` before building the new one), not a fixed value
+## from the row. Ability slot and all 6 IVs are forced from the row directly
+## — `PokemonFactory.create_battle_pokemon`'s own `forced_ivs`/`ability_slot`
+## params exist for exactly this (built ahead of need for M24's trainer
+## data, per that function's own doc comment).
+##
+## ⚠️ Degrades safely (a no-op, script continues) on an out-of-range slot or
+## an unresolved row — both mean an EARLIER opcode in the calling script
+## already misfired (a bad `ChoosePartyMon` answer, an unresolved
+## `INGAME_TRADE_*`), and this is not the place to surface that.
+func _create_ingame_trade_pokemon() -> bool:
+	if _flags == null or party == null:
+		return true
+	var slot := _flags.var_get("VAR_0x8004")
+	if slot < 0 or slot >= party.members.size():
+		return true
+	var row := IngameTradeRegistry.entry(_flags.var_get("VAR_0x8005"))
+	if row.is_empty():
+		return true
+	var offered: BattlePokemon = party.members[slot]
+	if offered == null:
+		return true
+	var raw_ivs: Array = row.get("ivs", [])
+	var ivs: Array[int] = []
+	for v in raw_ivs:
+		ivs.append(int(v))
+	var incoming := PokemonFactory.create_battle_pokemon(
+			int(row.get("species", 0)), offered.level, [], null,
+			ivs if ivs.size() == 6 else null, TRADE_FRIENDSHIP, null,
+			int(row.get("ability_num", 0)))
+	if incoming == null:
+		return true
+	incoming.nickname = str(row.get("nickname", ""))
+	incoming.held_item = _resolve_trade_held_item(int(row.get("held_item", 0)))
+	party.members[slot] = incoming
+	return true
+
+
+## Only the items this project actually has a real `.tres` for resolve —
+## everything else (mail, Tiny Mushroom, Stardust — none of which have any
+## held-item mechanic in this project regardless) degrades to no item held,
+## rather than a noisy `ItemRegistry.get_item` warning on every such trade.
+func _resolve_trade_held_item(item_id: int) -> ItemData:
+	if item_id <= 0:
+		return null
+	if not ResourceLoader.exists("res://data/items/item_%04d.tres" % item_id):
+		return null
+	return ItemRegistry.get_item(item_id)
+
+
 func _obtain_item(args: Array) -> bool:
 	# giveitem_msg's first argument is its own message label; the other two
 	# forms lead with the item.
@@ -1125,7 +1630,23 @@ func _conditional(op_name: String, args: Array) -> bool:
 		_:
 			if args.size() >= 3:
 				var have := _flags.var_get(str(args[0])) if _flags != null else 0
-				last_compare = _cmp(have, _literal(str(args[1])))
+				# [M27G G3a] ⚠️ `args[1]` MUST GO THROUGH `_resolve_number`, NOT
+				# `_literal` DIRECTLY — a real, general bug found by driving the
+				# real corpus, not specific to trade scripts. `goto_if_ne
+				# VAR_RESULT, VAR_0x8009, ...` (Reyley's own "did the player
+				# offer the right species" check, and the IDENTICAL shape on
+				# 6 of the other 7 in-game trade NPCs) compares two VARIABLES
+				# — source's own `VarGet` resolves EVERY operand uniformly
+				# (raw var vs. literal constant), but this branch always ran
+				# `_literal("VAR_0x8009")`, which has no case for it and falls
+				# through to 0. VAR_RESULT (63) != 0 read as "wrong species",
+				# so every one of these NPCs took the WRONG branch on a
+				# CORRECT trade. `_resolve_number` already implements the
+				# real var-then-literal duality (`setvar`'s own value arg
+				# still goes through plain `_literal`, since a `setvar` target
+				# is always a literal in source — `copyvar` is the
+				# var-to-var op — so that call site is deliberately untouched).
+				last_compare = _cmp(have, _resolve_number(str(args[1])))
 				label = str(args[2])
 			elif args.size() == 1:
 				label = str(args[0])
@@ -1157,6 +1678,54 @@ static func _compare_holds(kind: String, cmp: int) -> bool:
 	return false
 
 
+## [M27G G3a] `enum InGameTradeID` (`include/constants/trade.h:8-24`) —
+## the ROW `VAR_0x8005` indexes into `data/ingame_trades.json`'s own array
+## (`GetInGameTradeSpeciesInfo`/`CreateInGameTradePokemon`). Every real trade
+## NPC sets it via `setvar VAR_0x8008, INGAME_TRADE_MR_MIME` /
+## `copyvar VAR_0x8005, VAR_0x8008` — unresolved, this falls through to 0
+## (`INGAME_TRADE_SEEDOT`, the FIRST row) for every single one, the same
+## silent-wrong-branch shape G2's own `PARTY_SIZE` gap had. GENERAL, not
+## Hoenn-only, unlike `_SYMBOLIC_CONSTANTS` below — kept as its own dict for
+## that reason, and because these are ROW INDICES (0-12), not price/rate
+## values.
+const _INGAME_TRADE_IDS := {
+	"INGAME_TRADE_SEEDOT": 0, "INGAME_TRADE_PLUSLE": 1,
+	"INGAME_TRADE_HORSEA": 2, "INGAME_TRADE_MEOWTH": 3,
+	"INGAME_TRADE_MR_MIME": 4, "INGAME_TRADE_JYNX": 5,
+	"INGAME_TRADE_NIDORAN": 6, "INGAME_TRADE_FARFETCHD": 7,
+	"INGAME_TRADE_NIDORINOA": 8, "INGAME_TRADE_LICKITUNG": 9,
+	"INGAME_TRADE_ELECTRODE": 10, "INGAME_TRADE_TANGELA": 11,
+	"INGAME_TRADE_SEEL": 12,
+}
+
+
+## [Map scripts] File-scoped assembler constants (`.set`/`#define`) that the
+## script compiler leaves unresolved because they are not `VAR_`/`FLAG_`/
+## `SPECIES_`-style names it has a table for — real corpus values for
+## `addvar`/`subvar`/`checkmoney`/`addmoney`/`removemoney`.
+##
+## ⚠️ EVERY ONE OF THESE IS CONFIRMED, BY DIRECT SOURCE CITATION, HOENN-ONLY
+## CONTENT — Route 113's Glass Workshop, Mauville's Game Corner, the Route 4
+## Pokémon Center's Magikarp salesman — not merely content outside the
+## current corridor, content this Kanto project will never author a map for
+## at all. Kept anyway: the values are cheap and sourced, and "resolves to a
+## real number" is strictly safer than the fail-closed 0 it replaces, on the
+## chance a future session ever imports the Hoenn geography wholesale.
+const _SYMBOLIC_CONSTANTS := {
+	"ROULETTE_SPECIAL_RATE": 1 << 7,  # include/constants/roulette.h:5
+	"BLUE_FLUTE_PRICE": 250,          # data/maps/Route113_GlassWorkshop/scripts.inc:5
+	"YELLOW_FLUTE_PRICE": 500,        # :6
+	"RED_FLUTE_PRICE": 500,           # :7
+	"WHITE_FLUTE_PRICE": 1000,        # :8
+	"BLACK_FLUTE_PRICE": 1000,        # :9
+	"PRETTY_CHAIR_PRICE": 6000,       # :10
+	"PRETTY_DESK_PRICE": 8000,        # :11
+	"MAGIKARP_PRICE": 500,            # data/maps/Route4_PokemonCenter_1F_Frlg/scripts.inc:1
+	"COINS_PRICE_50": 1000,           # data/maps/MauvilleCity_GameCorner/scripts.inc:12
+	"COINS_PRICE_500": 10000,         # :13
+}
+
+
 ## Operands are symbolic as often as numeric (`1`, `TRUE`, `SIGN_LADY_READY`).
 ## An unknown symbol resolves to 0 rather than erroring: a script comparing
 ## against a constant this project has not imported should take the false
@@ -1174,6 +1743,15 @@ static func _literal(tok: String) -> int:
 		"YES": return 1          # asm/macros/event.inc:2133
 		"NO": return 0
 		"MULTI_B_PRESSED": return 127  # include/constants/script_menu.h:8
+		# [M27G G2] A GENERAL constant, not Hoenn-only — 57 region-wide corpus
+		# uses, most in the exact `goto_if_ge VAR_0x8004, PARTY_SIZE, Decline*`
+		# shape `ChoosePartyMon`'s own callers use to detect "nothing chosen"
+		# (PARTY_NOTHING_CHOSEN=0xFF >= PARTY_SIZE). Unresolved, every one of
+		# those checks always took the Decline branch, regardless of what was
+		# actually picked — found while driving `PalletTown_RivalsHouse_
+		# EventScript_GroomMon`, whose own very next opcode after `ChoosePartyMon`
+		# is exactly this check (`include/constants/global.h:82`).
+		"PARTY_SIZE": return BattleParty.PARTY_SIZE
 	# ⚠️ [M27K K-a] A SPECIES CONSTANT IS A REAL VALUE, AND 295 CORPUS ARGS ARE
 	# ONE. Before this they all resolved to 0 through the fallthrough below —
 	# `setvar PLAYER_STARTER_SPECIES, SPECIES_BULBASAUR` stored nothing, so the
@@ -1185,6 +1763,16 @@ static func _literal(tok: String) -> int:
 	if tok.begins_with("SPECIES_"):
 		var dex := PokemonRegistry.species_id_of(tok)
 		return dex if dex > 0 else 0
+	# [M27G G3a] Checked here, alongside SPECIES_ above — see
+	# `_INGAME_TRADE_IDS`'s own doc comment.
+	if _INGAME_TRADE_IDS.has(tok):
+		return _INGAME_TRADE_IDS[tok]
+	# [Map scripts] The Hoenn-only shop/roulette constants `addvar`/`subvar`
+	# already route through here — see `_SYMBOLIC_CONSTANTS`'s own doc
+	# comment for why they are worth carrying despite never being reachable
+	# from a Kanto map.
+	if _SYMBOLIC_CONSTANTS.has(tok):
+		return _SYMBOLIC_CONSTANTS[tok]
 	return 0
 
 

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Surf"
+description = "Creates a huge wave, then crashes it down on the field."
 type = 12
 category = 1
 power = 90

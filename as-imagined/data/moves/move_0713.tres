@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Branch Poke"
+description = "The user pokes the target with a pointed branch."
 type = 13
 power = 40
 pp = 40

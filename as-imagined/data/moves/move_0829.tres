@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Blood Moon"
+description = "Unleashes the blood moon. Can't be used twice in a row."
 type = 1
 category = 1
 power = 140

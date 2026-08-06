@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Gyro Ball"
+description = "A high-speed spin that does more damage to faster foes."
 type = 9
 power = 1
 makes_contact = true

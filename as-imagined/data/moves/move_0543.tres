@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Head Charge"
+description = "A charge using guard hair. It hurts the user a little."
 type = 1
 power = 120
 pp = 15

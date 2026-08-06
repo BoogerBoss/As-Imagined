@@ -64,14 +64,6 @@ extends Control
 # reads `_built_pokemon`/`_selected_move_ids` directly and never touches
 # either new member.
 
-const _NATURE_NAMES: Array[String] = [
-	"Hardy", "Lonely", "Brave", "Adamant", "Naughty",
-	"Bold", "Docile", "Relaxed", "Impish", "Lax",
-	"Timid", "Hasty", "Serious", "Jolly", "Naive",
-	"Modest", "Mild", "Quiet", "Bashful", "Rash",
-	"Calm", "Gentle", "Sassy", "Careful", "Quirky",
-]
-
 const _ABILITY_SLOT_LABELS: Array[String] = ["Primary", "Secondary", "Hidden"]
 
 const _EV_STAT_NAMES: Array[String] = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"]
@@ -121,8 +113,8 @@ func _ready() -> void:
 		$Scroll/VBox/IVSection/IVRowSpDef/SpinBox, $Scroll/VBox/IVSection/IVRowSpeed/SpinBox,
 	]
 
-	for i in range(_NATURE_NAMES.size()):
-		_nature_option.add_item(_NATURE_NAMES[i], i)
+	for i in range(BattlePokemon.NATURE_NAMES.size()):
+		_nature_option.add_item(BattlePokemon.NATURE_NAMES[i], i)
 	_nature_option.select(0)  # OptionButton doesn't auto-select on add_item.
 
 	for sb in _ev_spinboxes:
@@ -354,7 +346,7 @@ func _on_build_pressed() -> void:
 
 func _render_result(bp: BattlePokemon) -> void:
 	var lines: Array[String] = []
-	lines.append("[b]%s[/b] (Lv. %d, %s)" % [bp.species.species_name, bp.level, _NATURE_NAMES[bp.nature]])
+	lines.append("[b]%s[/b] (Lv. %d, %s)" % [bp.species.species_name, bp.level, BattlePokemon.nature_name(bp.nature)])
 	lines.append("Ability: %s" % (bp.ability.ability_name if bp.ability != null else "None"))
 	lines.append("HP: %d/%d   Atk: %d   Def: %d   SpAtk: %d   SpDef: %d   Speed: %d" % [
 		bp.current_hp, bp.max_hp, bp.attack, bp.defense, bp.sp_attack, bp.sp_defense, bp.speed])

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rage Fist"
+description = "The more the user has been hit, the stronger the move."
 type = 8
 power = 50
 pp = 10

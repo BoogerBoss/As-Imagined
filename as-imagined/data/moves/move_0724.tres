@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Steel Beam"
+description = "Fires a beam of steel from its body. It hurts the user."
 type = 9
 category = 1
 power = 140

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bleakwind Storm"
+description = "Hits with brutal, cold winds. May lower the foe's Speed."
 type = 3
 category = 1
 power = 100

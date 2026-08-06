@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Cotton Spore"
+description = "Spores cling to the foes, sharply reducing Speed."
 type = 13
 category = 2
 pp = 40

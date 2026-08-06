@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snowscape"
+description = "Summons a snowstorm that lasts for five turns."
 type = 16
 category = 2
 accuracy = 0

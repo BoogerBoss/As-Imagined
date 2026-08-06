@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ancient Power"
+description = "An attack that may raise all stats."
 type = 6
 category = 1
 power = 60

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fillet Away"
+description = "Sharply boosts offenses and Speed by using its own HP."
 type = 1
 category = 2
 accuracy = 0

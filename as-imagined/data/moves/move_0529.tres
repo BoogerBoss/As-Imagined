@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Drill Run"
+description = "Spins its body like a drill. High critical-hit ratio."
 type = 5
 power = 80
 accuracy = 95

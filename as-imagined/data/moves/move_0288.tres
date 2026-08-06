@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Grudge"
+description = "If the user faints, deletes all PP of foe's last move."
 type = 8
 category = 2
 accuracy = 0

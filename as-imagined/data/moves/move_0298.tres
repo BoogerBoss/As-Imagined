@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Teeter Dance"
+description = "Confuses all Pokémon on the scene."
 type = 1
 category = 2
 pp = 20

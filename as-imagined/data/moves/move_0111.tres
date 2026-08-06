@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Defense Curl"
+description = "Curls up to conceal weak spots and raise Defense."
 type = 1
 category = 2
 accuracy = 0

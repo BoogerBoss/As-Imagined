@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shadow Sneak"
+description = "Extends the user's shadow to strike first."
 type = 8
 power = 40
 pp = 30

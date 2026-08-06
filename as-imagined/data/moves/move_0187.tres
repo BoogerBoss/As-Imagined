@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Belly Drum"
+description = "Maximizes Attack while sacrificing half of max HP."
 type = 1
 category = 2
 accuracy = 0

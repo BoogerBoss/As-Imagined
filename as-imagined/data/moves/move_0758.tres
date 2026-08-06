@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stone Axe"
+description = "Hits and sets floating stones around foes."
 type = 6
 power = 65
 accuracy = 90

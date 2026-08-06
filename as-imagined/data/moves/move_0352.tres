@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Water Pulse"
+description = "Attacks with ultrasonic waves. May confuse the foe."
 type = 12
 category = 1
 power = 60

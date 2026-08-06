@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Victory Dance"
+description = "Dances to raise Attack, Defense and Speed."
 type = 2
 category = 2
 accuracy = 0

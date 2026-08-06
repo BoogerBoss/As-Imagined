@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Karate Chop"
+description = "A chopping attack with a high critical-hit ratio."
 type = 2
 power = 50
 pp = 25

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mist Ball"
+description = "Attacks with a flurry of down. May lower Sp. Atk."
 type = 15
 category = 1
 power = 95

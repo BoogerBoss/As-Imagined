@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shift Gear"
+description = "Rotates its gears to raise Attack and Speed."
 type = 9
 category = 2
 accuracy = 0

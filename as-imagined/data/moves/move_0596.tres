@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spiky Shield"
+description = "Evades attack, and damages the foe if struck."
 type = 13
 category = 2
 accuracy = 0

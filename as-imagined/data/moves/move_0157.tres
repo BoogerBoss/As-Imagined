@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Slide"
+description = "Large boulders are hurled. May cause flinching."
 type = 6
 power = 75
 accuracy = 90

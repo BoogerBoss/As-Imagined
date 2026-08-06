@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dig"
+description = "Digs underground the first turn and strikes next turn."
 type = 5
 power = 80
 pp = 10

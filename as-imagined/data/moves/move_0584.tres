@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fairy Wind"
+description = "Stirs up a fairy wind to strike the foe."
 type = 19
 category = 1
 power = 40

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Psychic"
+description = "A powerful psychic attack that may lower Sp. Def."
 type = 15
 category = 1
 power = 90

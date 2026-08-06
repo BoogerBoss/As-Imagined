@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Twin Beam"
+description = "Mystical eye-beams that hit the target twice in a row."
 type = 15
 category = 1
 power = 40

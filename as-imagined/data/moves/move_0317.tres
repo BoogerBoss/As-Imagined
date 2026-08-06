@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Tomb"
+description = "Stops the foe from moving with rocks and cuts Speed."
 type = 6
 power = 60
 accuracy = 95

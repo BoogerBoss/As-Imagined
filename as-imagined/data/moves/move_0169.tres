@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spider Web"
+description = "Ensnares the foe to stop it from fleeing or switching."
 type = 7
 category = 2
 accuracy = 0

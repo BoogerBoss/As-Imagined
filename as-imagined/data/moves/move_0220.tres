@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pain Split"
+description = "Adds the user and foe's HP, then shares them equally."
 type = 1
 category = 2
 accuracy = 0

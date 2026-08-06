@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "After You"
+description = "Helps out the target, letting it move next."
 type = 1
 category = 2
 accuracy = 0

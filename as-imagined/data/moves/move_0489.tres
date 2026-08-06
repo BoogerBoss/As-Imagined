@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Coil"
+description = "Coils up to raise Attack, Defense and Accuracy."
 type = 4
 category = 2
 accuracy = 0

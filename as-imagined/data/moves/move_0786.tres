@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spicy Extract"
+description = "Sharply ups target's Attack, harshly lowers its Defense."
 type = 13
 category = 2
 accuracy = 0

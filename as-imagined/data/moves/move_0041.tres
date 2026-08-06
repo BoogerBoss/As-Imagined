@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Twineedle"
+description = "Foreleg stingers jab foe twice. May poison."
 type = 7
 power = 25
 pp = 20

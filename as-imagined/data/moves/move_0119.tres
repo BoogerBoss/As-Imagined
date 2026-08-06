@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mirror Move"
+description = "Counters the foe's attack with the same move."
 type = 3
 category = 2
 accuracy = 0

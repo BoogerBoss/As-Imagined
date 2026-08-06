@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Block"
+description = "Blocks the foe's way and prevents escape."
 type = 1
 category = 2
 accuracy = 0

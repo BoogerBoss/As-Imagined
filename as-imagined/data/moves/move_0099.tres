@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rage"
+description = "Raises the user's Attack every time it is hit."
 type = 1
 power = 20
 pp = 20

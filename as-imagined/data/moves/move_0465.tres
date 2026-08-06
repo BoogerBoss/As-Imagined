@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Seed Flare"
+description = "Generates a shock wave that sharply reduces Sp. Def."
 type = 13
 category = 1
 power = 120

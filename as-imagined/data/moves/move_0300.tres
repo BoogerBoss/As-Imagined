@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mud Sport"
+description = "Covers the user in mud to weaken all Electric moves."
 type = 5
 category = 2
 accuracy = 0

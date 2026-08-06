@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Infestation"
+description = "The foe is infested and attacked for 4 or 5 turns."
 type = 7
 category = 1
 power = 20

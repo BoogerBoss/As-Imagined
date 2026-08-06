@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Absorb"
+description = "An attack that absorbs half the damage inflicted."
 type = 13
 category = 1
 power = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flail"
+description = "Inflicts more damage when the user's HP is down."
 type = 1
 power = 1
 pp = 15

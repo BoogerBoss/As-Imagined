@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tearful Look"
+description = "The user tears up, dropping Attack and Sp. Attack."
 type = 1
 category = 2
 accuracy = 0

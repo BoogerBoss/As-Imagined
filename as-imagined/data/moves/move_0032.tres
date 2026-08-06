@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Horn Drill"
+description = "A one-hit KO attack that uses a horn like a drill."
 type = 1
 power = 1
 accuracy = 30

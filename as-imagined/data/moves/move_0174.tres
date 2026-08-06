@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Curse"
+description = "A move that functions differently for GHOSTS."
 type = 8
 category = 2
 accuracy = 0

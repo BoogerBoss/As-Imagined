@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fury Attack"
+description = "Jabs the foe 2 to 5 times with sharp horns, etc."
 type = 1
 power = 15
 accuracy = 85

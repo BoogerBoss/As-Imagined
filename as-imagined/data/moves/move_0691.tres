@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snipe Shot"
+description = "The user ignores effects that draw in moves."
 type = 12
 category = 1
 power = 80

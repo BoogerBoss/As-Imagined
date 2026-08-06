@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ominous Wind"
+description = "A repulsive attack that may raise all stats."
 type = 8
 category = 1
 power = 60

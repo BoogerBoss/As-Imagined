@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mortal Spin"
+description = "Erases trap moves and Leech Seed. Poisons adjacent foes."
 type = 4
 power = 30
 pp = 15

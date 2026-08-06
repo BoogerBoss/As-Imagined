@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dragon Darts"
+description = "The user attacks twice. Two targets are hit once each."
 type = 17
 power = 50
 pp = 10

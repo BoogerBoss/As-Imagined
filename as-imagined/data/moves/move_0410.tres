@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Vacuum Wave"
+description = "Whirls its fists to send a wave that strikes first."
 type = 2
 category = 1
 power = 40

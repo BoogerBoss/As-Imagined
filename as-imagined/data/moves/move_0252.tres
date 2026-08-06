@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fake Out"
+description = "Moves 1st and flinches. Only works on user's 1st turn."
 type = 1
 power = 40
 pp = 10

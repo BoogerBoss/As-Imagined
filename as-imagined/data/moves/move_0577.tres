@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Draining Kiss"
+description = "An attack that absorbs over half the damage inflicted."
 type = 19
 category = 1
 power = 50

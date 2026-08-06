@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Outrage"
+description = "A rampage of 2 to 3 turns that confuses the user."
 type = 17
 power = 120
 pp = 10

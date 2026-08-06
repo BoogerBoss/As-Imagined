@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sandsear Storm"
+description = "Hits with brutally hot sand. May inflict a burn."
 type = 5
 category = 1
 power = 100

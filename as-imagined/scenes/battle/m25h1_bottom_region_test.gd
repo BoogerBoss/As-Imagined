@@ -202,13 +202,13 @@ func _test_fight_menu_builds_into_new_area_not_old() -> void:
 
 	bs._build_fight_menu(0)
 
-	# [M26c-3] The 1 move lands in the real grid; Back is a separate row
-	# in _new_button_area below it -- see _build_fight_menu's own doc
-	# comment for why Back isn't a 5th grid cell.
+	# [Back-button removal] The 1 move lands in the real grid;
+	# _new_button_area (the old Back row) is now permanently empty for
+	# FIGHT -- see _build_fight_menu's own doc comment.
 	_chk("FIGHT menu's 1 move lands in the NEW region's grid",
 			_button_texts(bs._new_button_grid).size() == 1)
-	_chk("FIGHT menu's Back button lands in the NEW region's (non-grid) button area",
-			_button_texts(bs._new_button_area).size() == 1)
+	_chk("FIGHT menu's Back row is empty (no Back button)",
+			bs._new_button_area.get_child_count() == 0)
 	_chk("FIGHT menu does NOT also write into the old button area",
 			bs._button_area.get_child_count() == 0)
 
@@ -505,7 +505,8 @@ func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
 
 func _test_status_label_has_real_message_color_override() -> void:
 	# [M25h-1.2 superseded this test's own original Phase 4e/M25h-1.1
-	# finding; superseded AGAIN by the message-box font migration] Phase
+	# finding; superseded again by the message-box font migration;
+	# superseded a THIRD time by the action-prompt color fix] Phase
 	# 4e/M25h-1.1 originally fixed StatusLabel's white-on-white risk with a
 	# flat dark `font_color` override, correct for the engine's generic
 	# default font. M25h-1.2 replaced that generic font with a real bitmap
@@ -514,14 +515,18 @@ func _test_status_label_has_real_message_color_override() -> void:
 	# the correct override instead. The message-box font migration (see
 	# _font_message's own doc comment) replaced THAT bitmap font with a
 	# real TTF for _font_message specifically -- a TTF carries no baked-in
-	# color at all, so neutral white would now be genuinely invisible
-	# against the message box's own light interior art. The correct
-	# override is once again a real, non-neutral color choice — this time
-	# _MESSAGE_FONT_COLOR (red, matching source's own B_WIN_ACTION_PROMPT
-	# scheme), plus a new real font_shadow_color override this TTF also
-	# needs that the bitmap font never did (its shadow was baked into the
-	# glyph pixels too). Confirmed via this session's own real screenshot
-	# verification. Bare-instance direct call, same reasoning as the test
+	# color at all, so a real color override is needed again. [Action-prompt
+	# color fix] StatusLabel sits on ActionPanel's white "menu" skin, not
+	# MessageLabel's teal "message" skin -- white/near-white text there read
+	# as a near-invisible pale outline, reported directly from real play.
+	# The correct override is StatusLabel's OWN _ACTION_PROMPT_FONT_COLOR/
+	# _ACTION_PROMPT_SHADOW_COLOR pair (dark grey on light grey, matching
+	# the real sourced "latin_normal_menu" palette the adjacent Fight/Item/
+	# Switch/Run button text already renders in on this same panel), not
+	# _MESSAGE_FONT_COLOR/_MESSAGE_FONT_SHADOW_COLOR -- MessageLabel below
+	# keeps that white/dark-purple pair unchanged, since it sits on the
+	# teal skin where white is correct. Confirmed via real screenshot
+	# verification both times. Bare-instance direct call, same reasoning as the test
 	# immediately above; _font_message loaded for real (from disk, via the
 	# real production _load_battle_fonts() path this time, not a manual
 	# bitmap-font stub, since the whole point here is confirming the real
@@ -551,10 +556,10 @@ func _test_status_label_has_real_message_color_override() -> void:
 			label.has_theme_color_override("font_color"))
 	if label.has_theme_color_override("font_color"):
 		var c: Color = label.get_theme_color("font_color")
-		_chk("the override is the real message color (red), not a neutral pass-through -- this TTF has no baked-in color",
-				c.is_equal_approx(BattleScreenShared._MESSAGE_FONT_COLOR))
+		_chk("the override is the real action-prompt color (dark grey), not MessageLabel's white -- this TTF has no baked-in color",
+				c.is_equal_approx(BattleScreenShared._ACTION_PROMPT_FONT_COLOR))
 	_chk("StatusLabel also has a real font_shadow_color override (the TTF has no baked-in shadow either)",
 			label.has_theme_color_override("font_shadow_color"))
 	if label.has_theme_color_override("font_shadow_color"):
-		_chk("the shadow override is the real message shadow color (black)",
-				label.get_theme_color("font_shadow_color").is_equal_approx(BattleScreenShared._MESSAGE_FONT_SHADOW_COLOR))
+		_chk("the shadow override is the real action-prompt shadow color (light grey)",
+				label.get_theme_color("font_shadow_color").is_equal_approx(BattleScreenShared._ACTION_PROMPT_SHADOW_COLOR))

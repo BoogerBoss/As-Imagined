@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lumina Crash"
+description = "A mind-affecting light harshly lowers Sp. Def."
 type = 15
 category = 1
 power = 80

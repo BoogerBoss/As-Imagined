@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sheer Cold"
+description = "A chilling attack that causes fainting if it hits."
 type = 16
 category = 1
 power = 1

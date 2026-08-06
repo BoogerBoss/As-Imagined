@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "False Swipe"
+description = "An attack that leaves the foe with at least 1 HP."
 type = 1
 power = 40
 pp = 40

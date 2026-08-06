@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Thunderclap"
+description = "Strikes first if the foe is preparing an attack."
 type = 14
 category = 1
 power = 70

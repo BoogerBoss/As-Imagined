@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Arm Thrust"
+description = "Straight-arm punches that strike the foe 2 to 5 times."
 type = 2
 power = 15
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Punch"
+description = "An icy punch that may freeze the foe."
 type = 16
 power = 75
 pp = 15

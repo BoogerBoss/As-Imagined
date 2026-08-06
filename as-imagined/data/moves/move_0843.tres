@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Temper Flare"
+description = "A desperation attack. Power doubles if last move failed."
 type = 11
 power = 75
 pp = 10

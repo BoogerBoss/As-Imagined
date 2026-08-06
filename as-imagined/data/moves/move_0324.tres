@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Signal Beam"
+description = "A strange beam attack that may confuse the foe."
 type = 7
 category = 1
 power = 75

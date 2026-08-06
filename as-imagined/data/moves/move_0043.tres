@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Leer"
+description = "Frightens the foes with a leer to lower Defense."
 type = 1
 category = 2
 pp = 30

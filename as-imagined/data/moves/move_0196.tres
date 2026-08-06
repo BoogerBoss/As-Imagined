@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Icy Wind"
+description = "A chilling attack that lowers the foe's Speed."
 type = 16
 category = 1
 power = 55

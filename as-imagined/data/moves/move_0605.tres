@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dazzling Gleam"
+description = "Damages foes by emitting a bright flash."
 type = 19
 category = 1
 power = 80

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rollout"
+description = "An attack lasting 5 turns with rising intensity."
 type = 6
 power = 30
 accuracy = 90

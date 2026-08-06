@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sleep Talk"
+description = "Uses an available move randomly while asleep."
 type = 1
 category = 2
 accuracy = 0

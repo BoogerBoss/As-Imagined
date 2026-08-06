@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Take Down"
+description = "A reckless charge attack that also hurts the user."
 type = 1
 power = 90
 accuracy = 85

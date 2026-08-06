@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Leafage"
+description = "Attacks with a flurry of small leaves."
 type = 13
 power = 40
 pp = 40

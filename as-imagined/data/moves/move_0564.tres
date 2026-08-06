@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sticky Web"
+description = "Weaves a sticky net that slows foes switching in."
 type = 7
 category = 2
 accuracy = 0

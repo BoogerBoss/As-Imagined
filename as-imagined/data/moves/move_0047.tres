@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sing"
+description = "A soothing song lulls the foe into a deep slumber."
 type = 1
 category = 2
 accuracy = 55

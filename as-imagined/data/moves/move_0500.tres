@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stored Power"
+description = "The higher the user's stats the more damage caused."
 type = 15
 category = 1
 power = 20

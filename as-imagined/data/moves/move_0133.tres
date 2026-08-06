@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Amnesia"
+description = "Forgets about something and sharply raises Sp. Def."
 type = 15
 category = 2
 accuracy = 0

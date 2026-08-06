@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Scald"
+description = "Shoots boiling water at the foe. May inflict a burn."
 type = 12
 category = 1
 power = 80

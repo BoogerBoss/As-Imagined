@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Luster Purge"
+description = "Attacks with a burst of light. May lower Sp. Def."
 type = 15
 category = 1
 power = 95

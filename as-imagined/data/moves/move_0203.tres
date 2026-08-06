@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Endure"
+description = "Endures any attack for 1 turn, leaving at least 1HP."
 type = 1
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pursuit"
+description = "Inflicts bad damage if used on a foe switching out."
 type = 18
 power = 40
 pp = 20

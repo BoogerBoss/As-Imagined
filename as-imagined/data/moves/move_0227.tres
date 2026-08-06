@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Encore"
+description = "Makes the foe repeat its last move over 3 turns."
 type = 1
 category = 2
 ban_flags = 512

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ice Beam"
+description = "Blasts the foe with an icy beam that may freeze it."
 type = 16
 category = 1
 power = 90

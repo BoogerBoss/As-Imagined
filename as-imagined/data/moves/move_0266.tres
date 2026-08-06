@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Follow Me"
+description = "Draws attention to make foes attack only the user."
 type = 1
 category = 2
 accuracy = 0

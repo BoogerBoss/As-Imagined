@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Seed Bomb"
+description = "A barrage of hard seeds is fired at the foe."
 type = 13
 power = 80
 pp = 15

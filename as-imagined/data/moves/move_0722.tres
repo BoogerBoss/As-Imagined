@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Meteor Assault"
+description = "Attacks with a thick leek. The user must then rest."
 type = 2
 power = 150
 ban_flags = 16

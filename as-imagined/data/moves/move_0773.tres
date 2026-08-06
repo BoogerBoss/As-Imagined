@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ceaseless Edge"
+description = "Hits and scatters Spikes around foes."
 type = 18
 power = 65
 accuracy = 90

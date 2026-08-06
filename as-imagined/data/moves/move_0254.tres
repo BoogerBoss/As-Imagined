@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stockpile"
+description = "Charges up power for up to 3 turns."
 type = 1
 category = 2
 accuracy = 0

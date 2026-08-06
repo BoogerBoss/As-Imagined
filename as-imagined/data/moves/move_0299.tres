@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Blaze Kick"
+description = "A kick with a high critical-hit ratio. May cause a burn."
 type = 11
 power = 85
 accuracy = 90

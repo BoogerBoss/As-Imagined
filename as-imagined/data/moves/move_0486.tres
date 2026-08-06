@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Electro Ball"
+description = "Hurls an orb that does more damage to slower foes."
 type = 14
 category = 1
 power = 1

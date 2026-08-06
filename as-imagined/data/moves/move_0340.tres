@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bounce"
+description = "Bounces up, then down the next turn. May paralyze."
 type = 3
 power = 85
 accuracy = 85

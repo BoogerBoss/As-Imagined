@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aqua Ring"
+description = "Forms a veil of water that restores HP."
 type = 12
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bug Buzz"
+description = "A damaging sound wave that may lower Sp. Def."
 type = 7
 category = 1
 power = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Cosmic Power"
+description = "Raises Defense and Sp. Def with a mystic power."
 type = 15
 category = 2
 accuracy = 0

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract every dialogue string from the reference tree into data/map_texts.json.
+"""Extract every dialogue string into data/map_texts.json.
 
 [M27F Stage 1] The scripts this project imports reference text by LABEL
 (`msgbox PewterCity_Gym_Text_BrockIntro, MSGBOX_NPC`), and the text itself lives
@@ -27,6 +27,14 @@ Output shape (data/map_texts.json):
 JSON rather than a generated .gd const dict (Rob's call): this is bulk CONTENT
 rather than a lookup table, it is ~13x larger tree-wide than the corridor slice,
 and a const dict that size parses on every load.
+
+⚠️ [Field-script authoring fork] `REF` POINTS AT `field_script_source/`, the
+same project-owned, tracked, hand-editable fork `gen_map_scripts.py` reads
+from — see THAT file's own doc comment for the full reasoning. Every
+`.string` block lives in the identical `.inc` files this script's sibling
+compiles opcodes from, so one fork covers both script logic and dialogue
+text with nothing extra needed. DO NOT repoint `REF` back at `reference/
+pokeemerald_expansion` — see the sibling file's own warning.
 """
 
 import json
@@ -34,8 +42,9 @@ import os
 import re
 import sys
 
-REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "map_texts.json")
+PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REF = os.path.join(PROJECT, "field_script_source")
+OUT = os.path.join(PROJECT, "data", "map_texts.json")
 
 # A label line, then a run of .string directives before the next label.
 LABEL_RE = re.compile(r"^(\w+)::?\s*$", re.M)

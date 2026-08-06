@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snarl"
+description = "Yells and rants at the foe lowering its Sp. Atk."
 type = 18
 category = 1
 power = 55

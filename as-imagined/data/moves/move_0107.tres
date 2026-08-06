@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Minimize"
+description = "Minimizes the user's size to sharply raise evasiveness."
 type = 1
 category = 2
 accuracy = 0

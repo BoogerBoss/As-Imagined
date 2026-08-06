@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Power-Up Punch"
+description = "A hard punch that raises the user's Attack."
 type = 2
 power = 40
 pp = 20

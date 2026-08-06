@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shadow Punch"
+description = "An unavoidable punch that is thrown from shadows."
 type = 8
 power = 60
 accuracy = 0

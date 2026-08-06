@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Psychic Fangs"
+description = "Chomps with psychic fangs. Destroys any barriers."
 type = 15
 power = 85
 pp = 15

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Assurance"
+description = "An attack that gains power if the foe has been hurt."
 type = 18
 power = 60
 pp = 10

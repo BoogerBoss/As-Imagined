@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Egg Bomb"
+description = "An egg is forcibly hurled at the foe."
 type = 1
 power = 100
 accuracy = 75

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Will-O-Wisp"
+description = "Inflicts a burn on the foe with intense fire."
 type = 11
 category = 2
 accuracy = 85

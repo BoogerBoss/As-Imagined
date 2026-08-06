@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dual Wingbeat"
+description = "User slams the target with wings and hits twice in a row."
 type = 3
 power = 40
 accuracy = 90

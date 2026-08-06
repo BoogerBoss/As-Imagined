@@ -48,9 +48,36 @@ const NICKNAME_SPECIAL := "ChangePokemonNickname"
 ## `UpdateFollowingPokemon` / `hidefollower`: no follower Pokémon (ruled out
 ## project-wide, `docs/overworld_scope.md`). `DrawWholeMapView`: this project
 ## repaints continuously rather than on demand.
+##
+## [M27G G1] `DisableMsgBoxWalkaway`/`SetWalkingIntoSignVars` — NOT a
+## simplification either: source's own bodies (`script.c:685-692`) are each a
+## single COMMENTED-OUT line. The reference ships these two already inert; a
+## no-op here is a port of the real function, not a stand-in for one.
+## `OpenMuseumFossilPic`/`CloseMuseumFossilPic` — the same "no field picture
+## layer" no-op class `[M27K K-a]` already established for `showmonpic`/
+## `hidemonpic`; a no-op loses the flourish (Pewter Museum's fossil-pic
+## viewer), not the scene. Found via `docs/m27g_recon.md`'s own corridor
+## reachability walk.
+## [M27G G3a] `DoInGameTradeScene` — deliberately a no-op here, NOT a
+## simplification of a small function. `CreateInGameTradePokemon` (dispatched
+## directly in `ScriptVM`, since it needs `party`) already does the real
+## work — this one is PURE presentation in source, and what it actually
+## presents is the full link-trade cinematic engine (`Task_InGameTrade` ->
+## `CB2_InitInGameTrade` -> `CB2_InGameTrade`, `src/trade.c:4862-4867,
+## 2958-3054`), reused verbatim with `isLinkTrade = FALSE` — ball-bounce,
+## GBA screen zoom/flash, cable-end sprites, a mon-crossing animation. G3b
+## (deferred, Rob's call) reuses `[M26B3]`'s already-built ball recall/
+## send-out primitives for a real visual beat instead of porting that
+## cable-trade spectacle faithfully — see `docs/m27g_recon.md`'s own G3
+## Step 0 section for the reasoning.
 const NOOP_SPECIALS := [
 	"UpdateFollowingPokemon",
 	"DrawWholeMapView",
+	"DisableMsgBoxWalkaway",
+	"SetWalkingIntoSignVars",
+	"OpenMuseumFossilPic",
+	"CloseMuseumFossilPic",
+	"DoInGameTradeScene",
 ]
 
 

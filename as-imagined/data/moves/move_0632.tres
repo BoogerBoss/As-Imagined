@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Solar Blade"
+description = "Charges first turn, then chops with a blade of light."
 type = 13
 power = 125
 pp = 10

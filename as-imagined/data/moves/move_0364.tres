@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Feint"
+description = "An attack that hits foes using moves like Protect."
 type = 1
 power = 30
 pp = 10

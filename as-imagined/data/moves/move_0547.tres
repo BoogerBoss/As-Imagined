@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Relic Song"
+description = "Attacks with an ancient song. May induce sleep."
 type = 1
 category = 1
 power = 75

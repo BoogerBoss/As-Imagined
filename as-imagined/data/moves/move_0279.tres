@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Revenge"
+description = "An attack that moves last and gains power if hit."
 type = 2
 power = 60
 pp = 10

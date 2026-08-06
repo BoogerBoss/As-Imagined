@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Wood Hammer"
+description = "Slams the body into a foe. The user gets hurt too."
 type = 13
 power = 120
 pp = 15

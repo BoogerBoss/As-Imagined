@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hyperspace Fury"
+description = "Uses a warp hole to attack. Can't be evaded."
 type = 18
 power = 100
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Powder Snow"
+description = "Blasts the foes with a snowy gust. May cause freezing."
 type = 16
 category = 1
 power = 40

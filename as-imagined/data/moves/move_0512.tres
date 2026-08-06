@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Acrobatics"
+description = "Does double damage if the user has no item."
 type = 3
 power = 55
 pp = 15

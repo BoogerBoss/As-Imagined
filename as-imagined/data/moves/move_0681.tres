@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Buzzy Buzz"
+description = "Shoots a jolt of electricity that always paralyzes."
 type = 14
 category = 1
 power = 60

@@ -1,0 +1,210 @@
+[
+	{
+		"constant": "INGAME_TRADE_SEEDOT",
+		"nickname": "DOTS",
+		"species": 273,
+		"ivs": [
+			5,
+			4,
+			5,
+			4,
+			4,
+			4
+		],
+		"ability_num": 1,
+		"held_item": 515,
+		"requested_species": 280
+	},
+	{
+		"constant": "INGAME_TRADE_PLUSLE",
+		"nickname": "PLUSES",
+		"species": 311,
+		"ivs": [
+			4,
+			4,
+			4,
+			5,
+			5,
+			4
+		],
+		"ability_num": 0,
+		"held_item": 203,
+		"requested_species": 313
+	},
+	{
+		"constant": "INGAME_TRADE_HORSEA",
+		"nickname": "SEASOR",
+		"species": 116,
+		"ivs": [
+			5,
+			4,
+			4,
+			4,
+			5,
+			4
+		],
+		"ability_num": 0,
+		"held_item": 204,
+		"requested_species": 371
+	},
+	{
+		"constant": "INGAME_TRADE_MEOWTH",
+		"nickname": "MEOWOW",
+		"species": 52,
+		"ivs": [
+			4,
+			5,
+			4,
+			5,
+			4,
+			4
+		],
+		"ability_num": 0,
+		"held_item": 210,
+		"requested_species": 300
+	},
+	{
+		"constant": "INGAME_TRADE_MR_MIME",
+		"nickname": "MIMIEN",
+		"species": 122,
+		"ivs": [
+			20,
+			15,
+			17,
+			24,
+			23,
+			22
+		],
+		"ability_num": 0,
+		"held_item": 0,
+		"requested_species": 63
+	},
+	{
+		"constant": "INGAME_TRADE_JYNX",
+		"nickname": "ZYNX",
+		"species": 124,
+		"ivs": [
+			18,
+			17,
+			18,
+			22,
+			25,
+			21
+		],
+		"ability_num": 0,
+		"held_item": 209,
+		"requested_species": 61
+	},
+	{
+		"constant": "INGAME_TRADE_NIDORAN",
+		"nickname": "MR. NIDO",
+		"species": 32,
+		"ivs": [
+			19,
+			25,
+			18,
+			22,
+			22,
+			15
+		],
+		"ability_num": 0,
+		"held_item": 137,
+		"requested_species": 29
+	},
+	{
+		"constant": "INGAME_TRADE_FARFETCHD",
+		"nickname": "CH'DING",
+		"species": 83,
+		"ivs": [
+			20,
+			25,
+			21,
+			24,
+			15,
+			20
+		],
+		"ability_num": 0,
+		"held_item": 393,
+		"requested_species": 21
+	},
+	{
+		"constant": "INGAME_TRADE_NIDORINOA",
+		"nickname": "NINO",
+		"species": 33,
+		"ivs": [
+			19,
+			18,
+			25,
+			22,
+			15,
+			22
+		],
+		"ability_num": 0,
+		"held_item": 0,
+		"requested_species": 30
+	},
+	{
+		"constant": "INGAME_TRADE_LICKITUNG",
+		"nickname": "MARC",
+		"species": 108,
+		"ivs": [
+			24,
+			19,
+			21,
+			15,
+			23,
+			21
+		],
+		"ability_num": 0,
+		"held_item": 0,
+		"requested_species": 80
+	},
+	{
+		"constant": "INGAME_TRADE_ELECTRODE",
+		"nickname": "ESPHERE",
+		"species": 101,
+		"ivs": [
+			19,
+			16,
+			18,
+			25,
+			25,
+			19
+		],
+		"ability_num": 1,
+		"held_item": 0,
+		"requested_species": 26
+	},
+	{
+		"constant": "INGAME_TRADE_TANGELA",
+		"nickname": "TANGENY",
+		"species": 114,
+		"ivs": [
+			22,
+			17,
+			25,
+			16,
+			23,
+			20
+		],
+		"ability_num": 0,
+		"held_item": 143,
+		"requested_species": 48
+	},
+	{
+		"constant": "INGAME_TRADE_SEEL",
+		"nickname": "SEELOR",
+		"species": 86,
+		"ivs": [
+			24,
+			15,
+			22,
+			16,
+			23,
+			22
+		],
+		"ability_num": 0,
+		"held_item": 0,
+		"requested_species": 77
+	}
+]

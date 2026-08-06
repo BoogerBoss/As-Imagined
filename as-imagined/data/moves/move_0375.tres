@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Psycho Shift"
+description = "Transfers status problems to the foe."
 type = 15
 category = 2
 pp = 10

@@ -100,11 +100,11 @@ var level: int = 1
 ##
 ## ⚠️ **THIS DIVERGES FROM `species.species_name` ONCE THE SPECIES CAN CHANGE.**
 ## A Transformed Ditto reads DITTO here and PIKACHU there, and source agrees with
-## THIS one — the nickname is stored separately and does not follow forms. That
-## is why the battle screen's own call sites are NOT swapped in K-c: the change
-## is correct but it is a visible battle-behaviour change, and it belongs in a
-## pass that can be driven and looked at rather than riding along with a field
-## feature.
+## THIS one — the nickname is stored separately and does not follow forms. The
+## battle screen's own call sites were swapped to this in the post-K-c pass
+## (`battle_screen_shared.gd`'s `_mon_label`/`_name_text` and every direct
+## `.species.species_name` read); the deliberate hold-off recorded against K-c
+## no longer applies.
 func display_name() -> String:
 	if nickname != "":
 		return nickname
@@ -1321,6 +1321,26 @@ static func _nature_stat_pair(nature_id: int) -> Array[int]:
 		NATURE_SASSY:   return [STAT_SPDEF, STAT_SPEED]
 		NATURE_CAREFUL: return [STAT_SPDEF, STAT_SPATK]
 		_: return [-1, -1]  # Hardy/Docile/Serious/Bashful/Quirky — neutral
+
+
+# [M26E4-1] The one shared nature-name table this project's own UI needs —
+# consolidates two byte-identical local `_NATURE_NAMES` arrays
+# (scenes/team_builder/team_builder_screen.gd and roster_screen.gd, both
+# predating any Summary-screen concept), with E4 confirmed as the third
+# consumer. Index order matches the NATURE_* constants above exactly
+# (index N == nature id N), the same ordering both prior local copies
+# already used.
+const NATURE_NAMES: Array[String] = [
+	"Hardy", "Lonely", "Brave", "Adamant", "Naughty",
+	"Bold", "Docile", "Relaxed", "Impish", "Lax",
+	"Timid", "Hasty", "Serious", "Jolly", "Naive",
+	"Modest", "Mild", "Quiet", "Bashful", "Rash",
+	"Calm", "Gentle", "Sassy", "Careful", "Quirky",
+]
+
+
+static func nature_name(nature_id: int) -> String:
+	return NATURE_NAMES[nature_id] if nature_id >= 0 and nature_id < NATURE_NAMES.size() else "?"
 
 
 # [M18.5d-2] Ports AreBattlersOfOppositeGender/AreBattlersOfSameGender

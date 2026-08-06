@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Assist"
+description = "Attacks randomly with one of the partner's moves."
 type = 1
 category = 2
 accuracy = 0

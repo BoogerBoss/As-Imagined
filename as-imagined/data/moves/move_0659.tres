@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fleur Cannon"
+description = "A strong ray that harshly lowers Sp. Attack."
 type = 19
 category = 1
 power = 130

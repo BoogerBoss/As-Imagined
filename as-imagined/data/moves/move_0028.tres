@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sand Attack"
+description = "Reduces the foe's accuracy by hurling sand in its face."
 type = 5
 category = 2
 pp = 15

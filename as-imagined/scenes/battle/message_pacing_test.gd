@@ -29,6 +29,7 @@ func _ready() -> void:
 	_test_log_default_hold_is_wait_time_long()
 	_test_log_custom_hold_override()
 	_test_move_announced_beat_has_zero_hold()
+	_test_mon_label_uses_nickname_when_set()
 	_test_flush_pending_effect_lines_pushes_beats()
 	_test_move_executed_pushes_hp_drain_beat_on_damage()
 	_test_move_executed_no_hp_drain_beat_when_no_damage()
@@ -165,6 +166,23 @@ func _test_move_announced_beat_has_zero_hold() -> void:
 	_chk("announce beat hold is exactly 0.0", beat.get("hold") == 0.0)
 	_chk("announce beat text names the target",
 			beat.get("text") == "Your Angler used Water Gun on Foe Blaze!")
+
+
+# [post-K-c pass] `_mon_label`/`_name_text` swapped from `species.species_name`
+# to `display_name()` — this pins that the swap actually reaches the battle
+# log, not just the field party screen K-c itself covered.
+func _test_mon_label_uses_nickname_when_set() -> void:
+	var bs := BattleScreenShared.new()
+	var attacker := _make_typed_mon("Angler", TypeChart.TYPE_WATER)
+	attacker.nickname = "REEL"
+	var defender := _make_typed_mon("Blaze", TypeChart.TYPE_FIRE)
+	bs._player_party = _singles_party(attacker)
+	bs._opp_party = _singles_party(defender)
+	var move := _make_move("Water Gun", TypeChart.TYPE_WATER, 40)
+	bs._on_log_move_announced(attacker, defender, move)
+	var beat: Dictionary = bs._pending_beats[0]
+	_chk("nicknamed attacker announces by nickname, not species name",
+			beat.get("text") == "Your REEL used Water Gun on Foe Blaze!")
 
 
 func _test_flush_pending_effect_lines_pushes_beats() -> void:

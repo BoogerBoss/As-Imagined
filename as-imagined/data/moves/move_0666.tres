@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spectral Thief"
+description = "Steals the target's stat boosts, then attacks."
 type = 8
 power = 90
 pp = 10

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Vise Grip"
+description = "Grips the foe with large and powerful pincers."
 type = 1
 power = 55
 pp = 30

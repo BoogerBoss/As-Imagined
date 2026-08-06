@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Thunder"
+description = "A lightning attack that may cause paralysis."
 type = 14
 category = 1
 power = 110

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Leaf Storm"
+description = "Whips up a storm of leaves. Harshly lowers the Sp. Atk."
 type = 13
 category = 1
 power = 130

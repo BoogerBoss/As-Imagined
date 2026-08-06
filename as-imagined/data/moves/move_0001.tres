@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pound"
+description = "Pounds the foe with forelegs or tail."
 type = 1
 power = 40
 pp = 35

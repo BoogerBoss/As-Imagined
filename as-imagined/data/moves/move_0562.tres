@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Belch"
+description = "Lets out a loud belch. Must eat a Berry to use it."
 type = 4
 category = 1
 power = 120

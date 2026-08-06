@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Photon Geyser"
+description = "User's highest attack stat determines its category."
 type = 15
 category = 1
 power = 100

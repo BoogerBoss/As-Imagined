@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Explosion"
+description = "Inflicts severe damage but makes the user faint."
 type = 1
 power = 250
 is_spread = true

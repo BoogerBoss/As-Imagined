@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bone Club"
+description = "Clubs the foe with a bone. May cause flinching."
 type = 5
 power = 65
 accuracy = 85

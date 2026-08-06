@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aromatic Mist"
+description = "Raises the Sp. Def of a partner Pokémon."
 type = 19
 category = 2
 accuracy = 0

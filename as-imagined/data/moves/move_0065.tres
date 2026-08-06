@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Drill Peck"
+description = "A corkscrewing attack with the beak acting as a drill."
 type = 3
 power = 80
 pp = 20

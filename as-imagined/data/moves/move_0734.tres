@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Skitter Smack"
+description = "User skitters behind foe to attack. Lowers foe's Sp. Atk."
 type = 7
 power = 70
 accuracy = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spirit Shackle"
+description = "After being hit, foes can no longer escape."
 type = 8
 power = 80
 pp = 10

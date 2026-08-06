@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://dkia7bv2ufcmh"]
+
+[ext_resource type="Script" path="res://scenes/battle/move_description_test.gd" id="1_movedescriptiontest"]
+
+[node name="MoveDescriptionTest" type="Node"]
+script = ExtResource("1_movedescriptiontest")

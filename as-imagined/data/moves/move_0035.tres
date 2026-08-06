@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Wrap"
+description = "Wraps and squeezes the foe 4 or 5 times with vines, etc."
 type = 1
 power = 15
 accuracy = 90

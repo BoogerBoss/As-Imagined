@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Disarming Voice"
+description = "Lets out a charming cry that cannot be evaded."
 type = 19
 category = 1
 power = 40

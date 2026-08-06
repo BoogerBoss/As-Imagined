@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Double Kick"
+description = "A double-kicking attack that strikes the foe twice."
 type = 2
 power = 30
 pp = 30

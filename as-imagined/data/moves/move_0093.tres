@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Confusion"
+description = "A psychic attack that may cause confusion."
 type = 15
 category = 1
 power = 50

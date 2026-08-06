@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Astonish"
+description = "An attack that may shock the foe into flinching."
 type = 8
 power = 30
 pp = 15

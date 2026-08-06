@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Baneful Bunker"
+description = "Protects user and poisons foes on contact."
 type = 4
 category = 2
 accuracy = 0

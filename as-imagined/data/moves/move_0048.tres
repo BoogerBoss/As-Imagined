@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Supersonic"
+description = "Emits bizarre sound waves that may confuse the foe."
 type = 1
 category = 2
 accuracy = 55

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tickle"
+description = "Makes the foe laugh to lower Attack and Defense."
 type = 1
 category = 2
 pp = 20

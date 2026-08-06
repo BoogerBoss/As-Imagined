@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Discharge"
+description = "Zaps all other {PKMN} with electricity. May paralyze."
 type = 14
 category = 1
 power = 80

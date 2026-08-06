@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Life Dew"
+description = "Scatters water to restore the HP of itself and allies."
 type = 12
 category = 2
 accuracy = 0

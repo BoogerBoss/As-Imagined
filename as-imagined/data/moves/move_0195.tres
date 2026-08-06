@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Perish Song"
+description = "Any Pokémon hearing this song faints in 3 turns."
 type = 1
 category = 2
 accuracy = 0

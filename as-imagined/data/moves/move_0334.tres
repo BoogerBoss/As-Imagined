@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Iron Defense"
+description = "Hardens the body's surface to sharply raise Defense."
 type = 9
 category = 2
 accuracy = 0

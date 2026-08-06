@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Glare"
+description = "Intimidates and frightens the foe into paralysis."
 type = 1
 category = 2
 pp = 30

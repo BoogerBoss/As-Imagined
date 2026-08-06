@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Struggle Bug"
+description = "Resisting, the user attacks the foes. Lowers Sp. Atk."
 type = 7
 category = 1
 power = 50

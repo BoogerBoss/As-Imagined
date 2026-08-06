@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Darkest Lariat"
+description = "Swings the arms to strike It ignores stat changes."
 type = 18
 power = 85
 pp = 10

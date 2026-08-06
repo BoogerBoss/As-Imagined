@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Glacial Lance"
+description = "Hurls a blizzard-cloaked icicle lance at foes."
 type = 16
 power = 120
 ban_flags = 16

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dragon Tail"
+description = "Knocks foe away to switch it out or end wild battle."
 type = 17
 power = 60
 accuracy = 90

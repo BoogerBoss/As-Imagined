@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Breaking Swipe"
+description = "Swings its tail to attack. Lowers the Atk of those hit."
 type = 17
 power = 60
 pp = 15

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fury Cutter"
+description = "An attack that intensifies on each successive hit."
 type = 7
 power = 40
 accuracy = 95

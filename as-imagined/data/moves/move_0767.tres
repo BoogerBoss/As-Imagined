@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Barb Barrage"
+description = "Can poison on impact. Powers up against poisoned foes."
 type = 4
 power = 60
 pp = 10

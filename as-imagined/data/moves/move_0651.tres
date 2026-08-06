@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Trop Kick"
+description = "An intense kick from the tropics. Lowers Attack."
 type = 13
 power = 70
 pp = 15

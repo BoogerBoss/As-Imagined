@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sky Uppercut"
+description = "An uppercut thrown as if leaping into the sky."
 type = 2
 power = 85
 accuracy = 90

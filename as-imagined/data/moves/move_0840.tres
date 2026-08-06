@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hard Press"
+description = "The higher the foe's HP the more damage caused."
 type = 9
 power = 100
 pp = 10

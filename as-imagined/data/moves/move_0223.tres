@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dynamic Punch"
+description = "Powerful and sure to cause confusion, but inaccurate."
 type = 2
 power = 100
 accuracy = 50

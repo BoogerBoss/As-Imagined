@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Solar Beam"
+description = "Absorbs light in one turn, then attacks next turn."
 type = 13
 category = 1
 power = 120

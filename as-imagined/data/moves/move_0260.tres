@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flatter"
+description = "Confuses the foe, but raises its Sp. Atk."
 type = 18
 category = 2
 pp = 15

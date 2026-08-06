@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Thunderbolt"
+description = "A strong electrical attack that may paralyze the foe."
 type = 14
 category = 1
 power = 90

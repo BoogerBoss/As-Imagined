@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spite"
+description = "Spitefully cuts the PP of the foe's last move by 4."
 type = 8
 category = 2
 pp = 10

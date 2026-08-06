@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Frustration"
+description = "An attack that is stronger if the Trainer is disliked."
 type = 1
 power = 1
 pp = 20

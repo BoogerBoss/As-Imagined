@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fiery Wrath"
+description = "An attack fueled by your wrath. May cause flinching."
 type = 18
 category = 1
 power = 90

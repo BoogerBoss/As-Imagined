@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Metronome"
+description = "Waggles a finger to use any Pokémon move at random."
 type = 1
 category = 2
 accuracy = 0

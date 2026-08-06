@@ -239,22 +239,19 @@ func _test_fight_menu_buttons_have_chrome_stripped_and_cursor_wired() -> void:
 
 	bs._build_fight_menu(0)
 
-	# [M26c-3] The 2 moves now live in the real 2x2 grid; Back is a
-	# separate row in _new_button_area below it -- see
-	# _build_fight_menu's own doc comment.
+	# [Back-button removal] The 2 moves live in the real 2x2 grid;
+	# _new_button_area (the old Back row) is now permanently empty for
+	# FIGHT -- see _build_fight_menu's own doc comment.
 	var move_buttons: Array = _visible_buttons(bs._new_button_grid)
-	var back_buttons: Array = bs._new_button_area.get_children()
 	_chk("Fight menu has exactly 2 moves in the grid", move_buttons.size() == 2)
-	_chk("Fight menu has exactly 1 Back button below the grid", back_buttons.size() == 1)
+	_chk("Fight menu's Back row is empty (no Back button)", bs._new_button_area.get_child_count() == 0)
 	var all_stripped := true
-	for c in move_buttons + back_buttons:
+	for c in move_buttons:
 		if not _is_chrome_stripped(c):
 			all_stripped = false
-	_chk("every Fight menu button has its chrome stripped", all_stripped)
+	_chk("every Fight menu move button has its chrome stripped", all_stripped)
 	_chk("the first move is the default-selected option",
 			(move_buttons[0].text as String).begins_with(BattleScreenShared._CURSOR_PREFIX))
-	_chk("Back is NOT selected by default (only one cursor position at a time)",
-			_base_text(back_buttons[0].text) == "Back" and (back_buttons[0].text as String).begins_with(BattleScreenShared._CURSOR_BLANK))
 
 
 func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void:

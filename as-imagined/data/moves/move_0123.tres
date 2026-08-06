@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Smog"
+description = "An exhaust-gas attack that may also poison."
 type = 4
 category = 1
 power = 30

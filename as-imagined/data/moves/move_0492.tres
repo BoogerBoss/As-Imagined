@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Foul Play"
+description = "The higher the foe's Attack the more damage caused."
 type = 18
 power = 95
 pp = 15

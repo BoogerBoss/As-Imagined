@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Toxic Thread"
+description = "Attacks with a thread that poisons and drops Speed."
 type = 4
 category = 2
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Heal Bell"
+description = "Chimes soothingly to heal all status abnormalities."
 type = 1
 category = 2
 accuracy = 0

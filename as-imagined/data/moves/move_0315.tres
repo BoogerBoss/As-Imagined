@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Overheat"
+description = "Allows a full-power attack, but sharply lowers Sp. Atk."
 type = 11
 category = 1
 power = 130

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bind"
+description = "Binds and squeezes the foe for 4 or 5 turns."
 type = 1
 power = 15
 accuracy = 85

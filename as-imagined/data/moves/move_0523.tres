@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bulldoze"
+description = "Stomps down on the ground. Hits all and lowers Speed."
 type = 5
 power = 60
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Vine Whip"
+description = "Strikes the foe with slender, whiplike vines."
 type = 13
 power = 45
 pp = 25

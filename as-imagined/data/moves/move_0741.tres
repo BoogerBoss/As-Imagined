@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Triple Axel"
+description = "A 3-kick attack that gets more powerful with each hit."
 type = 16
 power = 20
 accuracy = 90

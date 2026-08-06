@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Grav Apple"
+description = "Drops an apple from above. Lowers the foe's Defense."
 type = 13
 power = 80
 pp = 10

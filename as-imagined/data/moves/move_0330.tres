@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Muddy Water"
+description = "Attacks with muddy water. May lower accuracy."
 type = 12
 category = 1
 power = 90

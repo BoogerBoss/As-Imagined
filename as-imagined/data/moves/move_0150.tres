@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Splash"
+description = "It's just a splash... Has no effect whatsoever."
 type = 1
 category = 2
 accuracy = 0

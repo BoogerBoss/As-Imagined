@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mimic"
+description = "Copies last move used by the foe during one battle."
 type = 1
 category = 2
 accuracy = 0

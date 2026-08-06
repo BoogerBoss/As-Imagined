@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pollen Puff"
+description = "Explodes on foes, but restores ally's HP."
 type = 7
 category = 1
 power = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Double Hit"
+description = "Slams the foe with a tail etc. Strikes twice."
 type = 1
 power = 35
 accuracy = 90

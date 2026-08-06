@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Heat Wave"
+description = "Exhales a hot breath on the foes. May inflict a burn."
 type = 11
 category = 1
 power = 95

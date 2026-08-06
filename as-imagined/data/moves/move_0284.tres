@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Eruption"
+description = "The higher the user's HP, the more damage caused."
 type = 11
 category = 1
 power = 150

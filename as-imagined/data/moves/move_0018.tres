@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Whirlwind"
+description = "Blows away the foe, switches it out or ends wild battle."
 type = 1
 category = 2
 accuracy = 0

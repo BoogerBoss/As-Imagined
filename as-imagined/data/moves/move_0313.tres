@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fake Tears"
+description = "Feigns crying to sharply lower the foe's Sp. Def."
 type = 18
 category = 2
 pp = 20

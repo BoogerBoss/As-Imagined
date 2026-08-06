@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Conversion"
+description = "Changes the user's type into first known move's type."
 type = 1
 category = 2
 accuracy = 0

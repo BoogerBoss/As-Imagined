@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Origin Pulse"
+description = "Beams of glowing blue light blast both foes."
 type = 12
 category = 1
 power = 110

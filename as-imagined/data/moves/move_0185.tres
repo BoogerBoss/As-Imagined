@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Feint Attack"
+description = "Draws the foe close, then strikes without fail."
 type = 18
 power = 60
 accuracy = 0

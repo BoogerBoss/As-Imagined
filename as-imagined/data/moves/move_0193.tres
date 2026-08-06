@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Foresight"
+description = "Negates the foe's efforts to heighten evasiveness."
 type = 1
 category = 2
 accuracy = 0

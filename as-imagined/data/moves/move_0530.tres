@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dual Chop"
+description = "Attacks with brutal hits that strike twice."
 type = 17
 power = 40
 accuracy = 90

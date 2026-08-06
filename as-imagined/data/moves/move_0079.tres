@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sleep Powder"
+description = "Scatters a powder that may cause the foe to sleep."
 type = 13
 category = 2
 accuracy = 75

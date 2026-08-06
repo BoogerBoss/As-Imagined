@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poltergeist"
+description = "Control foe's item to attack. Fails if foe has no item."
 type = 8
 power = 110
 accuracy = 90

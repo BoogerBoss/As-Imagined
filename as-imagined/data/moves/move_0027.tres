@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rolling Kick"
+description = "A fast kick delivered from a rapid spin. May flinch."
 type = 2
 power = 60
 accuracy = 85

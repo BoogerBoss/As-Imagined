@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aura Sphere"
+description = "Attacks with an aura blast that cannot be evaded."
 type = 2
 category = 1
 power = 80

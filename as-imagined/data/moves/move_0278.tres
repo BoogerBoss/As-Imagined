@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Recycle"
+description = "Recycles a used item for one more use."
 type = 1
 category = 2
 accuracy = 0

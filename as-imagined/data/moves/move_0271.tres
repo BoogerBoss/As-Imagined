@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Trick"
+description = "Tricks the foe into trading held items."
 type = 15
 category = 2
 pp = 10

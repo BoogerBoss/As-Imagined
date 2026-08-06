@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poison Sting"
+description = "A toxic attack with barbs, etc., that may poison."
 type = 4
 power = 15
 pp = 35

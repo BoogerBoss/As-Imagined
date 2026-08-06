@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Leaf Blade"
+description = "Slashes with a sharp leaf. High critical-hit ratio."
 type = 13
 power = 90
 pp = 15

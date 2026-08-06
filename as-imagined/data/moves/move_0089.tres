@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Earthquake"
+description = "A powerful quake that hits all other POKéMON."
 type = 5
 power = 100
 pp = 10

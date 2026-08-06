@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Silver Wind"
+description = "A powdery attack that may raise abilities."
 type = 7
 category = 1
 power = 60

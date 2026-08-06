@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hurricane"
+description = "Traps the foe in a fierce wind. May cause confusion."
 type = 3
 category = 1
 power = 110

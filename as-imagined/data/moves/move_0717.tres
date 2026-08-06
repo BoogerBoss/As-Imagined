@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spirit Break"
+description = "Attacks with spirit-breaking force. Lowers Sp. Atk."
 type = 19
 power = 75
 pp = 15

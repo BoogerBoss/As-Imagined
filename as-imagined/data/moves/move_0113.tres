@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Light Screen"
+description = "Wall of light cuts special damage for 5 turns."
 type = 15
 category = 2
 accuracy = 0

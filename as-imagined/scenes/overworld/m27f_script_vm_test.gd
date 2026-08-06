@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 135
+const EXPECTED_TOTAL := 217
 
 var _total := 0
 var _failed := 0
@@ -95,6 +95,11 @@ func _ready() -> void:
 	_test_stage2_real_corpus()
 	_test_stage3_movement()
 	_test_stage3b_walk_anim()
+	_test_trainer_battle_family()
+	_test_small_opcode_batch()
+	_test_m27g_g1_batch()
+	_test_m27g_g2_choose_party_mon()
+	_test_m27g_g3a_ingame_trade()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -1043,3 +1048,825 @@ func _test_stage3b_walk_anim() -> void:
 	n.free()
 	n2.free()
 	n3.free()
+
+
+## Section L -- the trainer-battle family beyond `trainerbattle_single`.
+##
+## `[M27F Stage 2]` shipped exactly one of source's five real dispatch shapes
+## (`BattleSetup_GetTrainerBattleScript`, `battle_setup.c:1121-1152`) — every
+## other variant halted with UNKNOWN_OP. 496 combined corpus uses across the
+## other four, all now routed through the same `_start_trainer_battle` this
+## refactor extracted, so this section is deliberately about what's DIFFERENT
+## per variant, not re-proving the shared machinery Section I already covers.
+func _test_trainer_battle_family() -> void:
+	var texts := {
+		"Intro": ["Hi.", "Fight me."],
+		"Defeat": ["I lost."],
+	}
+
+	# -- trainerbattle_no_intro: 2 args, no intro message at all --
+	var flags_ni := FlagStore.new()
+	var ni := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_no_intro", ["TRAINER_GRUNT", "Defeat"]),
+				_op("lockall"), _op("end")],
+	}, texts), flags_ni)
+	ni.start("A")
+	_run(ni)
+	_chk("L.01 trainerbattle_no_intro pauses on WAIT_BATTLE",
+			ni.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+	_chk("L.02 with NO intro pages -- WAIT_BATTLE's own driver skips straight "
+			+ "to the battle on an empty pending_pages",
+			ni.pending_pages.is_empty())
+	_chk("L.03 the defeat text is still carried", ni.pending_battle_defeat_text == "Defeat")
+	_chk("L.04 and no continuation script -- the macro has no such argument",
+			ni.pending_battle_script == "")
+	ni.resume_after_battle(true)
+	_chk("L.05 winning with no continuation ends the script",
+			ni.pause_reason == ScriptVM.Pause.DONE)
+
+	var ni_short := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_no_intro", ["TRAINER_GRUNT"]), _op("end")],
+	}, texts), FlagStore.new())
+	ni_short.start("A")
+	_run(ni_short)
+	_chk("L.06 too few args is UNKNOWN_OP, not a crash",
+			ni_short.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and ni_short.diagnostic.contains("trainerbattle_no_intro"))
+
+	# -- trainerbattle_double: real corpus shapes are 4, 5, and 6 args --
+	var flags_d := FlagStore.new()
+	var d4 := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_double",
+				["TRAINER_DUO", "Intro", "Defeat", "NotEnough"]), _op("end")],
+	}, texts), flags_d)
+	d4.start("A")
+	_run(d4)
+	_chk("L.07 trainerbattle_double (4 args) pauses on WAIT_BATTLE",
+			d4.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+	_chk("L.08 with the real intro shown", d4.pending_pages.size() == 2)
+	_chk("L.09 and no continuation -- the 4-arg form has none",
+			d4.pending_battle_script == "")
+
+	var d5 := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_double",
+				["TRAINER_DUO", "Intro", "Defeat", "NotEnough", "POST"]), _op("end")],
+		"POST": [_op("release"), _op("end")],
+	}, texts), FlagStore.new())
+	d5.start("A")
+	_run(d5)
+	d5.resume_after_battle(true)
+	_chk("L.10 the 5-arg form's event_script is at position 4, not 3 "
+			+ "(`not_enough_pkmn_text` sits between lose_text and it)",
+			d5.script_label == "POST")
+
+	var d6 := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_double",
+				["TRAINER_DUO", "Intro", "Defeat", "NotEnough", "POST", "NO_MUSIC"]),
+				_op("end")],
+		"POST": [_op("release"), _op("end")],
+	}, texts), FlagStore.new())
+	d6.start("A")
+	_run(d6)
+	d6.resume_after_battle(true)
+	_chk("L.11 the 6-arg NO_MUSIC form still resolves the same continuation",
+			d6.script_label == "POST")
+
+	# -- trainerbattle_rematch: the already-beaten check is DELIBERATELY
+	# bypassed. Source remaps through GetRematchTrainerId before that check is
+	# ever reached; this project has no rematch-tier table, so the disclosed
+	# simplification is "fight the same roster again", which only works if the
+	# already-beaten gate does not itself refuse the rematch. -- the key
+	# discriminator for this whole family.
+	var beaten_r := FlagStore.new()
+	beaten_r.set_trainer_defeated("TRAINER_RIVAL")
+	var rematch := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_rematch", ["TRAINER_RIVAL", "Intro", "Defeat"]),
+				_op("end")],
+	}, texts), beaten_r)
+	rematch.start("A")
+	_run(rematch)
+	_chk("L.12 trainerbattle_rematch starts even against an ALREADY-BEATEN "
+			+ "trainer -- ordinary trainerbattle_single would refuse this",
+			rematch.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+	_chk("L.13 carrying the (unchanged, unremapped) trainer key",
+			rematch.pending_trainer_key == "TRAINER_RIVAL")
+
+	# Regression guard in the OTHER direction: an ordinary trainerbattle_single
+	# against that same already-beaten trainer must still be refused, so L.12
+	# is proven to be the rematch opcode's own behaviour, not a FlagStore bug.
+	var single_vs_beaten := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_single", ["TRAINER_RIVAL", "Intro", "Defeat"]),
+				_op("end")],
+	}, texts), beaten_r)
+	single_vs_beaten.start("A")
+	_run(single_vs_beaten)
+	_chk("L.14 discriminator: trainerbattle_single vs the SAME already-beaten "
+			+ "trainer is correctly refused, proving L.12 is real",
+			single_vs_beaten.pause_reason != ScriptVM.Pause.WAIT_BATTLE)
+
+	var rematch_double := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_rematch_double",
+				["TRAINER_RIVAL", "Intro", "Defeat", "NotEnough"]), _op("end")],
+	}, texts), beaten_r)
+	rematch_double.start("A")
+	_run(rematch_double)
+	_chk("L.15 trainerbattle_rematch_double also bypasses the already-beaten "
+			+ "check", rematch_double.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+
+	var rematch_double_short := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_rematch_double", ["TRAINER_RIVAL", "Intro"]),
+				_op("end")],
+	}, texts), FlagStore.new())
+	rematch_double_short.start("A")
+	_run(rematch_double_short)
+	_chk("L.16 too few args is UNKNOWN_OP here too",
+			rematch_double_short.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
+
+
+## Section M -- the small opcode batch: checkplayergender, random,
+## setorcopyvar, the audio no-ops, bufferboxname, fadescreen's two siblings,
+## and the symbolic-constant table.
+func _test_small_opcode_batch() -> void:
+	# -- checkplayergender --
+	var prior_identity: PlayerIdentity = TextBuffers.identity
+	var girl := PlayerIdentity.new()
+	girl.gender = PlayerIdentity.Gender.GIRL
+	TextBuffers.identity = girl
+	var flags_g := FlagStore.new()
+	var vm_g := ScriptVM.new(_src({
+		"A": [_op("checkplayergender"), _op("end")],
+	}), flags_g)
+	vm_g.start("A")
+	_run(vm_g)
+	_chk("M.01 checkplayergender writes the real chosen gender (GIRL == 1)",
+			flags_g.var_get("VAR_RESULT") == 1)
+
+	var boy := PlayerIdentity.new()
+	boy.gender = PlayerIdentity.Gender.BOY
+	TextBuffers.identity = boy
+	var flags_b := FlagStore.new()
+	var vm_b := ScriptVM.new(_src({
+		"A": [_op("checkplayergender"), _op("end")],
+	}), flags_b)
+	vm_b.start("A")
+	_run(vm_b)
+	_chk("M.02 and the other direction (BOY == 0)", flags_b.var_get("VAR_RESULT") == 0)
+	# ⚠️ `TextBuffers.identity` is a class-level static -- leaving it set would
+	# leak into every OTHER suite run in this same process.
+	TextBuffers.identity = prior_identity
+
+	# -- random --
+	var flags_r := FlagStore.new()
+	var seen := {}
+	var in_range := true
+	for i in range(200):
+		var vm_r := ScriptVM.new(_src({"A": [_op("random", ["6"]), _op("end")]}), flags_r)
+		vm_r.start("A")
+		_run(vm_r)
+		var v := flags_r.var_get("VAR_RESULT")
+		seen[v] = true
+		if v < 0 or v >= 6:
+			in_range = false
+	_chk("M.03 random limit stays within [0, limit) across 200 rolls", in_range)
+	_chk("M.04 and is not a constant (real randomness, not a stub)", seen.size() > 1)
+
+	var flags_r1 := FlagStore.new()
+	var vm_r1b := ScriptVM.new(_src({"A": [_op("random", ["1"]), _op("end")]}), flags_r1)
+	vm_r1b.start("A")
+	_run(vm_r1b)
+	_chk("M.05 random 1 always rolls 0 -- the only value in [0, 1)",
+			flags_r1.var_get("VAR_RESULT") == 0)
+
+	var flags_r0 := FlagStore.new()
+	var vm_r0 := ScriptVM.new(_src({"A": [_op("random", ["0"]), _op("end")]}), flags_r0)
+	vm_r0.start("A")
+	_run(vm_r0)
+	_chk("M.06 random 0 is defensive, not source-observed UB -- reports 0 "
+			+ "rather than crashing", flags_r0.var_get("VAR_RESULT") == 0)
+
+	# -- setorcopyvar --
+	var flags_sc := FlagStore.new()
+	flags_sc.var_set("SRC", 42)
+	var vm_sc := ScriptVM.new(_src({
+		"A": [_op("setorcopyvar", ["DST", "SRC"]), _op("end")],
+	}), flags_sc)
+	vm_sc.start("A")
+	_run(vm_sc)
+	_chk("M.07 setorcopyvar copies through the variable store, like copyvar",
+			flags_sc.var_get("DST") == 42)
+
+	# -- waitse / playmoncry / waitmoncry: audio does not exist, same no-op
+	# class as playfanfare/waitfanfare/playse/playbgm/fadedefaultbgm --
+	var vm_snd := ScriptVM.new(_src({
+		"A": [_op("playmoncry", ["SPECIES_PIKACHU", "0"]), _op("waitmoncry"),
+				_op("waitse"), _op("end")],
+	}), FlagStore.new())
+	vm_snd.start("A")
+	_run(vm_snd)
+	_chk("M.08 waitse/playmoncry/waitmoncry are no-ops, not a stall",
+			vm_snd.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- bufferboxname: a real halt, matching _begin_nickname's own PC branch --
+	var vm_box := ScriptVM.new(_src({
+		"A": [_op("bufferboxname", ["0", "1"]), _op("end")],
+	}), FlagStore.new())
+	vm_box.start("A")
+	_run(vm_box)
+	_chk("M.09 bufferboxname halts (no PC exists), rather than inventing a name",
+			vm_box.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
+	_chk("M.10 and names the real reason -- no PC, not a bad parse",
+			vm_box.diagnostic.contains("PC"))
+
+	# -- fadescreenspeed / fadescreenswapbuffers: named but excluded when
+	# fadescreen itself shipped -- same no-op reasoning, now included --
+	var vm_fade := ScriptVM.new(_src({
+		"A": [_op("fadescreen", ["FADE_TO_BLACK"]), _op("fadescreenspeed", ["2"]),
+				_op("fadescreenswapbuffers"), _op("end")],
+	}), FlagStore.new())
+	vm_fade.start("A")
+	_run(vm_fade)
+	_chk("M.11 fadescreenspeed/fadescreenswapbuffers are no-ops too",
+			vm_fade.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- the symbolic-constant table, reached through addvar/subvar directly
+	# (money opcodes get their own coverage in m27i_wallet_test.gd) --
+	var flags_sym := FlagStore.new()
+	flags_sym.var_set("VAR_0x8004", 0)
+	var vm_sym := ScriptVM.new(_src({
+		"A": [_op("addvar", ["VAR_0x8004", "ROULETTE_SPECIAL_RATE"]), _op("end")],
+	}), flags_sym)
+	vm_sym.start("A")
+	_run(vm_sym)
+	_chk("M.12 addvar resolves ROULETTE_SPECIAL_RATE to its real value, 1<<7",
+			flags_sym.var_get("VAR_0x8004") == 128)
+
+	var flags_sym2 := FlagStore.new()
+	flags_sym2.var_set("VAR_0x8004", 5000)
+	var vm_sym2 := ScriptVM.new(_src({
+		"A": [_op("subvar", ["VAR_0x8004", "BLACK_FLUTE_PRICE"]), _op("end")],
+	}), flags_sym2)
+	vm_sym2.start("A")
+	_run(vm_sym2)
+	_chk("M.13 subvar resolves BLACK_FLUTE_PRICE to its real value, 1000",
+			flags_sym2.var_get("VAR_0x8004") == 4000)
+
+	# Regression guard: a genuinely-unknown constant still resolves to 0, the
+	# pre-existing `_literal` fallback -- proving the table is additive, not a
+	# blanket "any unresolved name resolves to something" change.
+	var flags_sym3 := FlagStore.new()
+	flags_sym3.var_set("VAR_0x8004", 10)
+	var vm_sym3 := ScriptVM.new(_src({
+		"A": [_op("addvar", ["VAR_0x8004", "SOME_TRULY_UNKNOWN_CONSTANT"]), _op("end")],
+	}), flags_sym3)
+	vm_sym3.start("A")
+	_run(vm_sym3)
+	_chk("M.14 an unlisted constant still resolves to 0, unchanged",
+			flags_sym3.var_get("VAR_0x8004") == 10)
+
+
+## Section N -- [M27G G1] the real Tier 0 batch: signmsg/normalmsg,
+## DisableMsgBoxWalkaway/SetWalkingIntoSignVars/OpenMuseumFossilPic/
+## CloseMuseumFossilPic (no-ops), ScriptGetPartyMonSpecies/BufferMonNickname
+## (party-context bridges), and the real Running Shoes script end to end.
+##
+## `docs/m27g_recon.md` is the scope of record. The headline: only 51 of the
+## region-wide corpus's 567 special/specialvar functions are reachable from
+## this project's own 32 baked maps at all, and the Running Shoes NPC
+## (`PewterCity_EventScript_AideGiveRunningShoes`) is real, in-corridor
+## content whose own script tail is `setflag FLAG_SYS_B_DASH` -- the first
+## genuine in-game trigger for Run, previously granted only by the debug boot.
+func _test_m27g_g1_batch() -> void:
+	# -- signmsg / normalmsg: no-ops, matching source's own ScrCmd_nop1 --
+	var vm_msg := ScriptVM.new(_src({
+		"A": [_op("signmsg"), _op("message", ["T"]), _op("waitmessage"),
+				_op("waitbuttonpress"), _op("normalmsg"), _op("end")],
+	}, {"T": ["Hi."]}), FlagStore.new())
+	vm_msg.start("A")
+	_drive(vm_msg)
+	_chk("N.01 signmsg/normalmsg are no-ops -- the script reaches DONE",
+			vm_msg.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- the four new no-op specials --
+	var vm_noop := ScriptVM.new(_src({
+		"A": [_op("special", ["DisableMsgBoxWalkaway"]),
+				_op("special", ["SetWalkingIntoSignVars"]),
+				_op("special", ["OpenMuseumFossilPic"]),
+				_op("special", ["CloseMuseumFossilPic"]), _op("end")],
+	}), FlagStore.new())
+	vm_noop.start("A")
+	_run(vm_noop)
+	_chk("N.02 all four new no-op specials run to DONE without halting",
+			vm_noop.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- ScriptGetPartyMonSpecies: party-only, no PC fallback --
+	var flags_sp := FlagStore.new()
+	flags_sp.var_set("VAR_0x8004", 1)
+	var party_sp := BattleParty.new()
+	party_sp.members = [PokemonFactory.create_battle_pokemon(1, 5),
+			PokemonFactory.create_battle_pokemon(4, 5)]  # Bulbasaur, Charmander
+	var vm_sp := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "ScriptGetPartyMonSpecies"]), _op("end")],
+	}), flags_sp)
+	vm_sp.party = party_sp
+	vm_sp.start("A")
+	_run(vm_sp)
+	_chk("N.03 ScriptGetPartyMonSpecies reads the REAL chosen slot's species "
+			+ "(slot 1 == Charmander == dex 4)",
+			flags_sp.var_get("VAR_RESULT") == 4)
+
+	var flags_sp2 := FlagStore.new()
+	flags_sp2.var_set("VAR_0x8004", 0)
+	var vm_sp2 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "ScriptGetPartyMonSpecies"]), _op("end")],
+	}), flags_sp2)
+	vm_sp2.party = party_sp
+	vm_sp2.start("A")
+	_run(vm_sp2)
+	_chk("N.04 discriminator: slot 0 reads Bulbasaur, not slot 1's Charmander "
+			+ "-- proving the slot is actually read, not hardcoded",
+			flags_sp2.var_get("VAR_RESULT") == 1)
+
+	var flags_sp3 := FlagStore.new()
+	flags_sp3.var_set("VAR_0x8004", 99)
+	var vm_sp3 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "ScriptGetPartyMonSpecies"]), _op("end")],
+	}), flags_sp3)
+	vm_sp3.party = party_sp
+	vm_sp3.start("A")
+	_run(vm_sp3)
+	_chk("N.05 an out-of-range slot degrades to 0, not a crash or a halt",
+			flags_sp3.var_get("VAR_RESULT") == 0 and vm_sp3.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- BufferMonNickname: party-only here too (this project has no PC), but
+	# the PC sentinel is still guarded exactly like _begin_nickname's own --
+	var flags_bn := FlagStore.new()
+	flags_bn.var_set("VAR_0x8004", 0)
+	var party_bn := BattleParty.new()
+	var nicked: BattlePokemon = PokemonFactory.create_battle_pokemon(7, 5)  # Squirtle
+	nicked.nickname = "SHELLY"
+	party_bn.members = [nicked]
+	var vm_bn := ScriptVM.new(_src({
+		"A": [_op("special", ["BufferMonNickname"]), _op("end")],
+	}), flags_bn)
+	vm_bn.party = party_bn
+	vm_bn.start("A")
+	_run(vm_bn)
+	_chk("N.06 BufferMonNickname writes the REAL nickname into slot 0 "
+			+ "(STR_VAR_1 / gStringVar1)",
+			vm_bn.buffers.get_slot(0) == "SHELLY")
+
+	var flags_bn_pc := FlagStore.new()
+	flags_bn_pc.var_set("VAR_0x8004", ScriptVM.PC_MON_CHOSEN)
+	var vm_bn_pc := ScriptVM.new(_src({
+		"A": [_op("special", ["BufferMonNickname"]), _op("end")],
+	}), flags_bn_pc)
+	vm_bn_pc.party = party_bn
+	vm_bn_pc.start("A")
+	_run(vm_bn_pc)
+	_chk("N.07 BufferMonNickname's PC branch halts (no PC exists), the same "
+			+ "precedent _begin_nickname's own PC branch already established",
+			vm_bn_pc.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and vm_bn_pc.diagnostic.contains("PC"))
+
+	# -- the real compiled corpus: the Running Shoes NPC, end to end --
+	if not (FileAccess.file_exists("res://data/map_scripts.json")
+			and FileAccess.file_exists("res://data/map_texts.json")):
+		_gated += 1
+		return
+	var ops: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var texts: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var flags_rs := FlagStore.new()
+	var vm_rs := ScriptVM.new(_src(ops, texts), flags_rs)
+	vm_rs.start("PewterCity_EventScript_AideGiveRunningShoes")
+	# `_drive` alone does not push through WAIT_MOVEMENT (the script's own
+	# exclamation-mark + delay applymovement pair) -- resume it manually, the
+	# same "no result to branch on" shape `[M27F Stage 3]` already documents.
+	var n := 0
+	while n < 30 and not vm_rs.is_finished():
+		_drive(vm_rs)
+		if vm_rs.pause_reason == ScriptVM.Pause.WAIT_MOVEMENT:
+			vm_rs.resume()
+		elif vm_rs.pause_reason == ScriptVM.Pause.NONE:
+			pass
+		else:
+			break
+		n += 1
+	_chk("N.08 the REAL Running Shoes script runs to completion, not a halt "
+			+ "(diagnostic if not: '%s')" % vm_rs.diagnostic,
+			vm_rs.pause_reason == ScriptVM.Pause.DONE)
+	_chk("N.09 and sets FLAG_SYS_B_DASH -- the first real in-game Run unlock, "
+			+ "previously granted only by the debug boot",
+			flags_rs.flag_get("FLAG_SYS_B_DASH"))
+
+
+## Section O -- [M27G G2] `special ChoosePartyMon`, bridging to the already-built
+## `FieldPartyScreen` in browse mode. Dispatched directly inside `step()`
+## (not through `FieldSpecials`, which is deliberately stateless) since it
+## needs real party context, the same precedent `ChangePokemonNickname` set.
+##
+## O.01-O.07 exercise the VM contract in isolation -- `WAIT_PARTY_CHOICE` is a
+## RESULT-carrying pause (a plain `resume()` cannot clear it, only
+## `answer_party_choice()` can), matching `WAIT_BATTLE`/`WAIT_NAMING`'s own
+## shape. O.08-O.10 drive the real compiled `PalletTown_RivalsHouse_
+## EventScript_GroomMon` script, which is what actually caught a real,
+## GENERAL (not Hoenn-only) gap along the way: `PARTY_SIZE` -- 57 region-wide
+## corpus uses, most in exactly this script's own very next opcode after
+## `ChoosePartyMon`, `goto_if_ge VAR_0x8004, PARTY_SIZE, DeclineGrooming` --
+## was unresolved by `_literal` and fell through to 0, so EVERY such check
+## always took the Decline branch regardless of what was actually picked.
+## Fixed at `_literal` directly (`script_vm.gd`), not here.
+func _test_m27g_g2_choose_party_mon() -> void:
+	var party_o := BattleParty.new()
+	party_o.members = [PokemonFactory.create_battle_pokemon(1, 5),
+			PokemonFactory.create_battle_pokemon(4, 5)]  # Bulbasaur, Charmander
+
+	# -- the VM contract, in isolation --
+	var flags_o := FlagStore.new()
+	var vm_o := ScriptVM.new(_src({
+		"A": [_op("special", ["ChoosePartyMon"]), _op("message", ["T"]),
+				_op("waitmessage"), _op("end")],
+	}, {"T": ["Chosen."]}), flags_o)
+	vm_o.party = party_o
+	vm_o.start("A")
+	vm_o.step()
+	_chk("O.01 special ChoosePartyMon pauses on WAIT_PARTY_CHOICE, not DONE",
+			vm_o.pause_reason == ScriptVM.Pause.WAIT_PARTY_CHOICE)
+	_chk("O.02 is_waiting() is true while WAIT_PARTY_CHOICE", vm_o.is_waiting())
+
+	vm_o.resume()
+	_chk("O.03 a plain resume() does NOT clear WAIT_PARTY_CHOICE -- it carries "
+			+ "a result, the same shape as WAIT_BATTLE/WAIT_NAMING",
+			vm_o.pause_reason == ScriptVM.Pause.WAIT_PARTY_CHOICE)
+
+	vm_o.answer_party_choice(1)
+	_chk("O.04 answer_party_choice(1) writes the real slot into VAR_0x8004",
+			flags_o.var_get("VAR_0x8004") == 1)
+	_chk("O.04b ...and clears the pause, letting the script continue to DONE",
+			_drive(vm_o).size() > 0 and vm_o.pause_reason == ScriptVM.Pause.DONE)
+
+	var flags_cancel := FlagStore.new()
+	var vm_cancel := ScriptVM.new(_src({
+		"A": [_op("special", ["ChoosePartyMon"]), _op("end")],
+	}), flags_cancel)
+	vm_cancel.party = party_o
+	vm_cancel.start("A")
+	vm_cancel.step()
+	vm_cancel.answer_party_choice(-1)
+	_chk("O.05 a cancel (-1) writes PARTY_NOTHING_CHOSEN (0xFF), not -1 itself",
+			flags_cancel.var_get("VAR_0x8004") == ScriptVM.PARTY_NOTHING_CHOSEN)
+
+	var flags_oob := FlagStore.new()
+	var vm_oob := ScriptVM.new(_src({
+		"A": [_op("special", ["ChoosePartyMon"]), _op("end")],
+	}), flags_oob)
+	vm_oob.party = party_o
+	vm_oob.start("A")
+	vm_oob.step()
+	vm_oob.answer_party_choice(99)
+	_chk("O.06 an out-of-range index also degrades to PARTY_NOTHING_CHOSEN, "
+			+ "matching source's own >= PARTY_SIZE check rather than trusting "
+			+ "the screen's own -1 convention is the only 'nothing' shape",
+			flags_oob.var_get("VAR_0x8004") == ScriptVM.PARTY_NOTHING_CHOSEN)
+
+	var flags_ignored := FlagStore.new()
+	var vm_ignored := ScriptVM.new(_src({
+		"A": [_op("special", ["ChoosePartyMon"]), _op("end")],
+	}), flags_ignored)
+	vm_ignored.party = party_o
+	vm_ignored.start("A")
+	vm_ignored.step()
+	vm_ignored.answer_party_choice(0)
+	_run(vm_ignored)
+	vm_ignored.answer_party_choice(1)
+	_chk("O.07 answer_party_choice is a no-op once the pause has already been "
+			+ "resolved -- the second call cannot silently overwrite VAR_0x8004",
+			flags_ignored.var_get("VAR_0x8004") == 0)
+
+	# -- the real compiled corpus: Daisy's grooming script, end to end --
+	if not (FileAccess.file_exists("res://data/map_scripts.json")
+			and FileAccess.file_exists("res://data/map_texts.json")):
+		_gated += 1
+		return
+	var ops_o: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var texts_o: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var flags_gm := FlagStore.new()
+	# The script's own FIRST opcode branches on a cooldown-step counter --
+	# `goto_if_lt VAR_MASSAGE_COOLDOWN_STEP_COUNTER, 500, ...RateMonFriendship`
+	# -- and an unset var reads 0, which is < 500, so an unprimed run would
+	# take the RATING branch (needing the unimplemented `GetLeadMonFriendship`)
+	# before ever reaching the grooming offer this test is actually about.
+	flags_gm.var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 999)
+	var vm_gm := ScriptVM.new(_src(ops_o, texts_o), flags_gm)
+	vm_gm.party = party_o
+	vm_gm.start("PalletTown_RivalsHouse_EventScript_GroomMon")
+	# The offer's own yes/no, then WAIT_PARTY_CHOICE.
+	_drive(vm_gm)
+	if vm_gm.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+		vm_gm.answer_yes_no(true)
+	_drive(vm_gm)
+	_chk("O.08 the real script reaches WAIT_PARTY_CHOICE (diagnostic if not: "
+			+ "'%s')" % vm_gm.diagnostic,
+			vm_gm.pause_reason == ScriptVM.Pause.WAIT_PARTY_CHOICE)
+	vm_gm.answer_party_choice(1)  # Charmander, dex 4
+	_drive(vm_gm)
+	_chk("O.09 -- and the PARTY_SIZE fix itself: ScriptGetPartyMonSpecies "
+			+ "genuinely ran (VAR_RESULT holds Charmander's real dex, 4) -- had "
+			+ "PARTY_SIZE stayed unresolved-to-0, the script would have taken "
+			+ "the Decline branch unconditionally and this would still read 0",
+			flags_gm.var_get("VAR_RESULT") == 4)
+	_chk("O.10 the script then halts at the one real blocker left -- special "
+			+ "DaisyMassageServices, which needs a friendship system this "
+			+ "project doesn't have -- not a halt anywhere EARLIER than that",
+			vm_gm.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and vm_gm.diagnostic.contains("DaisyMassageServices"))
+
+
+## Section P -- [M27G G3a] In-game trade: `GetTradeSpecies`/
+## `GetInGameTradeSpeciesInfo`/`CreateInGameTradePokemon`, plus the
+## `INGAME_TRADE_*` `_literal` fix and `data/ingame_trades.json` itself.
+##
+## `docs/m27g_recon.md`'s "G3 Step 0" section is the scope of record. P.01-P.09
+## exercise each piece directly, via real opcode dispatch (never a private
+## function call) matching every earlier section's own discipline. P.10-P.13
+## drive the REAL compiled `Route2_House_EventScript_Reyley` (Mr. Mime <->
+## Abra) end to end across all four of its own branches -- success, wrong
+## species offered, decline, and already-traded -- since a VM contract that
+## passes in isolation but never actually reaches the corpus's own real
+## dispatch order is exactly the class of gap G1/G2 both found this way.
+func _test_m27g_g3a_ingame_trade() -> void:
+	# -- the _literal fix, general not selective (matching PARTY_SIZE's own
+	# "resolves to a real number is strictly safer than 0" precedent) --
+	var flags_lit := FlagStore.new()
+	var vm_lit := ScriptVM.new(_src({
+		"A": [_op("setvar", ["VAR_TEMP_0", "INGAME_TRADE_MR_MIME"]),
+				_op("setvar", ["VAR_TEMP_1", "INGAME_TRADE_SEEL"]),
+				_op("setvar", ["VAR_TEMP_2", "INGAME_TRADE_SEEDOT"]), _op("end")],
+	}), flags_lit)
+	vm_lit.start("A")
+	_run(vm_lit)
+	_chk("P.01 INGAME_TRADE_MR_MIME resolves to its real enum value (4), "
+			+ "not the unresolved-constant fallthrough (0)",
+			flags_lit.var_get("VAR_TEMP_0") == 4)
+	_chk("P.01b INGAME_TRADE_SEEL (the last entry, 12) resolves too",
+			flags_lit.var_get("VAR_TEMP_1") == 12)
+	_chk("P.01c INGAME_TRADE_SEEDOT (the RSE-only first entry, unreachable "
+			+ "from any FRLG script but kept anyway) resolves to 0 -- the "
+			+ "real enum value, not a coincidental match with the old "
+			+ "unresolved fallthrough",
+			flags_lit.var_get("VAR_TEMP_2") == 0)
+
+	# -- the data table itself --
+	var mimien := IngameTradeRegistry.entry(4)
+	_chk("P.02 IngameTradeRegistry.entry(4) is the real Mr. Mime row",
+			mimien.get("nickname") == "MIMIEN"
+			and int(mimien.get("species", 0)) == 122
+			and int(mimien.get("requested_species", 0)) == 63)
+	_chk("P.02b an out-of-range index degrades to {} rather than crashing",
+			IngameTradeRegistry.entry(99).is_empty())
+
+	# -- the real bug this trade test found: a 3-arg conditional's SECOND
+	# operand must resolve through _resolve_number (var-then-literal), not
+	# _literal directly -- 17 region-wide corpus uses compare two VARIABLES
+	# (goto_if_ne VAR_RESULT, VAR_0x8009, ...), 7 of them this exact
+	# in-game-trade "did the player offer the right species" check. Before
+	# this fix, `_literal("VAR_0x8009")` always fell through to 0, so a
+	# genuinely correct trade was misread as wrong on every single one --
+	var flags_cmp := FlagStore.new()
+	flags_cmp.var_set("VAR_RESULT", 63)
+	flags_cmp.var_set("VAR_0x8009", 63)
+	var vm_cmp := _cond_vm("goto_if_ne", ["VAR_RESULT", "VAR_0x8009", "T"], flags_cmp)
+	_chk("P.02c a 3-arg conditional correctly compares VARIABLE against "
+			+ "VARIABLE (63 == 63, goto_if_ne must NOT branch)",
+			vm_cmp.script_label == "A")
+	flags_cmp.var_set("VAR_0x8009", 61)
+	var vm_cmp2 := _cond_vm("goto_if_ne", ["VAR_RESULT", "VAR_0x8009", "T"], flags_cmp)
+	_chk("P.02d -- and DOES branch when the two variables genuinely differ "
+			+ "(63 != 61) -- the discriminator proving this isn't just "
+			+ "'always take the fallthrough' in disguise",
+			vm_cmp2.script_label == "T")
+	var flags_cmp3 := FlagStore.new()
+	flags_cmp3.var_set("VAR_TEMP_0", 5)
+	var vm_cmp3 := _cond_vm("goto_if_eq", ["VAR_TEMP_0", "5", "T"], flags_cmp3)
+	_chk("P.02e regression guard: a var-vs-LITERAL comparison (the "
+			+ "overwhelming majority of the corpus's 4366 3-arg conditionals) "
+			+ "is completely unaffected by this fix",
+			vm_cmp3.script_label == "T")
+
+	var party_p := BattleParty.new()
+	party_p.members = [PokemonFactory.create_battle_pokemon(1, 5),   # Bulbasaur
+			PokemonFactory.create_battle_pokemon(63, 5)]              # Abra
+
+	# -- GetTradeSpecies: the SAME lookup as G1's ScriptGetPartyMonSpecies --
+	var flags_gts := FlagStore.new()
+	flags_gts.var_set("VAR_0x8004", 1)
+	var vm_gts := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "GetTradeSpecies"]), _op("end")],
+	}), flags_gts)
+	vm_gts.party = party_p
+	vm_gts.start("A")
+	_run(vm_gts)
+	_chk("P.03 GetTradeSpecies reads the REAL chosen slot's species (slot 1 "
+			+ "== Abra == dex 63)", flags_gts.var_get("VAR_RESULT") == 63)
+
+	# -- GetInGameTradeSpeciesInfo: buffers both names, returns the requested
+	# dex, argument order is source's own (requested first, given second) --
+	var flags_info := FlagStore.new()
+	flags_info.var_set("VAR_0x8005", 4)  # INGAME_TRADE_MR_MIME
+	var vm_info := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_0x8009", "GetInGameTradeSpeciesInfo"]), _op("end")],
+	}), flags_info)
+	vm_info.party = party_p
+	vm_info.start("A")
+	_run(vm_info)
+	_chk("P.04 GetInGameTradeSpeciesInfo returns the REQUESTED species' dex "
+			+ "(Abra, 63) into the named var", flags_info.var_get("VAR_0x8009") == 63)
+	_chk("P.04b slot 0 (STR_VAR_1) buffers the REQUESTED species' name",
+			vm_info.buffers.get_slot(0) == str(PokemonRegistry.get_species(63).get("name", "")))
+	_chk("P.04c slot 1 (STR_VAR_2) buffers the GIVEN-AWAY species' name -- "
+			+ "source's own argument order, not alphabetical",
+			vm_info.buffers.get_slot(1) == str(PokemonRegistry.get_species(122).get("name", "")))
+
+	var flags_info_oob := FlagStore.new()
+	flags_info_oob.var_set("VAR_0x8005", 99)
+	var vm_info_oob := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_0x8009", "GetInGameTradeSpeciesInfo"]), _op("end")],
+	}), flags_info_oob)
+	vm_info_oob.party = party_p
+	vm_info_oob.start("A")
+	_run(vm_info_oob)
+	_chk("P.05 an out-of-range trade row degrades to empty buffers and 0, "
+			+ "not a crash or a halt",
+			flags_info_oob.var_get("VAR_0x8009") == 0
+			and vm_info_oob.buffers.get_slot(0) == "" and vm_info_oob.buffers.get_slot(1) == "")
+
+	# -- CreateInGameTradePokemon: the actual party splice, SAME slot --
+	var party_c := BattleParty.new()
+	party_c.members = [PokemonFactory.create_battle_pokemon(1, 5),   # slot 0: untouched
+			PokemonFactory.create_battle_pokemon(63, 12)]             # slot 1: the offer, level 12
+	var flags_c := FlagStore.new()
+	flags_c.var_set("VAR_0x8004", 1)
+	flags_c.var_set("VAR_0x8005", 4)  # INGAME_TRADE_MR_MIME
+	var vm_c := ScriptVM.new(_src({
+		"A": [_op("special", ["CreateInGameTradePokemon"]), _op("end")],
+	}), flags_c)
+	vm_c.party = party_c
+	vm_c.start("A")
+	_run(vm_c)
+	var traded_in: BattlePokemon = party_c.members[1]
+	_chk("P.06 CreateInGameTradePokemon replaces the SAME slot the offer "
+			+ "came from (slot 1) with a real Mr. Mime",
+			traded_in != null and traded_in.species.national_dex_num == 122)
+	_chk("P.06b slot 0 -- the untouched party member -- is exactly unchanged",
+			party_c.members[0].species.national_dex_num == 1)
+	_chk("P.06c the incoming mon's level is the OFFERED mon's own level (12), "
+			+ "not a fixed value from the trade row",
+			traded_in.level == 12)
+	_chk("P.06d nickname is the real row value",
+			traded_in.nickname == "MIMIEN")
+	_chk("P.06e IVs are forced from the row, not randomly rolled",
+			traded_in.ivs == [20, 15, 17, 24, 23, 22])
+	_chk("P.06f friendship resets to the real source-constant 70, "
+			+ "regardless of the row",
+			traded_in.friendship == 70)
+
+	# -- held item: resolves when a real .tres exists (Farfetch'd's own "
+	# ITEM_STICK == ITEM_LEEK alias, already implemented since [M18g]), --
+	# degrades to null when it does not (Mr. Mime's own trade holds nothing) --
+	_chk("P.07 Mr. Mime's trade (ITEM_NONE) holds nothing",
+			traded_in.held_item == null)
+
+	var party_ff := BattleParty.new()
+	party_ff.members = [PokemonFactory.create_battle_pokemon(1, 5)]
+	var flags_ff := FlagStore.new()
+	flags_ff.var_set("VAR_0x8004", 0)
+	flags_ff.var_set("VAR_0x8005", 7)  # INGAME_TRADE_FARFETCHD
+	var vm_ff := ScriptVM.new(_src({
+		"A": [_op("special", ["CreateInGameTradePokemon"]), _op("end")],
+	}), flags_ff)
+	vm_ff.party = party_ff
+	vm_ff.start("A")
+	_run(vm_ff)
+	var farfetchd: BattlePokemon = party_ff.members[0]
+	_chk("P.08 Farfetch'd's real held item (Leek, ITEM_STICK's own alias, "
+			+ "already implemented since [M18g]) resolves to a genuine ItemData",
+			farfetchd.held_item != null and farfetchd.held_item.item_id == 393)
+
+	var party_jx := BattleParty.new()
+	party_jx.members = [PokemonFactory.create_battle_pokemon(1, 5)]
+	var flags_jx := FlagStore.new()
+	flags_jx.var_set("VAR_0x8004", 0)
+	flags_jx.var_set("VAR_0x8005", 5)  # INGAME_TRADE_JYNX -- Fab Mail, no .tres
+	var vm_jx := ScriptVM.new(_src({
+		"A": [_op("special", ["CreateInGameTradePokemon"]), _op("end")],
+	}), flags_jx)
+	vm_jx.party = party_jx
+	vm_jx.start("A")
+	_run(vm_jx)
+	_chk("P.08b Jynx's real held item (Fab Mail, a real ID with no .tres -- "
+			+ "this project has no Mail concept) degrades to no item held, "
+			+ "not a crash",
+			party_jx.members[0].held_item == null)
+
+	# -- DoInGameTradeScene: a pure no-op, matching the fadescreen precedent --
+	var flags_scene := FlagStore.new()
+	var vm_scene := ScriptVM.new(_src({
+		"A": [_op("special", ["DoInGameTradeScene"]), _op("end")],
+	}), flags_scene)
+	vm_scene.start("A")
+	_run(vm_scene)
+	_chk("P.09 DoInGameTradeScene runs to DONE without halting",
+			vm_scene.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- the real compiled corpus: Route2_House_EventScript_Reyley, all four
+	# of its own branches --
+	if not (FileAccess.file_exists("res://data/map_scripts.json")
+			and FileAccess.file_exists("res://data/map_texts.json")):
+		_gated += 1
+		return
+	var ops_p: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var texts_p: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+
+	# Success: offer the real Abra (slot 1).
+	var flags_r1 := FlagStore.new()
+	var party_r1 := BattleParty.new()
+	party_r1.members = [PokemonFactory.create_battle_pokemon(1, 10),
+			PokemonFactory.create_battle_pokemon(63, 10)]
+	var vm_r1 := ScriptVM.new(_src(ops_p, texts_p), flags_r1)
+	vm_r1.party = party_r1
+	vm_r1.start("Route2_House_EventScript_Reyley")
+	_drive(vm_r1)
+	if vm_r1.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+		vm_r1.answer_yes_no(true)
+	_drive(vm_r1)
+	if vm_r1.pause_reason == ScriptVM.Pause.WAIT_PARTY_CHOICE:
+		vm_r1.answer_party_choice(1)
+	_drive(vm_r1)
+	_chk("P.10 the real Reyley script runs to DONE on a successful trade "
+			+ "(diagnostic if not: '%s')" % vm_r1.diagnostic,
+			vm_r1.pause_reason == ScriptVM.Pause.DONE)
+	_chk("P.10b -- and the party slot genuinely holds the real Mr. Mime",
+			party_r1.members[1].species.national_dex_num == 122)
+	_chk("P.10c -- and FLAG_DID_MIMIEN_TRADE is set, the real gate the "
+			+ "already-traded branch reads",
+			flags_r1.flag_get("FLAG_DID_MIMIEN_TRADE"))
+
+	# Wrong species: offer the Bulbasaur (slot 0).
+	var flags_r2 := FlagStore.new()
+	var party_r2 := BattleParty.new()
+	party_r2.members = [PokemonFactory.create_battle_pokemon(1, 10),
+			PokemonFactory.create_battle_pokemon(63, 10)]
+	var vm_r2 := ScriptVM.new(_src(ops_p, texts_p), flags_r2)
+	vm_r2.party = party_r2
+	vm_r2.start("Route2_House_EventScript_Reyley")
+	_drive(vm_r2)
+	if vm_r2.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+		vm_r2.answer_yes_no(true)
+	_drive(vm_r2)
+	if vm_r2.pause_reason == ScriptVM.Pause.WAIT_PARTY_CHOICE:
+		vm_r2.answer_party_choice(0)
+	_drive(vm_r2)
+	_chk("P.11 offering the wrong species reaches DONE via NotRequestedMon, "
+			+ "not a halt (diagnostic if not: '%s')" % vm_r2.diagnostic,
+			vm_r2.pause_reason == ScriptVM.Pause.DONE)
+	_chk("P.11b -- and NEITHER party slot was mutated",
+			party_r2.members[0].species.national_dex_num == 1
+			and party_r2.members[1].species.national_dex_num == 63)
+	_chk("P.11c -- and the flag was never set",
+			not flags_r2.flag_get("FLAG_DID_MIMIEN_TRADE"))
+
+	# Decline: answer NO to the initial offer.
+	var flags_r3 := FlagStore.new()
+	var party_r3 := BattleParty.new()
+	party_r3.members = [PokemonFactory.create_battle_pokemon(63, 10)]
+	var vm_r3 := ScriptVM.new(_src(ops_p, texts_p), flags_r3)
+	vm_r3.party = party_r3
+	vm_r3.start("Route2_House_EventScript_Reyley")
+	_drive(vm_r3)
+	if vm_r3.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+		vm_r3.answer_yes_no(false)
+	_drive(vm_r3)
+	_chk("P.12 declining the offer reaches DONE without ever asking "
+			+ "ChoosePartyMon (diagnostic if not: '%s')" % vm_r3.diagnostic,
+			vm_r3.pause_reason == ScriptVM.Pause.DONE)
+	_chk("P.12b -- and the one party member is untouched",
+			party_r3.members[0].species.national_dex_num == 63)
+
+	# Already traded: the flag is pre-set, so the script never even offers.
+	var flags_r4 := FlagStore.new()
+	flags_r4.flag_set("FLAG_DID_MIMIEN_TRADE")
+	var party_r4 := BattleParty.new()
+	party_r4.members = [PokemonFactory.create_battle_pokemon(63, 10)]
+	var vm_r4 := ScriptVM.new(_src(ops_p, texts_p), flags_r4)
+	vm_r4.party = party_r4
+	vm_r4.start("Route2_House_EventScript_Reyley")
+	_drive(vm_r4)
+	_chk("P.13 an already-completed trade reaches DONE via AlreadyTraded, "
+			+ "never pausing on a yes/no or a party choice at all "
+			+ "(diagnostic if not: '%s')" % vm_r4.diagnostic,
+			vm_r4.pause_reason == ScriptVM.Pause.DONE)

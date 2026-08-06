@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Water Spout"
+description = "Inflicts more damage if the user's HP is high."
 type = 12
 category = 1
 power = 150

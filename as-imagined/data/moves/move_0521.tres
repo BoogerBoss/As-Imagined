@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Volt Switch"
+description = "Does damage then switches out the user."
 type = 14
 category = 1
 power = 70

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pyro Ball"
+description = "Launches a fiery ball at the target. It may cause a burn."
 type = 11
 power = 120
 accuracy = 90

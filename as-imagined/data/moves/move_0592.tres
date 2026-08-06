@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Steam Eruption"
+description = "Immerses the foe in heated steam. May inflict a burn."
 type = 12
 category = 1
 power = 110

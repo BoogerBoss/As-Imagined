@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stomp"
+description = "Stomps the enemy with a big foot. May cause flinching."
 type = 1
 power = 65
 pp = 20

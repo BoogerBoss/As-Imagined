@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Laser Focus"
+description = "Guarantees the next move will be a critical hit."
 type = 1
 category = 2
 accuracy = 0

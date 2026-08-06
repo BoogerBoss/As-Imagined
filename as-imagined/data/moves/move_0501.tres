@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Quick Guard"
+description = "Evades priority attacks for one turn."
 type = 2
 category = 2
 accuracy = 0

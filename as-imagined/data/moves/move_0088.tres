@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Throw"
+description = "Throws small rocks to strike the foe."
 type = 6
 power = 50
 accuracy = 90

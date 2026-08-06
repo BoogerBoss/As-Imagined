@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Decorate"
+description = "The user sharply raises the target's Atk and Sp.Atk."
 type = 19
 category = 2
 accuracy = 0

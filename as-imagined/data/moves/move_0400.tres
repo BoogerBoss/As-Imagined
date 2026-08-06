@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Night Slash"
+description = "Hits as soon as possible. High critical-hit ratio."
 type = 18
 power = 70
 pp = 15

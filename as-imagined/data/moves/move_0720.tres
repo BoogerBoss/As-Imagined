@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Obstruct"
+description = "Protects itself, harshly lowering Def on contact."
 type = 18
 category = 2
 pp = 10

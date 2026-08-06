@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sacred Sword"
+description = "Strikes through the foe's stat changes."
 type = 2
 power = 90
 pp = 15

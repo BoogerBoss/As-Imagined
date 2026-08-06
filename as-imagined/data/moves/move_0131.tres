@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spike Cannon"
+description = "Launches sharp spikes that strike 2 to 5 times."
 type = 1
 power = 20
 pp = 15

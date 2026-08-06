@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Attract"
+description = "Makes the opposite gender less likely to attack."
 type = 1
 category = 2
 pp = 15

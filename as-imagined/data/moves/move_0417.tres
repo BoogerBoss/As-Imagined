@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Nasty Plot"
+description = "Thinks bad thoughts to sharply boost Sp. Atk."
 type = 18
 category = 2
 accuracy = 0

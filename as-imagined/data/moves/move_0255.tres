@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Spit Up"
+description = "Releases stockpiled power (the more the better)."
 type = 1
 category = 1
 power = 1

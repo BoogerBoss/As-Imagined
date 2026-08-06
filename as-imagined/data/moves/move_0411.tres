@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Focus Blast"
+description = "Attacks at full power. May lower Sp. Def."
 type = 2
 category = 1
 power = 120

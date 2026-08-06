@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Meteor Mash"
+description = "Fires a meteor-like punch. May raise Attack."
 type = 9
 power = 90
 accuracy = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sweet Scent"
+description = "Allures the foes to harshly reduce evasiveness."
 type = 1
 category = 2
 pp = 20

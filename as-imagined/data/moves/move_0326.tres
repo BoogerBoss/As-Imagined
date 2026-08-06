@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Extrasensory"
+description = "Attacks with a peculiar power. May cause flinching."
 type = 15
 category = 1
 power = 80

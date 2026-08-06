@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Ingrain"
+description = "Lays roots that restore HP. The user can't switch out."
 type = 13
 category = 2
 accuracy = 0

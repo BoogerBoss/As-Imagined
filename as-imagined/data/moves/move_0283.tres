@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Endeavor"
+description = "Cuts foe's HP to equal user's HP."
 type = 1
 power = 1
 makes_contact = true

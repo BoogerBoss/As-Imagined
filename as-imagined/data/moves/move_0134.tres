@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Kinesis"
+description = "Distracts the foe. May lower accuracy."
 type = 15
 category = 2
 accuracy = 80

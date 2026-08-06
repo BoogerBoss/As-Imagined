@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tail Slap"
+description = "Strikes the foe with its tail 2 to 5 times."
 type = 1
 power = 25
 accuracy = 85

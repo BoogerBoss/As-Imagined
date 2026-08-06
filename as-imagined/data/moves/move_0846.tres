@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Upper Hand"
+description = "Makes the target flinch if readying a priority move."
 type = 2
 power = 65
 pp = 15

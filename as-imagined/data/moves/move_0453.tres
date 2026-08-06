@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aqua Jet"
+description = "Strikes first by dashing at the foe at a high speed."
 type = 12
 power = 40
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lock-On"
+description = "Locks on to the foe to ensure the next move hits."
 type = 1
 category = 2
 accuracy = 0

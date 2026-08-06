@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pounce"
+description = "The user pounces on the foe, lowering its Speed."
 type = 7
 power = 50
 pp = 20

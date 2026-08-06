@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Counter"
+description = "Retaliates any physical hit with double the power."
 type = 2
 power = 1
 pp = 20

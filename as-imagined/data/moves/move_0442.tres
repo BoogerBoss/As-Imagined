@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Iron Head"
+description = "Slams the foe with a hard head. May cause flinching."
 type = 9
 power = 80
 pp = 15

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Beak Blast"
+description = "Heats beak to attack last. Burns foe on contact."
 type = 3
 power = 100
 pp = 15

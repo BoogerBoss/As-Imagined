@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Shell Smash"
+description = "Sharply raises Atk/Sp.Atk/ Speed, but drops Def/Sp.Def."
 type = 1
 category = 2
 accuracy = 0

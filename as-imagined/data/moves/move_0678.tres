@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Floaty Fall"
+description = "Floats in air and dives at angle. May cause flinching."
 type = 3
 power = 90
 accuracy = 95

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hammer Arm"
+description = "A swinging fist attack that also lowers Speed."
 type = 2
 power = 100
 accuracy = 90

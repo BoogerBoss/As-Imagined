@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Freezing Glare"
+description = "Shoots psychic power from the eyes. May freeze the foe."
 type = 15
 category = 1
 power = 90

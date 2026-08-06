@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Brick Break"
+description = "Destroys barriers such as REFLECT and causes damage."
 type = 2
 power = 75
 pp = 15

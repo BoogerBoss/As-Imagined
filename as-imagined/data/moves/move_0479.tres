@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Smack Down"
+description = "Throws a rock to knock the foe down to the ground."
 type = 6
 power = 50
 pp = 15

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Wring Out"
+description = "The higher the foe's HP the more damage caused."
 type = 1
 category = 1
 power = 120

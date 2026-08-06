@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snore"
+description = "A loud attack that can only be used asleep. May flinch."
 type = 1
 category = 1
 power = 50

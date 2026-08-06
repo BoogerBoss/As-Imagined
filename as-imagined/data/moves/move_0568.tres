@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Noble Roar"
+description = "Intimidates the foe, to cut Attack and Sp. Atk."
 type = 1
 category = 2
 pp = 30

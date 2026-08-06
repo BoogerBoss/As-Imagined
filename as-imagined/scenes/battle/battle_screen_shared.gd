@@ -697,12 +697,25 @@ var _opp_sprite_base_top: Array = []
 var _opp_sprite_base_bottom: Array = []
 
 # [M23.11 Phase 5c] Hit-effect nodes are spawned/freed here at runtime --
-# the LAST child of BattleStage in battle_screen.tscn, so every sprite/
-# health-box added above it in the tree draws underneath for free (same
-# "later sibling draws on top" convention Phase 5a's own Background doc
-# comment already established), while VBox (message box/menu), a LATER
-# sibling of BattleStage itself at the BattleScreen root, still always
-# draws on top of anything here -- no z_index needed either direction.
+# a child of BattleStage in battle_screen.tscn, so every sprite/health-box
+# added above it in the tree draws underneath for free (same "later sibling
+# draws on top" convention Phase 5a's own Background doc comment already
+# established). SharedChrome, a LATER sibling of BattleStage itself at the
+# BattleScreen root, still always draws on top of anything here -- but NOT
+# purely via tree order any more: several anim_behaviors.gd effects (the
+# Reflect/Light Screen wall, Spore/Twister/fog particles, Petal
+# Dance/feather z-toggles) set z_index up to 2 on their own spawned nodes so
+# they sort correctly against the mon sprites they're drawn over, and
+# z_index sorts globally across the whole canvas, overriding tree order
+# whenever two nodes' z_index differ. That means an effect at z_index >= 1
+# would otherwise draw over the message box/action menu/debug overlay
+# regardless of SharedChrome being a later sibling. Fixed by giving
+# SharedChrome's own root node z_index = 5 (comfortably above every value
+# in current use) in shared_battle_chrome.tscn, plus the same z_index on
+# BattleStage's own MessageBackdrop rect, which sits BEFORE this layer in
+# BattleStage's own child order and would otherwise be occluded by any
+# effect drawn over the bottom of the screen. Bump that constant if a
+# future effect ever needs a higher z_index than 5.
 @onready var _effect_layer: Control = $BattleStage/EffectLayer
 
 # [M23.11 Phase 5c] Root nodes of any hit effect currently mid-animation --
@@ -1294,10 +1307,37 @@ const _MENU_BUTTON_FONT_SIZE := 60
 # shadow idx6 = (106,90,115). The reference ALSO has a background/accent
 # (idx15 = (106,164,164) teal) that this two-constant model has no slot for
 # -- see M26D1 in CLAUDE.md, still open.
-const _MESSAGE_FONT_SIZE := 20
+# [Message-text sizing fix] Was 20 -- far smaller than everything else
+# sharing ActionPanel, which all follow this project's own established
+# convention of scaling GBA-native text 4x (_MENU_BUTTON_FONT_SIZE = 60 =
+# 4 * _FONT_NORMAL_SIZE's 15). Source's real message box uses the same
+# FONT_NORMAL family the menu text does, so matching that same 4x factor
+# here (60 = _MENU_BUTTON_FONT_SIZE) keeps dialogue text visually
+# consistent with the menu/button text it shares this panel with, rather
+# than reading as a separate, much-smaller typeface. _font_message is a
+# TTF, not a pixel-bitmap font, so the "exact integer multiple" crispness
+# constraint _MENU_BUTTON_FONT_SIZE's own doc comment describes doesn't
+# strictly apply here -- 60 was still chosen to literally match that
+# constant rather than picking an unrelated number, since both labels sit
+# in the same region and should read as one consistent scale.
+const _MESSAGE_FONT_SIZE := 45
 const _MESSAGE_FONT_COLOR := Color8(255, 255, 255)
 const _MESSAGE_FONT_SHADOW_COLOR := Color8(106, 90, 115)
 const _MESSAGE_FONT_SHADOW_OFFSET := Vector2(1, 1)
+
+# [Action-prompt color fix] StatusLabel ("Choose an action for X.") sits on
+# ActionPanel's white "menu" skin (_action_panel_menu_style, text_window/
+# 1.png's flat interior) alongside the Fight/Item/Switch/Run grid -- white
+# text there reads as a near-invisible pale outline. MessageLabel ("X used
+# Y!") sits on the DIFFERENT teal "message" skin (_action_panel_message_
+# style, overlay_message.png) instead, where the existing white/dark-purple
+# pair is correct and stays unchanged. This reuses gen_battle_fonts.py's own
+# already-sourced "latin_normal_menu" context colors (COLOR_CONTEXTS,
+# foreground (74,74,74)/shadow (213,213,205) off text.pal slot 14) rather
+# than inventing an unrelated black -- the same real palette the adjacent
+# Fight/Item/Switch/Run button text already renders in on this exact panel.
+const _ACTION_PROMPT_FONT_COLOR := Color8(74, 74, 74)
+const _ACTION_PROMPT_SHADOW_COLOR := Color8(213, 213, 205)
 
 
 func _load_battle_fonts() -> void:
@@ -3128,7 +3168,19 @@ func _run_anim_script(move_id: int, stage: AnimStage, anim_turn: int) -> void:
 	# sprite state right after an animation, which is what makes it safe for
 	# a script to end mid-`invisible`. Without this a single animation could
 	# leave a Pokemon (or its health box) hidden for the rest of the battle.
-	_refresh_ui()
+	#
+	# This used to be a bare _refresh_ui() call, which is wrong here: it
+	# re-derives every sprite's texture/name/HP from BattleParty state, and on
+	# a KO'ing hit BattleManager.advance() has already resolved the whole
+	# turn -- including any faint replacement -- before this beat's animation
+	# even starts playing. That made the replacement's sprite/health-box
+	# appear mid-animation, racing ahead of the "recall"/"switch_reveal"
+	# beats that are supposed to animate the swap. AnimScriptVM._finish()
+	# already restores each stage sprite's own visibility (and position/
+	# scale/rotation/modulate/material) as part of its own baseline net, so
+	# only the health-box side of the reference's guarantee is still needed
+	# here -- that mechanism has no equivalent on the panel.
+	_restore_stage_battler_visibility(stage)
 	if vm.state == AnimScriptVM.State.ERROR:
 		# The animation aborted mid-run. The battle continues -- an animation
 		# is cosmetic -- but it is surfaced rather than swallowed.
@@ -3155,6 +3207,27 @@ func _field_slot_for(mon: BattlePokemon, party: BattleParty) -> int:
 # 2 for doubles) rather than branching on a mode flag. Player-vs-opponent
 # side is resolved the exact same way _mon_label() already does
 # (_player_party.members.has(mon)).
+# [Bugfix] The narrow half of CopyAllBattleSpritesInvisibilities that
+# AnimScriptVM's own baseline restore doesn't cover: health-box panels.
+# AnimStage has no panel accessor (behaviors never hide one -- confirmed via
+# a full scripts/battle/anim/ sweep), so this is defensive rather than
+# undoing anything a real behavior does today; it exists so a future
+# behavior that DOES touch a panel can't strand it hidden. Deliberately
+# does not touch texture/HP/name -- that's the premature-repaint bug this
+# replaced _refresh_ui() to avoid.
+func _restore_stage_battler_visibility(stage: AnimStage) -> void:
+	for anim_battler in range(4):
+		var mon := stage.mon_for(anim_battler)
+		if mon == null:
+			continue
+		var sprite := stage.sprite_for(anim_battler)
+		if sprite != null:
+			sprite.visible = true
+		var panel := _panel_for(mon)
+		if panel != null:
+			panel.visible = true
+
+
 func _panel_for(mon: BattlePokemon) -> HealthGroupPanel:
 	if mon == null:
 		return null
@@ -3387,7 +3460,7 @@ func _gender_glyph(gender: int) -> String:
 
 
 func _name_text(mon: BattlePokemon) -> String:
-	return mon.species.species_name
+	return mon.display_name()
 
 
 # [M25d] "Lv" immediately followed by the number, no space — matches the
@@ -3401,8 +3474,8 @@ func _level_text(mon: BattlePokemon) -> String:
 
 func _mon_label(mon: BattlePokemon) -> String:
 	if _player_party.members.has(mon):
-		return "Your %s" % mon.species.species_name
-	return "Foe %s" % mon.species.species_name
+		return "Your %s" % mon.display_name()
+	return "Foe %s" % mon.display_name()
 
 
 # [M23.2 addendum] Log-ordering fix. secondary_applied/stat_stage_changed can
@@ -4023,8 +4096,8 @@ func _on_debug_move_damage_breakdown(attacker: BattlePokemon, defender: BattlePo
 # history rather than the sole, wholesale-replaced content of the panel.
 static func _format_debug_breakdown(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, breakdown: Dictionary) -> String:
-	var atk_name: String = attacker.species.species_name
-	var def_name: String = defender.species.species_name
+	var atk_name: String = attacker.display_name()
+	var def_name: String = defender.display_name()
 	var lines: Array[String] = []
 	lines.append("%s -> %s" % [atk_name, def_name])
 	lines.append("Move: %s (Power %d, Acc %d)" % [move.move_name, move.power, move.accuracy])
@@ -4065,6 +4138,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_matchup_overlay_closed()
 		elif not _info_tab_btn.disabled:
 			_on_info_tab_pressed()
+
+	# [Back-button removal] FIGHT no longer has a visible Back button — see
+	# _build_fight_menu's own doc comment. Escape reproduces the same
+	# _menu = Menu.TOP; _refresh_ui() the removed button used to do,
+	# matching the ESC-cancels convention this project already established
+	# for ItemSelectScreen/SwitchSelectScreen (itself standing in for
+	# source's own B_BUTTON-always-cancels behavior).
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_ESCAPE and _menu == Menu.FIGHT:
+		_menu = Menu.TOP
+		_refresh_ui()
 
 
 # [M26B3-6b, Rob's review] The one-shot entry animation a Pokemon plays as
@@ -4526,18 +4610,31 @@ func _setup_action_region_panel() -> void:
 	_action_panel_split_style = StyleBoxEmpty.new()
 
 	# [Message-box font migration] StatusLabel shows the "What will X do?"
-	# style prompt text, matching source's B_WIN_ACTION_PROMPT (the SAME
-	# color context as B_WIN_MSG/MessageLabel below -- see _font_message's
-	# own doc comment for the full citation and rationale). Now the real
-	# Essentials TTF -- unlike the bitmap font this superseded, a TTF has no
-	# baked-in color, so the real red-foreground/black-shadow message color
-	# scheme is reproduced via explicit theme overrides here instead.
+	# style prompt text. Uses the real Essentials TTF, same as MessageLabel
+	# below -- unlike the bitmap font this superseded, a TTF has no baked-in
+	# color, so a color scheme is reproduced via explicit theme overrides
+	# here instead. [Action-prompt color fix] Deliberately its OWN color
+	# pair (_ACTION_PROMPT_*), not _MESSAGE_FONT_COLOR -- StatusLabel sits
+	# on ActionPanel's white "menu" skin, not MessageLabel's teal "message"
+	# skin, and needs a dark-on-white scheme to match. See
+	# _ACTION_PROMPT_FONT_COLOR's own doc comment for the citation.
 	_status_label.add_theme_font_override("font", _font_message)
 	_status_label.add_theme_font_size_override("font_size", _MESSAGE_FONT_SIZE)
-	_status_label.add_theme_color_override("font_color", _MESSAGE_FONT_COLOR)
-	_status_label.add_theme_color_override("font_shadow_color", _MESSAGE_FONT_SHADOW_COLOR)
+	_status_label.add_theme_color_override("font_color", _ACTION_PROMPT_FONT_COLOR)
+	_status_label.add_theme_color_override("font_shadow_color", _ACTION_PROMPT_SHADOW_COLOR)
 	_status_label.add_theme_constant_override("shadow_offset_x", int(_MESSAGE_FONT_SHADOW_OFFSET.x))
 	_status_label.add_theme_constant_override("shadow_offset_y", int(_MESSAGE_FONT_SHADOW_OFFSET.y))
+	# [Message-text sizing fix] A plain Label doesn't wrap by default (unlike
+	# MessageLabel just below, a RichTextLabel, which already autowraps).
+	# At _MESSAGE_FONT_SIZE's old 20 a full prompt like "Choose an action
+	# for Wigglytuff." always fit on one line with room to spare; at the
+	# new 60 it doesn't, and centered+non-wrapping text that's wider than
+	# ActionPanel overflows past BOTH edges rather than clipping to one
+	# side. ActionRegion has real vertical headroom (~189px at this
+	# project's 1024x768 canvas) for a wrapped second line at this font
+	# size, so word-wrap is the fix rather than shrinking the font back
+	# down.
+	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	# [M26c-3 real-proportion fix] MoveInfoType/MoveInfoPP sit directly
 	# beside the move-select grid (the real B_WIN_PP color context, the
@@ -6065,7 +6162,7 @@ func _build_ability_popup_text(panel: Control, mon: BattlePokemon,
 		scale: Vector2) -> void:
 	var name_lbl := _make_ability_popup_label(
 			_ABILITY_POPUP_NAME_RECT, scale, _font_popup_name)
-	name_lbl.text = _possessive_name(mon.species.species_name if mon.species != null else "")
+	name_lbl.text = _possessive_name(mon.display_name())
 	panel.add_child(name_lbl)
 
 	var ability_lbl := _make_ability_popup_label(
@@ -6934,7 +7031,7 @@ func _queue_trainer_send_out_message(trainer: TrainerData) -> void:
 	for slot in range(_opp_party.num_active()):
 		var mon: BattlePokemon = _opp_party.get_active_at(slot)
 		if mon != null:
-			names.append(mon.species.species_name)
+			names.append(mon.display_name())
 	if names.is_empty():
 		return
 	_queue_text_beat("%s sent out %s!" % [
@@ -6952,7 +7049,7 @@ func _queue_player_send_out_message() -> void:
 	for slot in range(_player_party.num_active()):
 		var mon: BattlePokemon = _player_party.get_active_at(slot)
 		if mon != null:
-			names.append(mon.species.species_name)
+			names.append(mon.display_name())
 	if names.is_empty():
 		return
 	_queue_text_beat("Go! %s!" % _join_mon_names(names))
@@ -7082,6 +7179,28 @@ func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
 
 
 func _refresh_ui() -> void:
+	# [Bugfix] _refresh_ui() can be invoked mid-message-sequence (see
+	# _run_anim_script()'s own doc comment -- it calls this purely to resync
+	# battlefield sprite visibility after an animation, not to rebuild the
+	# action menu). BattleManager may already have advanced to a LATER
+	# phase/turn by the time this runs, since the whole turn resolves
+	# synchronously ahead of the paced visual replay. Everything below this
+	# guard -- including _layout_action_menu_for(false, false)'s own reset of
+	# ActionPanel's stylebox back to the MENU skin and its re-show of
+	# _status_label -- would undo _enter_message_mode()'s hides. Worse,
+	# _enter_message_mode()'s own idempotency check (`if _message_label.
+	# visible: return`) means it would never notice the clobber and never
+	# re-apply the message skin for the rest of this beat sequence, leaving
+	# the message box showing the wrong (white/menu) background behind
+	# dialogue that hasn't finished playing yet. Only the battlefield sync
+	# genuinely needs to run mid-message (per _run_anim_script()'s own
+	# comment); everything else waits for the real _refresh_ui() call
+	# _exit_message_mode() triggers once the message queue drains.
+	if _message_label.visible:
+		_refresh_battlefield_side(_opp_party, false)
+		_refresh_battlefield_side(_player_party, true)
+		return
+
 	# [M26E5-1, decision 2] Command phase only for this first cut — disabled
 	# (not hidden) outside MOVE_SELECTION, matching the recon's own
 	# recommendation: an always-visible-but-sometimes-disabled affordance
@@ -7175,7 +7294,7 @@ func _refresh_ui() -> void:
 			_status_label.text = "Waiting..."
 			return
 		var fainted_mon: BattlePokemon = _player_party.get_active_at(prompt_slot)
-		_status_label.text = "%s fainted! Choose a replacement." % fainted_mon.species.species_name
+		_status_label.text = "%s fainted! Choose a replacement." % fainted_mon.display_name()
 		_build_switch_buttons(true, prompt_slot)
 		return
 
@@ -7199,7 +7318,7 @@ func _refresh_ui() -> void:
 		match _menu:
 			Menu.FIGHT:
 				_layout_action_menu_for(false, true)
-				_status_label.text = "Choose a move for %s." % acting_mon.species.species_name
+				_status_label.text = "Choose a move for %s." % acting_mon.display_name()
 				_build_fight_menu(field_slot)
 			Menu.SWITCH:
 				_status_label.text = "Choose a Pokémon to switch in."
@@ -7213,7 +7332,7 @@ func _refresh_ui() -> void:
 				_build_target_select_buttons(field_slot, _pending_move_index)
 			_:
 				_layout_action_menu_for(true, false)
-				_status_label.text = "Choose an action for %s." % acting_mon.species.species_name
+				_status_label.text = "Choose an action for %s." % acting_mon.display_name()
 				_build_top_menu(field_slot)
 
 
@@ -7430,15 +7549,14 @@ func _build_top_menu(field_slot: int) -> void:
 # own real clamping behavior (`gNumberOfMovesToChoose`), which likewise
 # never lets the cursor land on a slot with no real move.
 #
-# Back is deliberately NOT a 5th grid cell — source doesn't need one at
-# all (B_BUTTON always cancels back to the action-selection grid, and this
-# project has no keyboard input wired yet, M26d's own job), so a literal
-# 5th cell would be a pure invention with no source basis, more visual
-# noise than the real 2x2 core. Instead it reuses _new_button_area (the
-# same VBoxContainer TARGET_SELECT/SWITCH/ITEM already used before this
-# session), which renders as a single row directly below the grid in the
-# same ActionVBox stack — a real, disclosed mouse-only concession, not a
-# reproduction of anything in source.
+# Back is deliberately NOT a 5th grid cell, and — as of the Back-button
+# removal below — not a visible button anywhere in this menu at all,
+# matching source exactly: B_BUTTON always cancels back to the
+# action-selection grid, with no on-screen control for it. This project's
+# equivalent is Escape (see _unhandled_input's own FIGHT branch), so the
+# capability isn't lost, just no longer taking up a row that used to sit
+# below the grid — FightGridSlot/MoveInfoBorder (already vertical
+# fill+expand in shared_battle_chrome.tscn) now claim that space instead.
 # [Doubles-split roadmap, step 8] Reuses the fixed 4-Button pool authored
 # directly in shared_battle_chrome.tscn (_move_buttons) instead of creating
 # fresh Button.new() instances every call -- a Pokémon with fewer than 4
@@ -7481,20 +7599,20 @@ func _build_fight_menu(field_slot: int) -> void:
 		if first_move_index < 0:
 			first_move_index = i
 
-	var back_btn := Button.new()
-	_style_menu_button(back_btn)
-	_strip_button_chrome(back_btn)
-	back_btn.text = "Back"
-	back_btn.pressed.connect(func():
-		_menu = Menu.TOP
-		_refresh_ui())
-	_new_button_area.add_child(back_btn)
-	fight_buttons.append(back_btn)
+	# [Back-button removal, requested UI change] No visible Back row anymore
+	# -- _new_button_area is left with no children, so FightActionHBox (the
+	# move grid + Type/PP panel), which already carries size_flags_vertical
+	# = 3 (fill+expand) in shared_battle_chrome.tscn, naturally claims the
+	# vertical space the row used to occupy with zero further layout
+	# changes needed. Keyboard back-navigation isn't lost, just moved off a
+	# visible button and onto Escape (see _unhandled_input's own FIGHT
+	# branch), matching this project's established ESC-cancels convention
+	# from ItemSelectScreen/SwitchSelectScreen -- the one keyboard
+	# affordance this project's menus already have (mirrors source's own
+	# B_BUTTON-always-cancels behavior too, per this function's own header
+	# comment on why Back was never a literal source-accurate control).
 
-	# [M25h-1.3] Real ▶ cursor, defaulting to the first move. One shared
-	# cursor group spans both containers (grid cells + the Back row below
-	# them) -- _wire_cursor_group only needs an ordered Array[Button], it
-	# has no dependency on every button sharing one parent.
+	# [M25h-1.3] Real ▶ cursor, defaulting to the first move.
 	_wire_cursor_group(fight_buttons)
 	# [M26c-3 real-proportion fix] Matches _wire_cursor_group's own
 	# default-to-the-first-button behavior — the info panel needs an

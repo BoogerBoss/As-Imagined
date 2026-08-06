@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Screech"
+description = "Emits a screech to sharply reduce the foe's Defense."
 type = 1
 category = 2
 accuracy = 85

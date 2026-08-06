@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tidy Up"
+description = "User tidies up hazards and raises its Attack and Speed."
 type = 1
 category = 2
 accuracy = 0

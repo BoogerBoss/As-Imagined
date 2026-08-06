@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fiery Dance"
+description = "Dances cloaked in flames. May raise Sp. Atk."
 type = 11
 category = 1
 power = 80

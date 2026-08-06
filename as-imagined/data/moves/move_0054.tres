@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mist"
+description = "Creates a mist that stops reduction of stats."
 type = 16
 category = 2
 accuracy = 0

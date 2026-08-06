@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mystical Fire"
+description = "Breathes a special, hot fire. Lowers Sp. Atk."
 type = 11
 category = 1
 power = 75

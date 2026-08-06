@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Baddy Bad"
+description = "Acting badly, attacks. Sets wall, lowering Attack damage."
 type = 18
 category = 1
 power = 80

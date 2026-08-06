@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Air Slash"
+description = "Attacks with a blade of air. May cause flinching."
 type = 3
 category = 1
 power = 75

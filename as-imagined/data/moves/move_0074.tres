@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Growth"
+description = "Forces the body to grow, raising Attack and Sp. Atk."
 type = 1
 category = 2
 accuracy = 0

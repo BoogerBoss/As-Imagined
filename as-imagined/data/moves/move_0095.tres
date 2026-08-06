@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hypnosis"
+description = "A hypnotizing move that may induce sleep."
 type = 15
 category = 2
 accuracy = 60

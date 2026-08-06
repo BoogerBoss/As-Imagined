@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lunge"
+description = "Lunges at the foe to lower its Attack stat."
 type = 7
 power = 80
 pp = 15

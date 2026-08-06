@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mud-Slap"
+description = "Hurls mud in the foe's face to reduce its accuracy."
 type = 5
 category = 1
 power = 20

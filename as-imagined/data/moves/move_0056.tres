@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Hydro Pump"
+description = "Blasts water at high power to strike the foe."
 type = 12
 category = 1
 power = 110

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Switcheroo"
+description = "Swaps items with the foe faster than the eye can see."
 type = 18
 category = 2
 pp = 10

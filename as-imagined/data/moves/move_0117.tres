@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bide"
+description = "Endures attack for 2 turns to retaliate double."
 type = 1
 accuracy = 0
 pp = 10

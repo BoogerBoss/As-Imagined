@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fell Stinger"
+description = "If it knocks out a foe the Attack stat is raised."
 type = 7
 power = 50
 pp = 25

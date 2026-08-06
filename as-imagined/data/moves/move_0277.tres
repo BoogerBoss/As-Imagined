@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Magic Coat"
+description = "Reflects special effects back to the attacker."
 type = 15
 category = 2
 accuracy = 0

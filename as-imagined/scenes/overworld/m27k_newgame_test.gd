@@ -13,7 +13,7 @@ extends Node
 ##   * `{PLAYER}` now reads the chosen name, retiring a hardcode that lived in
 ##     three places agreeing by luck.
 
-const EXPECTED_TOTAL := 47
+const EXPECTED_TOTAL := 58
 
 ## Comfortably past the cap, so the refusal is what stops it and not the loop.
 const NAME_OVERFILL := 20
@@ -42,6 +42,8 @@ func _ready() -> void:
 	_test_choices_mode()
 	_test_keyboard()
 	_test_placeholders()
+	await _test_oak_speech_overlay()
+	await _test_ball_release()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -246,3 +248,74 @@ func _test_placeholders() -> void:
 	_chk("E.11 the name-back line is a placeholder, expanded at print time",
 			str(ow.OAK_SO_YOUR_NAME).contains("{PLAYER}"))
 	ow.free()
+
+
+## --- F. [M27K K-b visuals] the portrait overlay ---
+func _test_oak_speech_overlay() -> void:
+	var overlay := OakSpeechOverlay.new()
+	add_child(overlay)
+
+	_chk("F.01 gender buttons start hidden",
+			not overlay._boy_button.visible and not overlay._girl_button.visible)
+
+	overlay.show_solo("oak")
+	_chk("F.02 show_solo shows the requested portrait",
+			overlay._solo.visible
+			and overlay._solo.texture.resource_path.ends_with("oak.png"))
+	# ⚠️ `_platform_frame()` always returns a real `AtlasTexture` OBJECT even
+	# when its underlying sheet fails to load — a real regression this
+	# session hit (a brand-new asset with no `.import` sidecar yet logs an
+	# ERROR and loads as null, but wrapped inside a non-null AtlasTexture),
+	# so `t.texture != null` alone is VACUOUS and would not have caught it.
+	# `t.texture.atlas` is what actually holds the loaded sheet. Break-tested
+	# by removing `platform.png.import` directly and confirming this line —
+	# and only this line — goes red.
+	_chk("F.02b the platform is %d tiles, each with a real loaded sheet" % OakSpeechOverlay._PLATFORM_TILE_COUNT,
+			overlay._platform.size() == OakSpeechOverlay._PLATFORM_TILE_COUNT
+			and overlay._platform.all(func(t): return t.texture != null and t.texture.atlas != null)
+			and overlay._platform.all(func(t): return t.visible))
+
+	overlay.hide_all()
+	_chk("F.03 hide_all hides the solo portrait",
+			not overlay._solo.visible)
+	_chk("F.03b hide_all hides the platform too",
+			overlay._platform.all(func(t): return not t.visible))
+
+	# ⚠️ `pick_gender()` is a coroutine and GDScript requires the call site
+	# itself to `await` it — so the click that answers it has to be queued
+	# with `call_deferred` BEFORE the await, to land on the next idle frame
+	# once `pick_gender()` has already opened the picker and is itself
+	# waiting on `gender_chosen`.
+	overlay._on_girl_pressed.call_deferred()
+	var boy: bool = await overlay.pick_gender()
+	_chk("F.04 pick_gender showed Red and Leaf, not a generic pair",
+			overlay._boy_button.texture_normal.resource_path.ends_with("red.png")
+			and overlay._girl_button.texture_normal.resource_path.ends_with("leaf.png"))
+	# ⚠️ Mirrors the polarity YesNoBox carried for this exact question before
+	# this pass replaced it — Red/BOY first, Leaf/GIRL second.
+	_chk("F.05 choosing Leaf resolves to GIRL, not BOY", boy == false)
+	_chk("F.06 the picker closes once chosen",
+			not overlay._boy_button.visible and not overlay._girl_button.visible)
+
+	overlay.queue_free()
+
+
+## --- G. [M27K K-b visuals] the ball-release beat ---
+func _test_ball_release() -> void:
+	var overlay := OakSpeechOverlay.new()
+	add_child(overlay)
+
+	_chk("G.01 nothing is showing before the beat starts",
+			not overlay._ball.visible and not overlay._released.visible)
+
+	# ⚠️ Coroutines require `await` at their own call site (the same GDScript
+	# rule `pick_gender()`'s own test above works around) — so the full ~2s
+	# real sequence (wobble, open, grow, hold, fade) runs end to end here,
+	# not a snapshot mid-flight.
+	await overlay.release_random_pokemon()
+	_chk("G.02 both the ball and the released sprite hide again once the beat ends",
+			not overlay._ball.visible and not overlay._released.visible)
+	_chk("G.03 a real species texture was assigned, not left null",
+			overlay._released.texture != null)
+
+	overlay.queue_free()

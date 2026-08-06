@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Magical Leaf"
+description = "Attacks with a strange leaf that cannot be evaded."
 type = 13
 category = 1
 power = 60

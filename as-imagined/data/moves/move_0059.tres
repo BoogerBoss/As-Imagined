@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Blizzard"
+description = "Hits the foes with an icy storm that may freeze it."
 type = 16
 category = 1
 power = 110

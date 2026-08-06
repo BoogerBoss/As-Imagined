@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Torch Song"
+description = "Flames scorch the target. Boosts the user's Sp. Atk."
 type = 11
 category = 1
 power = 80

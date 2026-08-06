@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Me First"
+description = "Executes the foe's attack with greater power."
 type = 1
 category = 2
 accuracy = 0

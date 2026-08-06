@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Wish"
+description = "A wish that restores HP. It takes time to work."
 type = 1
 category = 2
 accuracy = 0

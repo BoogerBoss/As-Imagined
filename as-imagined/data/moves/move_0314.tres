@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Air Cutter"
+description = "Hacks with razorlike wind. High critical-hit ratio."
 type = 3
 category = 1
 power = 60

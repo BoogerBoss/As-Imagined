@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Clangorous Soul"
+description = "The user uses some of its HP to raise all its stats."
 type = 17
 category = 2
 sound_move = true

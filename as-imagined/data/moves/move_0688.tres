@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Veevee Volley"
+description = "Eevee's love increases its power. It never misses."
 type = 1
 power = 1
 accuracy = 0

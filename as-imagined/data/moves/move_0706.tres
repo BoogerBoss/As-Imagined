@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Drum Beating"
+description = "Plays a drum to attack. The foe's Speed is lowered."
 type = 13
 power = 80
 pp = 10

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poison Jab"
+description = "A stabbing attack that may poison the foe."
 type = 4
 power = 80
 pp = 20

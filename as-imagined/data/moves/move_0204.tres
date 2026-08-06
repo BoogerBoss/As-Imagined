@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Charm"
+description = "Charms the foe and sharply reduces its Attack."
 type = 19
 category = 2
 pp = 20

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Morning Sun"
+description = "Restores HP. The amount varies with the weather."
 type = 1
 category = 2
 accuracy = 0

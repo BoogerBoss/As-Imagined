@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Agility"
+description = "Relaxes the body to sharply boost Speed."
 type = 15
 category = 2
 accuracy = 0

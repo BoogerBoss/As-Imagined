@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bulk Up"
+description = "Bulks up the body to boost both Attack and Defense."
 type = 2
 category = 2
 accuracy = 0

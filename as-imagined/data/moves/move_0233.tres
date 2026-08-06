@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Vital Throw"
+description = "Makes the user's move last, but it never misses."
 type = 2
 power = 70
 accuracy = 0

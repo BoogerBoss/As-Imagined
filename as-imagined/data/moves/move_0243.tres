@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mirror Coat"
+description = "Counters the foe's special attack at double the power."
 type = 15
 category = 1
 power = 1

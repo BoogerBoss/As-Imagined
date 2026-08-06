@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Taunt"
+description = "Taunts the foe into only using attack moves."
 type = 18
 category = 2
 pp = 20

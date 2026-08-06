@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Infernal Parade"
+description = "Hurts a foe harder if it has an ailment. May leave a burn."
 type = 8
 category = 1
 power = 60

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Purify"
+description = "Cures the foe's status to restore HP."
 type = 4
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Brine"
+description = "Does double damage to foes with half HP or less."
 type = 12
 category = 1
 power = 65

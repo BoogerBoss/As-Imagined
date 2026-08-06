@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Acid"
+description = "Sprays a hide-melting acid. May lower Sp. Def."
 type = 4
 category = 1
 power = 40

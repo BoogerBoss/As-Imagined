@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rapid Spin"
+description = "User spins and removes some effects, while upping speed."
 type = 1
 power = 50
 pp = 40

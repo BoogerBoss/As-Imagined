@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Baby-Doll Eyes"
+description = "Lowers the foe's Attack before it can move."
 type = 19
 category = 2
 pp = 30

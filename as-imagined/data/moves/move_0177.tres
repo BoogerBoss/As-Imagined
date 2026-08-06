@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aeroblast"
+description = "Launches a vacuumed blast. High critical-hit ratio."
 type = 3
 category = 1
 power = 100

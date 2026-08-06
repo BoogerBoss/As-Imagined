@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "First Impression"
+description = "Hits hard and first. Only works first turn."
 type = 7
 power = 90
 pp = 10

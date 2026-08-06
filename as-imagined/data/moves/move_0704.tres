@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Body Press"
+description = "Does more damage the higher the user's Def."
 type = 2
 power = 80
 pp = 10

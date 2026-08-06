@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lick"
+description = "Licks with a long tongue to injure. May also paralyze."
 type = 8
 power = 30
 pp = 30

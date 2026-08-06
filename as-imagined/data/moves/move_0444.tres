@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Stone Edge"
+description = "Stabs the foe with stones. High critical-hit ratio."
 type = 6
 power = 100
 accuracy = 80

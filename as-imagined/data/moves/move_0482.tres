@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sludge Wave"
+description = "Swamps all others with a wave of sludge. May also poison."
 type = 4
 category = 1
 power = 95

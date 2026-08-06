@@ -263,7 +263,13 @@ var _bag_screen: FieldBagScreen = null
 var _party_screen: FieldPartyScreen = null
 ## [M27K K-b] The naming screen, for the player's name and the rival's.
 var _naming: NamingScreen = null
+## [M27K K-b visuals] Oak/player/rival portraits during `run_new_game()`.
+var _oak_overlay: OakSpeechOverlay = null
 var _pending_use_item: int = -1
+## [M27G G2] True while `_party_screen` is open FOR THE SCRIPT VM (`special
+## ChoosePartyMon`), as opposed to the bag's item-use flow or a plain browse —
+## a third disambiguation alongside `_pending_use_item`'s own two states.
+var _vm_party_choice_pending := false
 var _script_source: ScriptVM.ScriptSource = null
 
 signal script_started(label: String)
@@ -923,7 +929,27 @@ func _try_step(dir: int) -> void:
 		if w != null and w.arrow_dir < 0:
 			_do_warp(w)
 			return
+		# [Map scripts follow-up] A coord_event trigger on the cell just
+		# arrived at — the SAME source function warps come from
+		# (`TryStartStepBasedScript`), checked in the same neighbourhood for
+		# that reason. `Trigger`/`trigger_armed` were fully built (M27B/M27D)
+		# but never actually dispatched anywhere outside the editor overlay
+		# and this file's own test suite — found while live-driving the
+		# starter fix, since without this OakTrigger (and every other
+		# coord_event in the corridor) can never fire at all, regardless of
+		# any map-script work.
+		check_step_trigger()
+		if _vm != null:
+			return
 		check_trainer_sight()
+		# [Map scripts] SECOND priority, matching source's own
+		# `ProcessPlayerFieldInput` order (`CheckForTrainersWantingBattle`
+		# then `TryRunOnFrameMapScript`, both before `input->tookStep`'s own
+		# handling). Gated on `_in_approach` for the same reason the poison/
+		# wild-encounter block below already is — a trainer sighting this
+		# same step takes precedence.
+		if not _in_approach and not _in_battle:
+			check_on_frame_map_script()
 		# [M27O O4] Poison ticks LAST, and the order is source's own:
 		# `ProcessPlayerFieldInput` runs `CheckForTrainersWantingBattle` at its
 		# very top, before it even tests `input->tookStep` — so a trainer who
@@ -932,7 +958,9 @@ func _try_step(dir: int) -> void:
 		# `TryStartStepCountScript`). Gating on `_in_approach` rather than the
 		# return value because `check_trainer_sight` is a coroutine; it sets the
 		# flag synchronously before its first await, so this reads true already.
-		if not _in_approach and not _in_battle:
+		# Also gated on `_vm == null` now — an OnFrame map script that just
+		# started owns the frame the same way any other running script does.
+		if not _in_approach and not _in_battle and _vm == null:
 			_poison_step()
 			# [M27H H2/H3] Wild encounters come LAST, and that is source's own
 			# order: `ProcessPlayerFieldInput` runs the trainer check first, then
@@ -1120,48 +1148,67 @@ const ITEM_MSG_BECAME_HEALTHY := "{STR_VAR_1} became healthy."
 ## [M27K K-b] The new-game sequence: Oak's speech, gender, both names.
 ##
 ## ⚠️ **WHAT THIS DELIBERATELY DOES NOT PORT.** `src/oak_speech.c` is 2193 lines
-## and most of them are theatre this project has no layer for: the Nidoran
-## released from its ball (`Task_OakSpeech_ReleaseNidoranFFromPokeBall`), Oak's
-## and the player's portraits fading in and out, the shrink-into-the-overworld
-## exit. Same call as `showmonpic` in K-a — there is no field picture layer, so
-## a no-op loses the flourish and not the scene. The BEATS, their ORDER and the
-## TEXT are source's.
+## and most of them are theatre this project has no layer for. The BEATS,
+## their ORDER and the TEXT are source's.
+##
+## **[M27K K-b visuals] Portraits + ball release added 2026-08-05** — see
+## `OakSpeechOverlay` and `docs/m27k_oak_speech_visuals_recon.md`. Still
+## deliberately absent: the ground platform/background scene and source's
+## own BG-affine shrink exit (a plain fade stands in — recon confirmed no
+## exotic technique is actually load-bearing for that beat, only the
+## mechanism differs).
+##
+## ⚠️ **THE BALL RELEASES A RANDOM ROSTER SPECIES, NOT SOURCE'S FIXED
+## NIDORAN♀ — Rob's own call, fully random across all 386, legendaries
+## included.** No cry plays — this project has no audio playback anywhere.
+## See `OakSpeechOverlay.release_random_pokemon()`'s own doc comment.
 ##
 ## ⚠️ **GENDER IS ASKED BEFORE THE NAME, AND THAT ORDERING IS LOAD-BEARING** —
 ## `PlayerIdentity.name_choices()` keys the preset list on it, exactly as
 ## source's `sMaleNameChoices`/`sFemaleNameChoices` do, so asking in the other
 ## order would offer a list it then has to throw away.
+##
+## ⚠️ **THE GENDER QUESTION DIVERGES FROM SOURCE ON PURPOSE, Rob's call
+## 2026-08-05.** Source shows NO portrait during the choice itself (Oak's own
+## portrait slides off first, then a bare 2-line text menu asks BOY/GIRL —
+## see the recon's §A5). This project shows Red and Leaf side by side instead,
+## clickable directly — picking a look IS the answer, rather than a separate
+## text choice followed by the portrait appearing after the fact.
 func run_new_game() -> void:
-	if _box == null or _naming == null or _yes_no == null:
+	if _box == null or _naming == null or _oak_overlay == null:
 		return
 	OverworldSession.identity = PlayerIdentity.new()
 	TextBuffers.identity = OverworldSession.identity
 	var id := OverworldSession.identity
 
-	await _say([OAK_WELCOME, OAK_THIS_WORLD, OAK_INHABITED, OAK_I_STUDY,
-			OAK_ABOUT_YOURSELF])
+	_oak_overlay.show_solo("oak")
+	await _say([OAK_WELCOME, OAK_THIS_WORLD])
+	# ⚠️ Source pairs the ball-release beat with THIS line
+	# (`Task_OakSpeech_IsInhabitedFarAndWide` plays it, per
+	# docs/m27k_oak_speech_visuals_recon.md §A4) — not before, not after.
+	await _oak_overlay.release_random_pokemon()
+	await _say([OAK_INHABITED, OAK_I_STUDY, OAK_ABOUT_YOURSELF])
 
-	# Gender. Reuses the yes/no widget rather than building a second two-option
-	# picker — source asks it as one question with two answers, which is the
-	# same shape, and YesNoBox already carries the 5-frame debounce.
 	await _say([OAK_ASK_GENDER])
-	# ⚠️ YES == BOY. Source asks "Are you a boy? Or are you a girl?" as one
-	# question whose FIRST option is the boy — the same polarity `yesnobox`
-	# already carries, so no second convention is introduced.
-	_yes_no.open()
-	var boy: bool = await _yes_no.chosen
+	# ⚠️ BOY == RED, the same polarity source's own sMaleNameChoices/
+	# sFemaleNameChoices split carries — no second convention introduced.
+	var boy: bool = await _oak_overlay.pick_gender()
 	id.gender = PlayerIdentity.Gender.BOY if boy else PlayerIdentity.Gender.GIRL
 
+	_oak_overlay.show_solo("red" if boy else "leaf")
 	await _say([OAK_YOUR_NAME])
 	id.set_name(await _ask_name("Your name?", id.name_choices()))
 	await _say([OAK_SO_YOUR_NAME])
 
+	_oak_overlay.show_solo("rival")
 	await _say([OAK_RIVAL_INTRO, OAK_RIVAL_NAME])
 	id.set_rival_name(await _ask_name("Your rival's name?",
 			PlayerIdentity.RIVAL_NAMES))
 	await _say([OAK_REMEMBER_RIVAL])
 
+	_oak_overlay.show_solo("oak")
 	await _say([OAK_LETS_GO])
+	await _oak_overlay.fade_out()
 
 
 ## Show pages and wait for them to be dismissed. Expanded at print time, like
@@ -1197,6 +1244,14 @@ func _on_bag_item_use(item_id: int) -> void:
 ## the flow afterwards is source's own conditional — see `_announce_item_use`
 ## and `_reopen_party_after_item` for the two findings that shaped this.
 func _on_party_mon_chosen(index: int) -> void:
+	# [M27G G2] Checked FIRST: the VM's own `WAIT_PARTY_CHOICE` is a third,
+	# mutually-exclusive reason this screen could be open, alongside item-use
+	# (`_pending_use_item >= 0`) and a plain browse (neither flag set).
+	if _vm_party_choice_pending:
+		_vm_party_choice_pending = false
+		if _vm != null:
+			_vm.answer_party_choice(index)
+		return
 	if _pending_use_item < 0:
 		return
 	var item_id := _pending_use_item
@@ -1291,6 +1346,11 @@ func _reopen_party_after_item(item_id: int) -> void:
 
 
 func _on_party_cancelled() -> void:
+	if _vm_party_choice_pending:
+		_vm_party_choice_pending = false
+		if _vm != null:
+			_vm.answer_party_choice(-1)
+		return
 	_pending_use_item = -1
 
 
@@ -1387,6 +1447,27 @@ func _poison_step() -> void:
 		return
 	if _box != null:
 		_box.open(pages)
+
+
+## [Map scripts follow-up] A `Trigger` on the cell just arrived at
+## (`field_control_avatar.c`'s coord_event half of `TryStartStepBasedScript`)
+## — gated on its own var/value via `trigger_armed`, the same gate the
+## editor overlay and `m27a_step_resolver_test.gd` already exercise, just
+## never wired to anything that actually runs at play time. Fires on STEP
+## COMPLETION for the same reason `check_trainer_sight` does: the condition
+## is a static "which cell am I on" fact, so per-step is equivalent to
+## source's real per-frame poll and cannot re-trigger while the player
+## stands still (the script it runs is what changes the var, exactly the
+## same self-disarming shape `Trigger`'s own doc comment already describes).
+func check_step_trigger() -> bool:
+	if _vm != null or _in_battle or _warping or _in_approach:
+		return false
+	var t := manager.entity_node_at(_cell) as Trigger
+	if t == null or t.script_label == "" or t.script_label == "0x0":
+		return false
+	if not flags.trigger_armed(t):
+		return false
+	return run_script(t.script_label, t)
 
 
 ## Does any trainer now see the player? If so, run the approach.
@@ -1845,6 +1926,8 @@ func _setup_scripting() -> void:
 	add_child(_start_menu)
 	_naming = NamingScreen.new()
 	add_child(_naming)
+	_oak_overlay = OakSpeechOverlay.new()
+	add_child(_oak_overlay)
 	_bag_screen = FieldBagScreen.new()
 	add_child(_bag_screen)
 	_party_screen = FieldPartyScreen.new()
@@ -1939,6 +2022,11 @@ func _drive_script() -> void:
 	# entities walking at once. Drained here, after stepping, so everything
 	# queued this frame starts together.
 	_start_pending_movements()
+	# [Map scripts] setobjectxyperm/setobjectmovementtype/turnobject/
+	# addobject/removeobject — same drain shape as movements, immediately
+	# after them so a script that repositions an entity THEN walks it (or
+	# vice versa) sees its own ops applied in the order it issued them.
+	_apply_pending_object_ops()
 
 	match _vm.pause_reason:
 		ScriptVM.Pause.WAIT_MESSAGE:
@@ -2020,6 +2108,25 @@ func _drive_script() -> void:
 					_naming.name_chosen.connect(_on_script_name_chosen)
 				_naming.open_keyboard(_vm.naming_prompt())
 
+		# [Map scripts] `warp`. Guarded on `_warping` rather than a local
+		# flag — `_do_scripted_warp` sets it at its own very start, the same
+		# way `_do_warp` already does, so this can't be re-triggered every
+		# frame while the fade/teardown/reload is in flight.
+		ScriptVM.Pause.WAIT_WARP:
+			if not _warping:
+				_do_scripted_warp(_vm.pending_warp)
+
+		# [M27G G2] `special ChoosePartyMon` — the real party screen, in
+		# BROWSE mode (no item name), reusing the exact node the bag's own
+		# item-use flow already shares. Guarded on `_vm_party_choice_pending`
+		# rather than `_party_screen.is_open` so a re-entrant frame (the
+		# screen takes a frame to actually open) cannot double-open it.
+		ScriptVM.Pause.WAIT_PARTY_CHOICE:
+			if not _vm_party_choice_pending:
+				_vm_party_choice_pending = true
+				_pending_use_item = -1
+				_party_screen.open(_vm.party)
+
 		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
 			_finish_script()
 
@@ -2056,6 +2163,63 @@ func _start_pending_movements() -> void:
 		var e := _resolve_movement_entity(target)
 		if e == null or not manager.start_movement_for_entity(e, ops):
 			push_warning("overworld: applymovement target '%s' did not resolve" % target)
+
+
+## [Map scripts] Direction token -> StepResolver.Dir, for `turnobject` — the
+## one place a raw `DIR_*` string needs converting; applymovement's own
+## FACE_* actions go through WalkAnim.facing_name instead, a separate table.
+const DIR_TOKEN := {
+	"DIR_SOUTH": StepResolver.Dir.SOUTH,
+	"DIR_NORTH": StepResolver.Dir.NORTH,
+	"DIR_WEST": StepResolver.Dir.WEST,
+	"DIR_EAST": StepResolver.Dir.EAST,
+}
+
+
+## [Map scripts] setobjectxyperm/setobjectmovementtype/turnobject/addobject/
+## removeobject — same drain-and-resolve shape as `_start_pending_movements`,
+## for the same reason: the VM has no business resolving a LOCALID into a
+## scene node.
+##
+## `add`/`remove` both toggle the entity's own `visibility_flag` — every
+## corpus entity reached via `addobject`/`removeobject` already carries one
+## (the importer wires it uniformly), so this reuses the SAME mechanism
+## `entity_visible()` already reads everywhere else rather than adding a
+## second, Godot-native show/hide path that nothing else would check.
+func _apply_pending_object_ops() -> void:
+	if _vm == null or _vm.pending_object_ops.is_empty():
+		return
+	var queued := _vm.pending_object_ops.duplicate()
+	_vm.pending_object_ops.clear()
+	for op: Dictionary in queued:
+		var target := str(op.get("target", ""))
+		match str(op.get("op", "")):
+			"move":
+				var e := _resolve_movement_entity(target)
+				if e != null:
+					e.cell = Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
+			"movement_type":
+				var e2 := _resolve_movement_entity(target) as NPC
+				if e2 != null:
+					e2.movement_type = str(op.get("value", ""))
+			"turn":
+				if not DIR_TOKEN.has(str(op.get("dir", ""))):
+					continue
+				var dir: int = DIR_TOKEN[str(op.get("dir", ""))]
+				if _is_player_target(target):
+					_face_player(dir)
+				else:
+					var e3 := _resolve_movement_entity(target) as NPC
+					if e3 != null:
+						e3.set_facing(dir)
+			"add":
+				var e4 := _resolve_movement_entity(target)
+				if e4 != null and e4.visibility_flag != "":
+					flags.flag_clear(e4.visibility_flag)
+			"remove":
+				var e5 := _resolve_movement_entity(target)
+				if e5 != null and e5.visibility_flag != "":
+					flags.flag_set(e5.visibility_flag)
 
 
 static func _is_player_target(target: String) -> bool:
@@ -2354,6 +2518,8 @@ func _do_warp(w: Warp) -> void:
 		_cell = Vector2i(arrival["cell"])
 	_place_player(dest, _cell)
 
+	await _run_arrival_map_scripts(dest)
+
 	await _fade_to(0.0)
 	await _exit_arrival(arrival.get("warp"))
 	_warping = false
@@ -2394,6 +2560,130 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 	# An interior has none; an outdoor destination needs its own back.
 	manager.load_neighbours(dest)
 	manager.refresh_skirts()
+
+
+## [Map scripts] `RunOnTransitionMapScript` + `TryRunOnWarpIntoMapScript`
+## (`script.c:383,414`) — real per-map auto-fire scripts, checked once on
+## arriving in a NEW current map via a real warp. Entirely separate from the
+## interact/trigger/warp-node scripts already built: the importer already
+## extracted these into `map_scripts.json` (`<Map>_OnTransition`/`_OnWarp`)
+## but nothing ever ran them, so `VAR_MAP_SCENE_*`-gated scenes (Oak's Lab's
+## own starter table among them) could never advance past their own first
+## gate. Both run to completion before the screen fades back in, matching
+## source's real "before InitMap()" positioning as closely as this
+## project's per-frame VM allows (see `_run_map_script_to_completion`'s own
+## doc comment for what "to completion" means here).
+##
+## Deliberately NOT run on a connection crossing (the soft-boundary
+## streaming path) — source treats every map change as a full reload and
+## would run these there too, but this project's own C4/C5 decisions keep
+## connection-crossing lightweight and streamed on purpose. Also not run at
+## boot (a new game's own very first map). Both are disclosed
+## simplifications, not oversights — neither is needed for any script this
+## project currently ships, and extending coverage to them is straightforward
+## once a real one is found to need it.
+func _run_arrival_map_scripts(map_name: String) -> void:
+	var prefix := _map_script_prefix(map_name)
+	await _run_map_script_to_completion(prefix + "_OnTransition")
+	await _run_map_script_to_completion(prefix + "_OnWarp")
+
+
+## [Map scripts] `MapConstants.map_name_for`/`chunk_owning` both answer with
+## the BAKED SCENE name (`PalletTown_ProfessorOaksLab_Frlg`, matching the
+## `.tscn` on disk) — but `map_scripts.json`'s own keys never carry the
+## `_Frlg` suffix (`PalletTown_ProfessorOaksLab_OnFrame`, matching the
+## importer's own label convention, same as every other script label in the
+## corpus). The exact "map constants are not derivable by naming convention
+## alone" trap this project has already paid for once for tileset
+## directories and node names — caught here only by live-driving the fix,
+## since a silently-unresolved label degrades to "nothing happens" with no
+## warning anywhere.
+static func _map_script_prefix(map_name: String) -> String:
+	return map_name.substr(0, map_name.length() - 5) if map_name.ends_with("_Frlg") else map_name
+
+
+## Runs `label` to completion if it exists — a thin wrapper around the SAME
+## run_script()/_drive_script() pipeline any other script uses (already
+## driven automatically, once per frame, by `_process()`'s own `_vm != null`
+## branch); the caller here just awaits instead of handing control back to
+## the player. This project has no truly-synchronous execution mode the way
+## source's `RunScriptImmediately` is, so "runs before anything else" is
+## expressed by awaiting completion before the caller's own next step —
+## safe for OnTransition/OnWarp specifically because neither ever reaches a
+## `message` anywhere in its own call graph (checked directly against every
+## corridor map's own table before relying on this), so this can never
+## stall on player input mid-fade.
+func _run_map_script_to_completion(label: String) -> void:
+	if _script_source == null or not _script_source.has_script(label):
+		return
+	if not run_script(label):
+		return
+	while _vm != null:
+		await get_tree().process_frame
+
+
+## [Map scripts] `TryRunOnFrameMapScript` (`script.c:403`) — the per-map
+## OnFrame table. Source polls this every raw frame via
+## `ProcessPlayerFieldInput`; checked here at the SAME step-completion
+## cadence as `check_trainer_sight` instead, because the condition it tests
+## only ever changes as the RESULT of a script running, never from mere
+## movement — step-completion is equivalent in practice and matches this
+## project's own established cadence for exactly this class of check.
+## Source's real priority is trainer sight FIRST, then this; call sites must
+## preserve that order.
+##
+## Unlike OnTransition/OnWarp, this genuinely BECOMES the running script
+## (`ScriptContext_SetupScript`, not `RunScriptImmediately`) — it can take
+## input, show messages, queue movements, all across many frames, the same
+## as an interact-triggered script. Returns true if a script was started, so
+## the caller can freeze whatever it gates on that step.
+func check_on_frame_map_script() -> bool:
+	if _vm != null or _in_battle or _warping or _in_approach:
+		return false
+	var map_name := manager.chunk_owning(_cell)
+	if map_name == "":
+		return false
+	var label := _map_script_prefix(map_name) + "_OnFrame"
+	if _script_source == null or not _script_source.has_script(label):
+		return false
+	return run_script(label)
+
+
+## [Map scripts] `_do_warp`'s own counterpart for a script-driven warp — the
+## `warp` opcode names an explicit destination CELL rather than a warp id
+## (source's `ScrCmd_warp` reads x/y literally), so this skips
+## `warp_arrival` entirely and places the player at the named cell once the
+## destination is loaded. Mirrors `_do_warp`'s own sequence otherwise,
+## including running the destination's OnTransition/OnWarp. Resumes the VM
+## with a plain resume() — like WAIT_MOVEMENT, there is no result to branch
+## on.
+func _do_scripted_warp(warp_data: Dictionary) -> void:
+	var map_token := str(warp_data.get("map", ""))
+	var dest := MapConstants.map_name_for(map_token)
+	if dest == "" or not MapConstants.is_baked(map_token):
+		print("overworld: scripted warp to %s is not baked — staying put" % map_token)
+		if _vm != null:
+			_vm.resume()
+		return
+
+	_warping = true
+	await _fade_to(1.0)
+
+	_teardown_and_load(dest)
+
+	_cell = Vector2i(int(warp_data.get("x", 0)), int(warp_data.get("y", 0)))
+	_place_player(dest, _cell)
+
+	await _run_arrival_map_scripts(dest)
+
+	await _fade_to(0.0)
+	# No real Warp node on the destination side to read an exit_dir from —
+	# _exit_arrival(null) degrades to its own collision-based fallback,
+	# which is the correct behaviour for a scripted arrival.
+	await _exit_arrival(null)
+	_warping = false
+	if _vm != null:
+		_vm.resume()
 
 
 ## [M27O O2] The whiteout: wake up at the respawn point.

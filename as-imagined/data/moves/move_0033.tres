@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tackle"
+description = "Charges the foe with a full-body tackle."
 type = 1
 power = 40
 pp = 35

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Howl"
+description = "Howls to raise the spirit and boosts Attack."
 type = 1
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Night Daze"
+description = "Looses a pitch-black shock wave. May lower accuracy."
 type = 18
 category = 1
 power = 85

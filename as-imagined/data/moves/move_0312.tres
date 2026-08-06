@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aromatherapy"
+description = "Heals all status problems with a soothing scent."
 type = 13
 category = 2
 accuracy = 0

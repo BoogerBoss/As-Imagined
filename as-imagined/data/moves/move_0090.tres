@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fissure"
+description = "A one-hit KO move that drops the foe in a fissure."
 type = 5
 power = 1
 accuracy = 30

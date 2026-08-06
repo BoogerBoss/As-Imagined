@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mud Bomb"
+description = "Throws a blob of mud to damage and cut accuracy."
 type = 5
 category = 1
 power = 65

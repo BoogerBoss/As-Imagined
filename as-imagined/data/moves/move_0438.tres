@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Power Whip"
+description = "Violently lashes the foe with vines or tentacles."
 type = 13
 power = 120
 accuracy = 85

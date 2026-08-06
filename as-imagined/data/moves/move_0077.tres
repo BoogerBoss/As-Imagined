@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poison Powder"
+description = "Scatters a toxic powder that may poison the foe."
 type = 4
 category = 2
 accuracy = 75

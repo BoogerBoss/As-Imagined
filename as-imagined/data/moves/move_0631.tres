@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Strength Sap"
+description = "Saps the foe's Attack to heal HP, then drops Attack."
 type = 13
 category = 2
 pp = 10

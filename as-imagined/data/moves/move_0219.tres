@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Safeguard"
+description = "Protects allies from status problems for 5 turns."
 type = 1
 category = 2
 accuracy = 0

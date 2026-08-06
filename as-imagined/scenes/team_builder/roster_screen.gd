@@ -44,13 +44,6 @@ extends Control
 # yet). Flagged, not silently under-built: a two-step "press again to
 # confirm" or a real confirmation dialog would be a reasonable follow-up.
 
-const _NATURE_NAMES: Array[String] = [
-	"Hardy", "Lonely", "Brave", "Adamant", "Naughty",
-	"Bold", "Docile", "Relaxed", "Impish", "Lax",
-	"Timid", "Hasty", "Serious", "Jolly", "Naive",
-	"Modest", "Mild", "Quiet", "Bashful", "Rash",
-	"Calm", "Gentle", "Sassy", "Careful", "Quirky",
-]
 
 @onready var _status_label: Label = $Scroll/VBox/StatusLabel
 @onready var _list_view: VBoxContainer = $Scroll/VBox/ListView
@@ -224,7 +217,7 @@ func _slot_summary_text(spec) -> String:
 	var species_data: Dictionary = PokemonRegistry.get_species(int(spec.get("dex", -1)))
 	var species_name: String = species_data.get("name", "?")
 	var nature_id: int = int(spec.get("nature", 0))
-	var nature_name: String = _NATURE_NAMES[nature_id] if nature_id >= 0 and nature_id < _NATURE_NAMES.size() else "?"
+	var nature_name: String = BattlePokemon.nature_name(nature_id)
 	var move_count: int = spec.get("move_ids", []).size()
 	return "%s  Lv.%d  %s  (%d move%s)" % [
 		species_name, int(spec.get("level", 1)), nature_name,

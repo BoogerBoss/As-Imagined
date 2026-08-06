@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Silk Trap"
+description = "Protects itself, lowering Speed on contact."
 type = 7
 category = 2
 accuracy = 0

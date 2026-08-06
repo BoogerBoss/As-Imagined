@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Defog"
+description = "Removes obstacles and lowers evasion."
 type = 3
 category = 2
 accuracy = 0

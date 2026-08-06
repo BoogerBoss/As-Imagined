@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "False Surrender"
+description = "Bows to stab the foe with hair. It never misses."
 type = 18
 power = 80
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Chilly Reception"
+description = "Bad joke summons snowstorm. The user also switches out."
 type = 16
 category = 2
 accuracy = 0

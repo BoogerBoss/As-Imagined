@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "No Retreat"
+description = "Raises all of the user's stats but prevents escape."
 type = 2
 category = 2
 accuracy = 0

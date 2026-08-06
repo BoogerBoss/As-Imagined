@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sonic Boom"
+description = "Launches shock waves that always inflict 20 HP damage."
 type = 1
 category = 1
 power = 1

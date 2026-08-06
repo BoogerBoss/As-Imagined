@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pluck"
+description = "Eats the foe's held Berry gaining its effect."
 type = 3
 power = 60
 pp = 20

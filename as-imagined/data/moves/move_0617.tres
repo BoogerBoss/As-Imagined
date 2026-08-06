@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Light Of Ruin"
+description = "Fires a great beam of light that also hurts the user."
 type = 19
 category = 1
 power = 140

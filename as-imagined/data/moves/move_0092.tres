@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Toxic"
+description = "Poisons the foe with an intensifying toxin."
 type = 4
 category = 2
 accuracy = 90

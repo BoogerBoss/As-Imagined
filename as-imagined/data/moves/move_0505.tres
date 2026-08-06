@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Heal Pulse"
+description = "Recovers up to half the target's maximum HP."
 type = 15
 category = 2
 accuracy = 0

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Milk Drink"
+description = "Recovers up to half the user's maximum HP."
 type = 1
 category = 2
 accuracy = 0

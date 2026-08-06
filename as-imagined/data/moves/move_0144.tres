@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Transform"
+description = "Alters the user's cells to become a copy of the foe."
 type = 1
 category = 2
 accuracy = 0

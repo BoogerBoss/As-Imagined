@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Storm Throw"
+description = "This attack always results in a critical hit."
 type = 2
 power = 60
 pp = 10

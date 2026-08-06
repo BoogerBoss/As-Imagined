@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Magnet Bomb"
+description = "Launches a magnet that strikes without fail."
 type = 9
 power = 60
 accuracy = 0

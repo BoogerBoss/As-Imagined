@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Accelerock"
+description = "Hits with a high-speed rock that always goes first."
 type = 6
 power = 40
 pp = 20

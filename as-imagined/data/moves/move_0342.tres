@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Poison Tail"
+description = "Has a high critical-hit ratio. May also poison."
 type = 4
 power = 50
 pp = 25

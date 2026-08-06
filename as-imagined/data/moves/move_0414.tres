@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Earth Power"
+description = "Makes the ground erupt with power. May lower Sp. Def."
 type = 5
 category = 1
 power = 90

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flash Cannon"
+description = "Releases a blast of light that may lower Sp. Def."
 type = 9
 category = 1
 power = 80

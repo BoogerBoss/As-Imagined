@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Flame Charge"
+description = "Attacks in a cloak of flames. Raises Speed."
 type = 11
 power = 50
 pp = 20

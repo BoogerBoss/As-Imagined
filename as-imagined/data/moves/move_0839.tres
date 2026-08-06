@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Tachyon Cutter"
+description = "Launches particle blades at the target. Strikes twice."
 type = 9
 category = 1
 power = 50

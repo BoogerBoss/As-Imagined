@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rock Smash"
+description = "A rock-crushing attack that may lower Defense."
 type = 2
 power = 40
 pp = 15

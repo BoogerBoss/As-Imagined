@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Razor Leaf"
+description = "Cuts enemies with leaves. High critical-hit ratio."
 type = 13
 power = 55
 accuracy = 95

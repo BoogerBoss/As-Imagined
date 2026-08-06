@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Super Fang"
+description = "Attacks with sharp fangs and cuts half the foe's HP."
 type = 1
 power = 1
 accuracy = 90

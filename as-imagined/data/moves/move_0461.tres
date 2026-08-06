@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Lunar Dance"
+description = "The user faints to heal up the recipient."
 type = 15
 category = 2
 accuracy = 0

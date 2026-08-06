@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Thunderous Kick"
+description = "Uses a lightning-like kick to hit. Lowers foe's Defense."
 type = 2
 power = 90
 pp = 10

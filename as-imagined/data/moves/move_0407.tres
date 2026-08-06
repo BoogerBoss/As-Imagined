@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Dragon Rush"
+description = "Tackles the foe with menace. May cause flinching."
 type = 17
 power = 100
 accuracy = 75

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Rain Dance"
+description = "Boosts the power of Water-type moves for 5 turns."
 type = 12
 category = 2
 accuracy = 0

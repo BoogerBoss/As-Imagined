@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Slam"
+description = "Slams the foe with a long tail, vine, etc."
 type = 1
 power = 80
 accuracy = 75

@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Wing Attack"
+description = "Strikes the foe with wings spread wide."
 type = 3
 power = 60
 pp = 35

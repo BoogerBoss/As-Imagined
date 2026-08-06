@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Guillotine"
+description = "A powerful pincer attack that KOs if it hits."
 type = 1
 power = 1
 accuracy = 30

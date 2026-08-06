@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Disable"
+description = "For 4 turns, prevents foe from using last used move."
 type = 1
 category = 2
 pp = 20

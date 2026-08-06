@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Heal Order"
+description = "The user's underlings show up to heal half its max HP."
 type = 7
 category = 2
 accuracy = 0

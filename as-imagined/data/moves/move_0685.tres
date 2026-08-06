@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Sappy Seed"
+description = "Giant stalk scatters seeds that drain HP every turn."
 type = 13
 power = 100
 accuracy = 90

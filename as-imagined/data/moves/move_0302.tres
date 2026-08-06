@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Needle Arm"
+description = "Attacks with thorny arms. May cause flinching."
 type = 13
 power = 60
 pp = 15

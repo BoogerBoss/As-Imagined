@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Substitute"
+description = "Creates a decoy using 1/4 of the user's maximum HP."
 type = 1
 category = 2
 accuracy = 0

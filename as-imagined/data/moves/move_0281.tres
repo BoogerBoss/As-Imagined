@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Yawn"
+description = "Lulls the foe into yawning, then sleeping next turn."
 type = 1
 category = 2
 accuracy = 0

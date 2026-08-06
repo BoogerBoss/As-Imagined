@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Conversion 2"
+description = "Makes the user resistant to the last attack's type."
 type = 1
 category = 2
 accuracy = 0

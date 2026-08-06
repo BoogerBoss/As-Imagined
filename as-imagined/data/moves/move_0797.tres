@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Kowtow Cleave"
+description = "User slashes the foe after kowtowing. It never misses."
 type = 18
 power = 85
 accuracy = 0

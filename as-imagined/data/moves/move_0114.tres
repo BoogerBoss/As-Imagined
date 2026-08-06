@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Haze"
+description = "Creates a black haze that eliminates all stat changes."
 type = 16
 category = 2
 accuracy = 0

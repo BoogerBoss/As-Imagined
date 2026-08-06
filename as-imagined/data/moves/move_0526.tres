@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Work Up"
+description = "The user is roused. Ups Attack and Sp. Atk."
 type = 1
 category = 2
 accuracy = 0

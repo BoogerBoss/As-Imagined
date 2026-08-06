@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Pin Missile"
+description = "Sharp pins are fired to strike 2 to 5 times."
 type = 7
 power = 25
 accuracy = 95

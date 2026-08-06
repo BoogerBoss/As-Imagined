@@ -30,8 +30,8 @@ var _fail := 0
 func _ready() -> void:
 	_test_top_menu_has_four_options()
 	_test_fight_button_switches_to_fight_menu()
-	_test_fight_menu_shows_moves_and_back_button()
-	_test_fight_menu_back_returns_to_top()
+	_test_fight_menu_shows_moves_only_no_back_button()
+	_test_fight_escape_returns_to_top()
 	_test_switch_button_disabled_without_valid_target()
 	_test_switch_opens_a_real_overlay()
 	_test_item_back_returns_to_top()
@@ -194,9 +194,9 @@ func _test_fight_button_switches_to_fight_menu() -> void:
 	_chk("Fight button has a real pressed connection", fight_btn.pressed.get_connections().size() > 0)
 
 
-# ── 3. The Fight menu shows the mon's own moves plus a Back button ──────
+# ── 3. The Fight menu shows only the mon's own moves, no Back button ────
 
-func _test_fight_menu_shows_moves_and_back_button() -> void:
+func _test_fight_menu_shows_moves_only_no_back_button() -> void:
 	var mon := _make_mon("Mover")
 	mon.add_move(_load_move(33))  # Tackle
 	mon.add_move(_load_move(52))  # Ember
@@ -213,21 +213,20 @@ func _test_fight_menu_shows_moves_and_back_button() -> void:
 
 	bs._build_fight_menu(0)
 
-	# [M26c-3] Moves now live in the real 2x2 grid; Back is a separate row
-	# in _new_button_area below it (see _build_fight_menu's own doc
-	# comment for why it's not a 5th grid cell) -- combined here since this
-	# assertion cares about the FIGHT menu's total content, not which of
-	# the two containers each button happens to live in.
-	var texts := _button_texts(bs._new_button_grid) + _button_texts(bs._new_button_area)
-	_chk("Fight menu shows exactly 2 moves + Back", texts.size() == 3)
-	_chk("Fight menu shows Tackle with its own PP", texts.any(func(t): return t.begins_with("Tackle")))
-	_chk("Fight menu shows Ember with its own PP", texts.any(func(t): return t.begins_with("Ember")))
-	_chk("Fight menu has a Back button", texts.has("Back"))
+	# [Back-button removal] Moves live in the real 2x2 grid; _new_button_area
+	# (the old Back row) is now left permanently empty for FIGHT -- see
+	# _build_fight_menu's own doc comment. Checked separately per container
+	# so an accidental future re-add to either one is caught.
+	var grid_texts := _button_texts(bs._new_button_grid)
+	_chk("Fight menu shows exactly 2 moves", grid_texts.size() == 2)
+	_chk("Fight menu shows Tackle with its own PP", grid_texts.any(func(t): return t.begins_with("Tackle")))
+	_chk("Fight menu shows Ember with its own PP", grid_texts.any(func(t): return t.begins_with("Ember")))
+	_chk("Fight menu's Back row is empty (no Back button)", bs._new_button_area.get_child_count() == 0)
 
 
-# ── 4. Fight menu's Back button returns to TOP (not skipped/misrouted) ──
+# ── 4. Escape returns from FIGHT to TOP (the Back button's replacement) ──
 
-func _test_fight_menu_back_returns_to_top() -> void:
+func _test_fight_escape_returns_to_top() -> void:
 	var mon := _make_mon("Mover2")
 	mon.add_move(_load_move(33))
 	var bs := BattleScreenShared.new()
@@ -238,23 +237,22 @@ func _test_fight_menu_back_returns_to_top() -> void:
 	_wire_menu_buttons(bs)
 	bs._move_info_type_label = Label.new()
 	bs._move_info_pp_label = Label.new()
-
 	bs._build_fight_menu(0)
-	var back_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and _base_text(c.text) == "Back")[0]
-	# [Deliberately NOT calling back_btn.pressed.emit()] The Back lambda's
-	# own second statement is _refresh_ui(), which needs the FULL live UI
-	# node tree (health bars, sprites, message box, and so on) to run
-	# without erroring -- matching phase4d_doubles_visual_test.gd's and
-	# m23_6_battle_setup_test.gd's own established precedent of never
-	# actually invoking a handler whose real job requires a live scene on
-	# a bare instance. Confirms the wiring is real instead (a genuine
-	# connection exists); the actual _menu == TOP destination this exact
-	# lambda sets is covered by direct code inspection (a one-line body,
-	# `_menu = Menu.TOP; _refresh_ui()`) plus this session's own real
-	# screenshot verification of the live Back button.
-	_chk("Fight menu's Back button has a real pressed connection",
-			back_btn.pressed.get_connections().size() > 0)
+
+	# [Deliberately NOT calling bs._unhandled_input()] Same reasoning the
+	# removed Back button's own test used to document: the handler's own
+	# second statement is _refresh_ui(), which needs the FULL live UI node
+	# tree (health bars, sprites, message box) to run without erroring --
+	# matching phase4d_doubles_visual_test.gd's/m23_6_battle_setup_test.gd's
+	# established precedent of never invoking a handler whose real job
+	# requires a live scene on a bare instance. What's checked here is the
+	# state the guard reads (_menu == FIGHT, matching the real pre-press
+	# state above); the actual `_menu = Menu.TOP; _refresh_ui()` body is
+	# covered by direct code inspection (_unhandled_input's own FIGHT
+	# branch, a two-line body gated on KEY_ESCAPE) plus this session's own
+	# real screenshot verification.
+	_chk("FIGHT menu state is what the Escape guard checks against",
+			bs._menu == BattleScreenShared.Menu.FIGHT)
 
 
 # ── 5. The Switch button on TOP is disabled with no valid bench target ──
@@ -491,9 +489,9 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	bs._move_info_type_label = Label.new()
 	bs._move_info_pp_label = Label.new()
 	bs._build_fight_menu(1)
-	var slot1_fight_texts := _button_texts(bs._new_button_grid) + _button_texts(bs._new_button_area)
-	_chk("doubles slot 1's own Fight menu reflects ITS mon's own moveset (2 moves + Back), not slot 0's",
-			slot1_fight_texts.size() == 3)
+	var slot1_fight_texts := _button_texts(bs._new_button_grid)
+	_chk("doubles slot 1's own Fight menu reflects ITS mon's own moveset (2 moves), not slot 0's",
+			slot1_fight_texts.size() == 2)
 
 
 # ── 11. The idle-animation Timer is now one-shot (M25b bugfix) ──────────

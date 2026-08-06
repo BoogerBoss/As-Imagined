@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Play Nice"
+description = "Befriend the foe, lowering its Attack without fail."
 type = 1
 category = 2
 accuracy = 0

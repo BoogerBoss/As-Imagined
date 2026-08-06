@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Round"
+description = "A song that inflicts damage. Others can join in too."
 type = 1
 category = 1
 power = 60

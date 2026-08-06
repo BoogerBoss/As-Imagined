@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Trick Room"
+description = "Slower Pokémon get to move first for 5 turns."
 type = 15
 category = 2
 accuracy = 0

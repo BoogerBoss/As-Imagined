@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Mind Reader"
+description = "Senses the foe's action to ensure the next move's hit."
 type = 1
 category = 2
 accuracy = 0

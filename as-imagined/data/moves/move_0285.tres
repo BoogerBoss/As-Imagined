@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Skill Swap"
+description = "The user swaps special abilities with the target."
 type = 15
 category = 2
 accuracy = 0

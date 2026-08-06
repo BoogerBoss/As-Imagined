@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Telekinesis"
+description = "Makes the foe float. It is easier to hit for 3 turns."
 type = 15
 category = 2
 accuracy = 0

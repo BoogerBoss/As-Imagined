@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Worry Seed"
+description = "Plants a seed on the foe giving it Insomnia."
 type = 13
 category = 2
 pp = 10

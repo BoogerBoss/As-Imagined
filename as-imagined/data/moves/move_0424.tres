@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Fire Fang"
+description = "May cause flinching or leave the foe with a burn."
 type = 11
 power = 65
 accuracy = 95

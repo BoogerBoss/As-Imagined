@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Zippy Zap"
+description = "Electric bursts always go first and land a critical hit."
 type = 14
 power = 80
 pp = 10

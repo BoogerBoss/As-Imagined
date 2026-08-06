@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Bouncy Bubble"
+description = "An attack that absorbs all the damage inflicted."
 type = 12
 category = 1
 power = 60

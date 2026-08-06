@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Reflect Type"
+description = "The user reflects the foe's type, copying it."
 type = 1
 category = 2
 accuracy = 0

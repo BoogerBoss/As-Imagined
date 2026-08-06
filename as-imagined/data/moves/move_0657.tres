@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Aurora Veil"
+description = "Weakens all attacks if used in hail or snow."
 type = 16
 category = 2
 accuracy = 0

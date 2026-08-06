@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Confide"
+description = "Shares a secret with the foe, lowering Sp. Atk."
 type = 1
 category = 2
 accuracy = 0

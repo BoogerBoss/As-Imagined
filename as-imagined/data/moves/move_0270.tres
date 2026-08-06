@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Helping Hand"
+description = "Boosts the power of ally recipient's moves."
 type = 1
 category = 2
 accuracy = 0

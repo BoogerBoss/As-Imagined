@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 move_name = "Snap Trap"
+description = "Snares the target in a snap trap for four to five turns."
 type = 13
 power = 35
 pp = 15
