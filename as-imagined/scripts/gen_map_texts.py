@@ -47,7 +47,31 @@ REF = os.path.join(PROJECT, "field_script_source")
 OUT = os.path.join(PROJECT, "data", "map_texts.json")
 
 # A label line, then a run of .string directives before the next label.
-LABEL_RE = re.compile(r"^(\w+)::?\s*$", re.M)
+LABEL_RE = re.compile(r"^(\w+)::?[ \t]*(?:@.*)?$", re.M)
+"""A label line.
+
+⚠️ **THE TRAILING-COMMENT CASE WAS MISSING, AND IT SILENTLY LOST 16 LABELS.**
+The pattern used to be ``^(\w+)::?\s*$``, which requires the label to be the
+last thing on its line. The reference decorates some labels with the original
+ROM address::
+
+    PalletTown_ProfessorOaksLab_EventScript_EnterForNationalDexScene:: @ 8169002
+
+That did not match, so the line was not recognised as a label at all: its body
+merged into whichever label PRECEDED it, and the label line itself compiled as
+a bogus opcode named ``Something::``. The label then did not exist in the
+corpus, so anything jumping to it reported ``UNRESOLVED``.
+
+⚠️ **ONE INSTANCE IS REACHABLE.** ``PalletTown_ProfessorOaksLab_OnFrame`` does
+``map_script_2 VAR_MAP_SCENE_..., 7, ..._EventScript_EnterForNationalDexScene``
+— a jump to a label that was not there. Unreachable in play today only because
+it needs the postgame.
+
+This is the SECOND bug of exactly this shape (labels merging into their
+predecessor); the first was the missing ``.macro``/``.endm`` handling, which
+truncated Oak's lab-entry cutscene. Both were found by measuring the compiled
+corpus rather than by reading the compiler.
+"""
 STRING_RE = re.compile(r'^\s*\.string\s+"(.*)"\s*$')
 
 

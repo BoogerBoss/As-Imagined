@@ -15,6 +15,10 @@ var _tmhm_map: Dictionary = {}
 var _exp_curves: Dictionary = {}
 var _item_name_to_id: Dictionary = {}
 var _species_name_to_id: Dictionary = {}
+## [Corridor tail] `MOVE_*` constant -> move id. `data/move_name_to_id.json` has
+## existed since M25 and nothing loaded it until `checkfieldmove` and
+## `buffermovename` needed to resolve a move by the name a script uses.
+var _move_name_to_id: Dictionary = {}
 
 ## [M27I I1] How many of each `tmhm_map.json` holds, in that order (TMs first).
 ## Read rather than assumed: a shifted count would silently map every HM to the
@@ -32,6 +36,7 @@ func _ready() -> void:
 	_load_evolutions()
 	_load_tmhm()
 	_load_item_names()
+	_load_move_names()
 	_load_species_names()
 	_load_exp_curves()
 	_smoke_test()
@@ -125,6 +130,13 @@ func _load_item_names() -> void:
 	if typeof(data) == TYPE_DICTIONARY:
 		for key in data:
 			_item_name_to_id[str(key)] = int(data[key])
+
+
+func _load_move_names() -> void:
+	var data = _load_json("res://data/move_name_to_id.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for key in data:
+			_move_name_to_id[str(key)] = int(data[key])
 
 
 func _load_species_names() -> void:
@@ -224,6 +236,12 @@ func get_item(item_id: int) -> Dictionary:
 ## `ITEM_DOWSING_MACHINE` are one item, and the corridor's scripts use both.
 func item_id_of(constant: String) -> int:
 	return int(_item_name_to_id.get(constant, -1))
+
+
+## [Corridor tail] Move id for a source `MOVE_*` constant, or -1. Same shape and
+## same -1-for-unknown contract as `item_id_of`/`species_id_of`.
+func move_id_of(constant: String) -> int:
+	return int(_move_name_to_id.get(constant, -1))
 
 
 ## Every constant spelling this project knows, for auditing coverage.

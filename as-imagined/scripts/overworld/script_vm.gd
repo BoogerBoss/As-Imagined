@@ -590,6 +590,119 @@ func step() -> bool:
 		# reused rather than invented), which is what makes taking a Pokéball
 		# actually make it disappear, and what makes `addobject`'s own
 		# counterpart below able to reverse the exact same mechanism.
+		# [Corridor tail] `hideplayer` — ⚠️ **NOT ITS OWN COMMAND IN SOURCE.**
+		# `asm/macros/event.inc:736` expands it to
+		# `SCR_OP_HIDEOBJECTAT LOCALID_PLAYER, 0, 0` — the ordinary
+		# hide-object-at, aimed at the player. This project's compiler keeps
+		# the macro unexpanded, so the expansion is reproduced here: set the
+		# player's own invisibility, exactly as `applymovement`'s
+		# `set_invisible` action already does, and the same `_place_player`
+		# restore already covers the way back.
+		"hideplayer":
+			pending_object_ops.append({"op": "player_visible", "value": false})
+			return true
+
+		# The counterpart. Source has no `showplayer` macro — visibility comes
+		# back through a warp or a `set_visible` movement action — but the op is
+		# queued symmetrically so the driver has one place to handle both.
+		"showplayer":
+			pending_object_ops.append({"op": "player_visible", "value": true})
+			return true
+
+		# [Corridor tail] `setfieldeffectargument n, value` — stashes an
+		# argument for a later `dofieldeffect` (`gFieldEffectArguments[n]`).
+		# ⚠️ A NO-OP HERE FOR THE SAME REASON `dofieldeffect` ITSELF IS: this
+		# project has no field-effect layer at all, so the argument has nothing
+		# to reach. Listed explicitly rather than halting — the one corridor use
+		# sits in a script that is otherwise fully runnable, and halting it
+		# would cost the whole script to preserve an argument nobody reads.
+		"setfieldeffectargument":
+			return true
+
+		# [Corridor tail] `messageautoscroll text` — the same message box with
+		# `gTextFlags.autoScroll` set, so pages advance on a timer instead of on
+		# a button press. ⚠️ Routed to plain `message`: this project's MessageBox
+		# has no auto-advance mode, so the disclosed simplification is that the
+		# player presses on. The TEXT is identical and no script branches on the
+		# difference; the alternative was halting 4 corridor uses over a pacing
+		# detail.
+		"messageautoscroll":
+			var auto_key := str(args[0]) if args.size() > 0 else ""
+			pending_pages = _source.pages_for(auto_key)
+			pending_page_index = 0
+			if pending_pages.is_empty():
+				diagnostic = "no text for '%s'" % auto_key
+				pending_pages = PackedStringArray([""])
+			pause_reason = Pause.WAIT_MESSAGE
+			return true
+
+		# [Corridor tail] `bufferpartymonnick slot, dest` — ⚠️ ARGUMENT ORDER IS
+		# (stringVarIndex, partyIndex), destination FIRST, the same shape every
+		# other `buffer*` uses and the opposite of how it reads aloud.
+		"bufferpartymonnick":
+			if args.size() > 1:
+				var slot_i := _resolve_number(str(args[1]))
+				var mon_nick := ""
+				if slot_i >= 0 and slot_i < party.members.size():
+					var pm: BattlePokemon = party.members[slot_i]
+					if pm != null:
+						mon_nick = pm.display_name()
+				buffers.set_slot(TextBuffers.slot_index(str(args[0])), mon_nick)
+			return true
+
+		# [Corridor tail] `buffermovename dest, move`.
+		"buffermovename":
+			if args.size() > 1:
+				buffers.set_slot(TextBuffers.slot_index(str(args[0])),
+						_move_name(str(args[1])))
+			return true
+
+		# [Corridor tail] `checkfieldmove move, doUnlockedCheck` — which party
+		# member can use an HM move. Source writes the SLOT to VAR_RESULT and
+		# the SPECIES to VAR_0x8004, and leaves VAR_RESULT at PARTY_SIZE when
+		# nobody can (`ScrCmd_checkfieldmove`, scrcmd.c).
+		#
+		# ⚠️ **PARTY_SIZE IS THE "NOBODY" ANSWER, NOT -1 OR 0.** Slot 0 is a
+		# perfectly good result, so a sentinel inside the slot range would be
+		# indistinguishable from the first party member being the answer.
+		#
+		# ⚠️ The `doUnlockedCheck` half (badge/HM gating) is DISCLOSED AS NOT
+		# IMPLEMENTED: `IsFieldMoveUnlocked` reads a per-move unlock this
+		# project does not model. The move-knowledge half is real, which is what
+		# the one corridor use actually branches on.
+		"checkfieldmove":
+			_set_result_value(BattleParty.PARTY_SIZE)
+			if args.size() > 0:
+				var want := _move_id(str(args[0]))
+				for i in range(party.members.size()):
+					var fm: BattlePokemon = party.members[i]
+					if fm == null:
+						continue
+					var knows := false
+					for mv in fm.moves:
+						if mv != null and int(mv.move_id) == want:
+							knows = true
+							break
+					if knows:
+						_set_result_value(i)
+						if _flags != null and fm.species != null:
+							_flags.var_set("VAR_0x8004", fm.species.national_dex_num)
+						break
+			return true
+
+		# [Corridor tail] `setwarp` / `warpspinenter`. ⚠️ BOTH TAKE A WARP ID,
+		# NOT A CELL — unlike `warp`, whose x/y `ScrCmd_warp` reads literally.
+		# This project's `Warp` nodes carry `warp_id`, but nothing resolves a
+		# (map, warp_id) pair to a cell yet, so these HALT and name themselves
+		# rather than warping to a guessed position. Landing the player in the
+		# wrong place is the failure mode a silent default would produce, and it
+		# is worse than stopping.
+		"setwarp", "warpspinenter":
+			pause_reason = Pause.UNKNOWN_OP
+			diagnostic = ("%s needs (map, warp_id) -> cell resolution, which "
+					+ "does not exist yet") % current_op
+			return false
+
 		"removeobject":
 			if args.size() > 0:
 				removed_objects.append(str(args[0]))
@@ -1878,6 +1991,19 @@ func _item_name(item_id: int, quantity: int) -> String:
 		return ""
 	var n := str(info.get("name", ""))
 	return n if quantity == 1 or n == "" else n + "s"
+
+
+## [Corridor tail] A move id from a `MOVE_*` constant or a var holding one.
+func _move_id(arg: String) -> int:
+	if arg.begins_with("MOVE_"):
+		return PokemonRegistry.move_id_of(arg)
+	return _resolve_number(arg)
+
+
+## [Corridor tail] A move's display name, for `buffermovename`.
+func _move_name(arg: String) -> String:
+	var mv := PokemonRegistry.get_move(_move_id(arg))
+	return str(mv.get("name", "")) if not mv.is_empty() else ""
 
 
 ## A species name from a SPECIES_* constant or a variable holding a dex number.

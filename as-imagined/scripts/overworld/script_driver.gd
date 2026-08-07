@@ -443,6 +443,14 @@ func apply_pending_object_ops() -> void:
 				var e5 := resolve_movement_entity(target)
 				if e5 != null and e5.visibility_flag != "":
 					_ow.flags.flag_set(e5.visibility_flag)
+			# [Corridor tail] `hideplayer`/`showplayer`. Writes the same
+			# `_player.visible` that MovementRunner's own set_invisible/
+			# set_visible actions write — one mechanism, and `_place_player`'s
+			# unconditional restore already covers the way back from a warp.
+			"player_visible":
+				if _ow._player != null:
+					_ow._player.visible = bool(op.get("value", true))
+
 			"setmetatile":
 				# `x`/`y` are LOCAL to whichever map the running script belongs
 				# to. Every corridor caller of a map script is scoped to the

@@ -180,3 +180,38 @@ static func register_all(reg: NativeEventRegistry) -> void:
 		var to_black: bool = not dir.begins_with("FADE_FROM")
 		await driver.scene()._fade_to(1.0 if to_black else 0.0)
 		return null)
+
+
+	# --- [Corridor tail] party-count specials ----------------------------------
+	#
+	# ⚠️ All four are ONE-LINE PARTY READS, and G8 is what made them cheap: each
+	# is a registration rather than a Pause member plus an intercept plus an
+	# answer_* method plus a driver branch. Answering into VAR_RESULT is exactly
+	# what a `specialvar` call site expects.
+	reg.register("CalculatePlayerPartyCount", func(_d, _a) -> Variant:
+		return OverworldSession.player_party().members.size())
+	# ⚠️ Identical to the above HERE, and deliberately so: this project models
+	# no eggs at all (the same reason `GetTradeSpecies` and
+	# `ScriptGetPartyMonSpecies` are behaviourally identical — see ScriptVM),
+	# so "non-egg party members" is every party member. Registered separately
+	# rather than aliased so the day eggs exist, only this one changes.
+	reg.register("CountPartyNonEggMons", func(_d, _a) -> Variant:
+		return OverworldSession.player_party().members.size())
+	# Source: two non-fainted, non-egg mons (`HasEnoughMonsForDoubleBattle`).
+	# ⚠️ Answers source's own enum, not a bool: PLAYER_HAS_TWO_USABLE_MONS 0 /
+	# PLAYER_HAS_ONE_MON 1 / PLAYER_HAS_ONE_USABLE_MON 2
+	# (`include/constants/battle.h`), and 0 is the AFFIRMATIVE. A bool here
+	# would invert every call site.
+	reg.register("HasEnoughMonsForDoubleBattle", func(_d, _a) -> Variant:
+		var members: Array = OverworldSession.player_party().members
+		if members.size() < 2:
+			return 1
+		var usable := 0
+		for m in members:
+			if m != null and not m.fainted:
+				usable += 1
+		return 0 if usable >= 2 else 2)
+	# No Bad Eggs exist here — this project has no egg model and no corruption
+	# path that could produce one. FALSE is genuinely correct, not a stand-in.
+	reg.register("IsBadEggInParty", func(_d, _a) -> Variant:
+		return 0)
