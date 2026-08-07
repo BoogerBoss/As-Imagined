@@ -58,6 +58,8 @@ REF = os.path.join(PROJECT, "field_script_source")
 OUT = os.path.join(PROJECT, "data", "map_scripts.json")
 
 LABEL_RE = re.compile(r"^(\w+)::?\s*$", re.M)
+MACRO_START_RE = re.compile(r"^[ \t]*\.macro[ \t]+(\w+)([^\n]*)$", re.M)
+MACRO_END_RE = re.compile(r"^[ \t]*\.endm[ \t]*$", re.M)
 
 # Verbatim from data/scripts/std_msgbox.inc. `message` takes the text label,
 # substituted per call site.
@@ -125,6 +127,107 @@ def _canonicalise_trainers(args):
             for a in args]
 
 
+def extract_macros(src):
+    """Find every local `.macro NAME ... .endm` block in one file's raw text.
+
+    ⚠️ [Bugfix, live-reported: Oak's lab-entry cutscene truncated to one step
+    each way, player left invisible after the warp] This compiler had NO
+    concept of `.macro`/`.endm` at all beyond incidentally skipping those two
+    directive lines (they start with `.`, same as every other assembler
+    directive `compile_body` already ignores) -- the macro's own BODY lines
+    were left to fall wherever the label-slicing loop happened to land them
+    (silently appended to whichever label precedes the definition in the
+    file, harmless only because a `step_end` already terminates that label's
+    own interpretation before reaching them), and an INVOCATION of the macro
+    elsewhere compiled as a literal, unrecognised op named after the macro
+    itself. `MovementRunner._begin()` treats an unrecognised action as "stop
+    this mover here" by design (so a genuinely unported action reports as a
+    coverage gap, not a cutscene that silently continues) -- which is exactly
+    why Oak and the player both walked one real step, then hit the
+    unexpanded `walk_to_lab` op and stopped, then immediately ran the NEXT
+    `applymovement` in the script (the door-entry one, ending in
+    `set_invisible`) early.
+
+    Confirmed via a full corpus sweep this is not Pallet-Town-specific: Pewter
+    City (`walk_to_gym`/`walk_to_gym_alt`/`walk_to_museum`/
+    `walk_to_museum_south`) and One Island (`walk_to_pokecenter`) define the
+    identical local-macro pattern for their own NPC-escort cutscenes -- all
+    of them parameterless movement-list macros, the only shape this fixes.
+
+    Returns (macros, spans): `macros` maps macro name -> list of raw body
+    lines, for PARAMETERLESS macros only. `spans` is the list of
+    (start, end) character offsets each definition occupies in `src`, blanked
+    out by the caller before label boundaries are computed -- otherwise a
+    macro definition sitting between two labels keeps leaking into whichever
+    label precedes it.
+
+    A macro declared WITH parameters (`setitemandprice item:req, price:req`,
+    BattleFrontier_ExchangeServiceCorner's own shop-price macro -- a
+    permanently-excluded facility, never baked) is intentionally left
+    unexpanded: its own invocations keep compiling as an unresolved literal
+    op, the exact pre-existing behaviour, rather than risk a wrong
+    argument-substitution for a macro shape nothing in this project's real
+    scope currently uses.
+    """
+    macros = {}
+    spans = []
+    pos = 0
+    while True:
+        m = MACRO_START_RE.search(src, pos)
+        if not m:
+            break
+        name = m.group(1)
+        params = m.group(2).strip()
+        end_m = MACRO_END_RE.search(src, m.end())
+        if not end_m:
+            break  # Malformed/unterminated -- stop scanning this file.
+        if not params:
+            body_text = src[m.end():end_m.start()]
+            macros[name] = body_text.splitlines()
+        spans.append((m.start(), end_m.end()))
+        pos = end_m.end()
+    return macros, spans
+
+
+def blank_spans(src, spans):
+    """Replace each (start, end) span's own characters with spaces/newlines,
+    preserving every other character offset so `LABEL_RE`'s match positions
+    (computed against the ORIGINAL text) still slice the right label bodies
+    out of the result.
+    """
+    if not spans:
+        return src
+    chars = list(src)
+    for start, end in spans:
+        for i in range(start, end):
+            chars[i] = "\n" if chars[i] == "\n" else " "
+    return "".join(chars)
+
+
+def expand_macros(body, macros):
+    """Inline every whole-line invocation of a known parameterless macro.
+
+    One pass is enough for this project's real corpus (confirmed: none of
+    the movement macros found invoke another macro), but the loop tolerates
+    a chain up to a small depth defensively rather than assuming it.
+    """
+    for _ in range(4):
+        lines = body.splitlines()
+        changed = False
+        out = []
+        for line in lines:
+            name = line.strip()
+            if name in macros:
+                out.extend(macros[name])
+                changed = True
+            else:
+                out.append(line)
+        body = "\n".join(out)
+        if not changed:
+            break
+    return body
+
+
 def compile_body(body):
     ops = []
     skipping = False
@@ -173,12 +276,20 @@ def main():
             src = open(path, encoding="utf-8", errors="ignore").read()
         except OSError:
             continue
+        macros, macro_spans = extract_macros(src)
+        # Label boundaries are computed against the ORIGINAL text (so match
+        # offsets stay valid), but each label's own BODY is sliced out of a
+        # copy with every macro definition blanked -- otherwise a macro
+        # sitting between two labels keeps leaking into whichever label
+        # precedes it (see extract_macros' own doc comment).
+        src_clean = blank_spans(src, macro_spans)
         marks = list(LABEL_RE.finditer(src))
         for i, m in enumerate(marks):
             name = m.group(1)
             start = m.end()
             end = marks[i + 1].start() if i + 1 < len(marks) else len(src)
-            ops = compile_body(src[start:end])
+            body = expand_macros(src_clean[start:end], macros)
+            ops = compile_body(body)
             if ops is None or not ops:
                 continue
             scripts.setdefault(name, ops)
