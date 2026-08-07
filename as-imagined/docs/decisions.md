@@ -39,6 +39,11 @@ Format per entry:
 
 ## [M1] Data format: .tres, one file per entry
 
+⚠️ **SUPERSEDED 2026-08-07 — see `[M1-rev] Data format: two layers` below.**
+The original decision is kept verbatim because its REASONING is still why
+`.tres` is used where it is used; only the scope ("all", "never mix",
+`data/pokemon/`) turned out not to describe what was built.
+
 - Source: project design decision (Milestone 1)
 - Behavior: All PokemonSpecies, MoveData, AbilityData, ItemData stored as
   individual Godot `.tres` Resource files under `data/pokemon/`, `data/moves/`,
@@ -46,6 +51,57 @@ Format per entry:
 - Notes: `.tres` gives load-time type validation and lets one Resource directly
   reference another (e.g. species ability slot holds AbilityData ref, not an
   int lookup). `.json` would require a manual parse layer with no type safety.
+
+
+## [M1-rev] Data format: two layers — full dataset in JSON, implemented behaviour in .tres
+
+- Source: measured against the codebase 2026-08-07, replacing `[M1]`'s scope.
+- Behavior: **JSON holds the FULL reference dataset** and is read by
+  `PokemonRegistry` for bulk lookups (names, dex data, learnsets, id maps),
+  parsed once at boot. **`.tres` holds the IMPLEMENTED SUBSET** and is loaded
+  by id as live typed objects by the battle engine
+  (`res://data/moves/move_%04d.tres`).
+- Evidence, not assertion: `moves.json` holds **935** entries and `data/moves/`
+  holds **717** `.tres` — exactly `[M19]`'s "717 implemented, 217 excluded"
+  (717 + 217 + 1 = 935). Items are the same shape: all 816 in `items.json`,
+  only those with real held-item behaviour as `.tres`.
+- ⚠️ **The file's existence is load-bearing.**
+  `ScriptVM._resolve_trade_held_item` tests
+  `ResourceLoader.exists(".../item_%04d.tres")` before loading — that is not a
+  defensive check, it is asking *"do we implement this item?"*. Consolidating
+  the two formats would destroy that property.
+- ⚠️ **There is no `data/pokemon/`.** Species are JSON-only;
+  `PokemonSpecies` resources are built at runtime by
+  `PokemonFactory.build_species()`, which also normalises a real data quirk
+  (mono-typed species are stored as the same type twice, e.g. Pikachu
+  `[14, 14]`, not `[type, TYPE_NONE]`).
+- The mistake to avoid is not mixing formats — it is adding a `.tres` for
+  something the engine does not implement.
+
+
+## [M1-rev] data/pokemon.json is HAND-OWNED
+
+- Source: Rob, 2026-08-07. **"The battle calculations and rhythm are to be
+  source-exact as possible, but I control Pokémon stats."**
+- Behavior: species base stats, types and abilities in `data/pokemon.json` are
+  **authored**, not imported. Battle mechanics stay source-exact; the creatures
+  the mechanics operate on are Rob's to balance. Moving the file to `.tres` was
+  considered and declined — one greppable, bulk-editable file with a one-line
+  diff per stat beats 386 inspector visits for the edits actually made.
+- ⚠️ **THREE GENERATORS WRITE THIS FILE, AND ALL THREE MUST KEEP MERGING.**
+  `gen_weight_data.py` (`weight`), `gen_exp_ev_yield_data.py` (`exp_yield`,
+  `ev_yield_*`) and `gen_species_names.py` (`name`) each load the existing
+  JSON, set only their own fields, and write back. That is what makes authored
+  stats survive a regenerate.
+- ⚠️ **NEVER WRITE A GENERATOR THAT REBUILDS `pokemon.json` FROM THE
+  REFERENCE.** It is the obvious shape — read the reference, build the dict,
+  dump it — and it would silently erase authored balance across 386 entries,
+  with no error and no diff anyone would notice. No such path exists today;
+  nothing but this note prevents one.
+- Notes: this is the same exposure `docs/field_script_authoring.md` already
+  guards for dialogue with its "never repoint `REF`" rule. Authored stats had
+  the identical risk and no equivalent note until now — arguably the higher-
+  value case, since stats change how the game PLAYS rather than how it reads.
   Decision locked at Milestone 1; do not mix formats later. 2026-06-24.
 
 ## [M1] Move category: stored per-move (Physical / Special / Status)

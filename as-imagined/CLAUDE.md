@@ -166,6 +166,24 @@ implementing, or ask Rob to confirm before making something up.
   `.tres`, one generator emitting both where both exist. Adding a `.tres` for
   something the engine does not implement is the mistake to avoid — not the
   mixing.
+
+  ⚠️ **`data/pokemon.json` IS HAND-OWNED — Rob, 2026-08-07: "the battle
+  calculations and rhythm are to be source-exact as possible, but I control
+  Pokémon stats."** Species base stats, types and abilities are AUTHORED.
+  Battle mechanics stay source-exact; the creatures those mechanics operate on
+  are Rob's to balance. Moving the file to `.tres` was considered and declined
+  — one greppable, bulk-editable file with a one-line diff per stat beats 386
+  inspector visits for the edits actually made.
+
+  ⚠️ **THREE GENERATORS WRITE THIS FILE AND ALL THREE MUST KEEP MERGING** —
+  `gen_weight_data.py`, `gen_exp_ev_yield_data.py`, `gen_species_names.py`
+  each load the existing JSON, set only their own fields, and write back.
+  **NEVER write a generator that rebuilds `pokemon.json` from the reference.**
+  It is the obvious shape and it would silently erase authored balance across
+  386 entries, with no error and no diff anyone would spot. No such path exists
+  today; nothing but this note prevents one. Same exposure
+  `docs/field_script_authoring.md` already guards for dialogue — see
+  `docs/decisions.md`, `[M1-rev] data/pokemon.json is HAND-OWNED`.
 - **External plugins/addons: research, recommend, Rob decides — not a blanket
   ban.** `pokeemerald_expansion` is where implementation *starts*, not a
   ceiling. When something doesn't exist there, or exists but doesn't translate
