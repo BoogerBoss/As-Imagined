@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 284
+const EXPECTED_TOTAL := 291
 
 var _total := 0
 var _failed := 0
@@ -2369,3 +2369,64 @@ func _test_m27g_g8_g9() -> void:
 	_chk("S.10 a hand-edited save fails closed rather than half-loading",
 			not ObjectEventState.has_any())
 	ObjectEventState.clear()
+
+	# --- [M27G] multichoicegrid and fadescreen ---
+	var reg2 := NativeEventRegistry.new()
+	FieldNativeEvents.register_all(reg2)
+	var vmg := ScriptVM.new(_src({
+		"A": [_op("multichoicegrid", ["7", "1", "MULTI_STATUS_INFO", "3", "FALSE"]),
+				_op("end")],
+	}), FlagStore.new())
+	vmg.natives = reg2
+	vmg.start("A")
+	_run(vmg)
+	_chk("S.11 multichoicegrid waits on the Multichoice handler",
+			vmg.pause_reason == ScriptVM.Pause.WAIT_NATIVE
+			and vmg.pending_native == "Multichoice")
+	_chk("S.12 carrying the list, row width and B-press flag",
+			vmg.pending_native_args.size() == 3
+			and str(vmg.pending_native_args[0]) == "MULTI_STATUS_INFO"
+			and str(vmg.pending_native_args[1]) == "3")
+	# ⚠️ An untranscribed list halts from the VM ALONE and names itself, rather
+	# than opening a menu with nothing in it.
+	var vmg2 := ScriptVM.new(_src({
+		"A": [_op("multichoicegrid", ["0", "0", "MULTI_SOME_HOENN_THING", "2", "FALSE"]),
+				_op("end")],
+	}), FlagStore.new())
+	vmg2.natives = reg2
+	vmg2.start("A")
+	_run(vmg2)
+	_chk("S.13 an untranscribed list halts and names itself",
+			vmg2.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and vmg2.diagnostic.contains("MULTI_SOME_HOENN_THING"))
+	# ⚠️ THE ORDER IS FRLG'S, NOT THE REFERENCE TABLE'S — see MultichoiceLists.
+	# The reference ships ONE MULTI_STATUS_INFO (PSN, PAR, SLP, ...) and the
+	# FRLG blackboard's own `case 0 -> ReadSleep` disagrees with it, so upstream
+	# picking PSN reads the sleep article. Kanto-only, so FRLG's order wins.
+	var entries := MultichoiceLists.entries("MULTI_STATUS_INFO")
+	_chk("S.14 MULTI_STATUS_INFO is in FRLG's order, matching its one caller",
+			entries.size() == 6 and entries[0] == "SLP" and entries[1] == "PSN"
+			and entries[5] == "EXIT")
+	_chk("S.15 B answers source's own MULTI_B_PRESSED sentinel",
+			MultichoiceGrid.B_PRESSED == 127)
+
+	# fadescreen is a real fade now, and reads its DIRECTION.
+	var vmf := ScriptVM.new(_src({
+		"A": [_op("fadescreen", ["FADE_TO_BLACK"]), _op("end")],
+	}), FlagStore.new())
+	vmf.natives = reg2
+	vmf.start("A")
+	_run(vmf)
+	_chk("S.16 fadescreen is no longer a no-op",
+			vmf.pause_reason == ScriptVM.Pause.WAIT_NATIVE
+			and vmf.pending_native == "FadeScreen"
+			and str(vmf.pending_native_args[0]) == "FADE_TO_BLACK")
+	# ⚠️ Without a registry it must fall back to the NO-OP, not halt: 128 corpus
+	# uses would otherwise stop every script that fades.
+	var vmf2 := ScriptVM.new(_src({
+		"A": [_op("fadescreen", ["FADE_TO_BLACK"]), _op("setflag", ["F"]), _op("end")],
+	}), FlagStore.new())
+	vmf2.start("A")
+	_run(vmf2)
+	_chk("S.17 with no registry it degrades to the old no-op rather than halting",
+			vmf2.pause_reason == ScriptVM.Pause.DONE)

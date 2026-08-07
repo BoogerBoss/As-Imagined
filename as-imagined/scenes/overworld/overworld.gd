@@ -258,6 +258,8 @@ var _pending_whiteout := false
 var _box: MessageBox = null
 ## [M27F Stage 4] The yes/no prompt, built alongside the message box.
 var _yes_no: YesNoBox = null
+## [M27G] `multichoicegrid`'s widget, opened by the `Multichoice` native handler.
+var _multichoice: MultichoiceGrid = null
 ## [M27I I4] The START menu and the bag it opens.
 var _start_menu: FieldStartMenu = null
 var _bag_screen: FieldBagScreen = null
@@ -1924,6 +1926,11 @@ func _setup_scripting() -> void:
 	add_child(_box)
 	_yes_no = YesNoBox.new()
 	add_child(_yes_no)
+	# [M27G] The general list-choice widget. Owns its own input — see
+	# MultichoiceGrid's header for why that is the design and not a second
+	# driver.
+	_multichoice = MultichoiceGrid.new()
+	add_child(_multichoice)
 	_start_menu = FieldStartMenu.new()
 	add_child(_start_menu)
 	_naming = NamingScreen.new()

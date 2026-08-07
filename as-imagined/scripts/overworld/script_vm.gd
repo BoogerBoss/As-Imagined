@@ -487,6 +487,39 @@ func step() -> bool:
 			pause_reason = Pause.WAIT_YES_NO
 			return true
 
+		# [M27G] `multichoicegrid x, y, list, per_row, ignoreBPress` — a grid of
+		# named options, answering the chosen INDEX into VAR_RESULT (or
+		# MULTI_B_PRESSED). x/y are screen position and are deliberately
+		# ignored: this project's widget positions itself, and honouring GBA
+		# tile coordinates at a different resolution would place it wrongly with
+		# more effort than placing it sensibly.
+		#
+		# ⚠️ ROUTED TO A `native` HANDLER RATHER THAN A NEW PAUSE, which is
+		# `docs/m27g_scope.md` decision 7 answered from real code. It carries an
+		# int result, which is exactly what `resume_after_native` already
+		# delivers — a bespoke `Pause.WAIT_MULTICHOICE` would have cost the
+		# four-edit pattern G5 exists to retire, in the first feature built
+		# after G5.
+		#
+		# The list is validated HERE so an untranscribed one halts from the VM
+		# alone, naming itself — the same reason `natives` is injected at all.
+		"multichoicegrid":
+			var grid_list := str(args[2]) if args.size() > 2 else ""
+			if not MultichoiceLists.has(grid_list):
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "multichoicegrid list '%s' is not implemented" % grid_list
+				return false
+			if natives == null or not natives.has("Multichoice"):
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "multichoicegrid needs the Multichoice handler"
+				return false
+			pending_native = "Multichoice"
+			pending_native_args = [grid_list,
+					str(args[3]) if args.size() > 3 else "1",
+					str(args[4]) if args.size() > 4 else "FALSE"]
+			pause_reason = Pause.WAIT_NATIVE
+			return false
+
 		"multichoice":
 			# [M27F Stage 4] ⚠️ ONLY the yes/no list, and the polarity is the
 			# OPPOSITE of `yesnobox`'s — see `answer_yes_no`. Every other list
@@ -683,8 +716,34 @@ func step() -> bool:
 		# `fadescreenswapbuffers` (34) are deliberately NOT included — nothing in
 		# this milestone reaches them, and the second genuinely swaps buffers
 		# rather than just fading.
-		"fadescreen":
-			return true
+		# [M27G] `fadescreen dir` — a real fade at last, via the `Multichoice`-
+		# style routing to a `native` handler.
+		#
+		# ⚠️ **THIS WAS A NO-OP FOR A REASON, AND THE REASON IS STILL TRUE: IN
+		# 106 OF 128 CORPUS USES THE FADE IS NEVER CLOSED BY ANOTHER OPCODE.**
+		# Source closes it from `CB2_ReturnToFieldContinueScriptPlayMapMusic` —
+		# engine plumbing this project does not have — so an honest fade-out
+		# here would leave the screen black permanently. That is what kept it
+		# inert through G5, which added only the CAPABILITY.
+		#
+		# What makes it safe now is the other half, and it is not in this file:
+		# `ScriptDriver.finish()` restores the screen if a script ENDS while
+		# faded out. The fade is therefore paired with the script's own
+		# lifetime rather than with a matching opcode that mostly is not there —
+		# which is exactly what this opcode's old comment asked a future session
+		# to do. A warp fades on its own account either way.
+		#
+		# ⚠️ Direction is read, not assumed: 17 uses really are FADE_FROM_BLACK
+		# and would otherwise fade OUT when the script means to fade back IN.
+		# The 4 WHITE variants degrade to the black fade — this project has one
+		# fade colour, which is a disclosed simplification, not a missed case.
+		"fadescreen", "fadescreenspeed", "fadescreenswapbuffers":
+			if natives == null or not natives.has("FadeScreen"):
+				return true
+			pending_native = "FadeScreen"
+			pending_native_args = [str(args[0]) if args.size() > 0 else "FADE_TO_BLACK"]
+			pause_reason = Pause.WAIT_NATIVE
+			return false
 
 		# [M27G G5] `native "Handler"[, arg...]` — hand control to registered
 		# Godot code and resume when it reports back.
@@ -1225,9 +1284,6 @@ func step() -> bool:
 		# family starts is never closed by a matching opcode in most of the
 		# corpus, so a faithful-looking fade here would leave the screen
 		# black for good.
-		"fadescreenspeed", "fadescreenswapbuffers":
-			return true
-
 		"return":
 			if _call_stack.is_empty():
 				pause_reason = Pause.DONE

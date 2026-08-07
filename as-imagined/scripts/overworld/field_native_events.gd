@@ -145,3 +145,38 @@ static func register_all(reg: NativeEventRegistry) -> void:
 		if driver.vm != null:
 			driver.vm.buffers.set_slot(0, next)
 		return 1)
+
+
+	# --- [M27G] multichoicegrid ------------------------------------------------
+	#
+	# ⚠️ Returns the chosen INDEX (or MULTI_B_PRESSED) into VAR_RESULT, which is
+	# what the calling script's `switch`/`case` chain reads. A handler ANSWERING
+	# a question — no flag, no var, no branch — so the rule holds unqualified.
+	reg.register("Multichoice", func(driver, args) -> Variant:
+		var entries := MultichoiceLists.entries(str(args[0]) if args.size() > 0 else "")
+		if entries.is_empty():
+			return MultichoiceGrid.B_PRESSED
+		# ⚠️ EXPLICIT TYPES, NOT `:=`. `args` is an untyped lambda parameter, so
+		# nothing derived from it carries a type and inference fails outright —
+		# the same cost the untyped `_ow` back-reference already documents in
+		# ScriptDriver. A compile error rather than a silent one.
+		var per_row: int = int(str(args[1])) if args.size() > 1 \
+				and str(args[1]).is_valid_int() else 1
+		# Source's own arg is `ignoreBPress`; TRUE means B does nothing.
+		var ignore_b: bool = args.size() > 2 and str(args[2]) == "TRUE"
+		var grid = driver.scene()._multichoice
+		grid.open(entries, per_row, ignore_b)
+		return await grid.chosen)
+
+
+	# --- [M27G] fadescreen -----------------------------------------------------
+	#
+	# ⚠️ FADE_FROM_* fades IN. 17 corpus uses are FADE_FROM_BLACK and would fade
+	# the screen OUT if the direction were assumed rather than read.
+	# FADE_TO_WHITE / FADE_FROM_WHITE (4 uses) degrade to the black fade — this
+	# project has one fade colour, a disclosed simplification.
+	reg.register("FadeScreen", func(driver, args) -> Variant:
+		var dir: String = str(args[0]) if args.size() > 0 else "FADE_TO_BLACK"
+		var to_black: bool = not dir.begins_with("FADE_FROM")
+		await driver.scene()._fade_to(1.0 if to_black else 0.0)
+		return null)

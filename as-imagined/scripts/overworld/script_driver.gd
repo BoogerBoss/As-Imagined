@@ -521,6 +521,21 @@ func finish() -> void:
 		print("overworld: script '%s' stopped at pc=%d — %s"
 				% [d["label"], d["pc"], vm.diagnostic])
 	_ow._box.close()
+	# [M27G] ⚠️ **THE OTHER HALF OF `fadescreen`, AND WITHOUT IT THAT OPCODE
+	# MUST STAY A NO-OP.** In 106 of its 128 corpus uses the fade is never
+	# closed by another opcode — source closes it from
+	# `CB2_ReturnToFieldContinueScriptPlayMapMusic`, which this project has no
+	# equivalent of — so a script can and does end with the screen black.
+	# Pairing the fade with the SCRIPT'S OWN LIFETIME rather than with a
+	# matching opcode is what makes it safe, and is what that opcode's own
+	# comment asked a later session to do.
+	#
+	# ⚠️ Deliberately not awaited: `finish()` is called from the frame-driven
+	# `drive()`, and suspending here would leave the VM half torn down for the
+	# length of a fade. The restore is fire-and-forget because nothing after it
+	# depends on the screen being back.
+	if _ow._fade != null and _ow._fade.color.a > 0.0 and not _ow._warping:
+		_ow._fade_to(0.0)
 	_ow.script_finished.emit(str(d["label"]), str(d["pause"]), str(vm.diagnostic))
 	vm = null
 	# [M27G G5] A script can end while a handler is still suspended (an
