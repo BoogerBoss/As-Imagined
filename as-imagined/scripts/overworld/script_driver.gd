@@ -139,6 +139,10 @@ func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	vm.wallet = OverworldSession.wallet
 	# [M27K K-a] The session party, for `givemon` — same reason as the bag.
 	vm.party = OverworldSession.player_party()
+	# [M27G G8] So an unhandled `special` can be routed to a registered handler
+	# — and, just as importantly, so the VM can still say by itself when one is
+	# NOT registered. See ScriptVM.natives.
+	vm.natives = natives
 	if not vm.start(label, p_subject):
 		# Degrade LOUDLY but without breaking play: the VM named what it could
 		# not resolve, so say so and hand control back.
@@ -411,10 +415,15 @@ func apply_pending_object_ops() -> void:
 				var e := resolve_movement_entity(target)
 				if e != null:
 					e.cell = Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
+					# [M27G G9] `setobjectxyperm` — the "perm" is the point, and
+					# it was not permanent: the node is freed on the next warp
+					# and the baked scene supplies the original cell again.
+					_record_override(e, "cell", e.cell)
 			"movement_type":
 				var e2 := resolve_movement_entity(target) as NPC
 				if e2 != null:
 					e2.movement_type = str(op.get("value", ""))
+					_record_override(e2, "movement_type", e2.movement_type)
 			"turn":
 				if not DIR_TOKEN.has(str(op.get("dir", ""))):
 					continue
@@ -425,6 +434,7 @@ func apply_pending_object_ops() -> void:
 					var e3 := resolve_movement_entity(target) as NPC
 					if e3 != null:
 						e3.set_facing(dir)
+						_record_override(e3, "facing", dir)
 			"add":
 				var e4 := resolve_movement_entity(target)
 				if e4 != null and e4.visibility_flag != "":
@@ -456,6 +466,15 @@ func apply_pending_object_ops() -> void:
 						bool(op.get("impassable", false)))
 
 
+## [M27G G9] Remember a script-driven change so it survives the chunk teardown
+## that a warp performs. Keyed by MAP + `local_id`, because the node is exactly
+## the thing that dies — see `ObjectEventState`.
+func _record_override(e: OverworldEntity, field: String, value: Variant) -> void:
+	if e == null or not ("local_id" in e):
+		return
+	ObjectEventState.record(_ow._owning_map_of(e), str(e.local_id), field, value)
+
+
 static func is_player_target(target: String) -> bool:
 	return target == "LOCALID_PLAYER" or target == "255"
 
@@ -465,7 +484,18 @@ static func is_player_target(target: String) -> bool:
 ## and resolving it any other way would be a second source of truth.
 func resolve_movement_entity(target: String) -> OverworldEntity:
 	if target == "VAR_LAST_TALKED":
-		return vm.subject if vm != null else null
+		if vm == null:
+			return null
+		# ⚠️ [M27G G9] RE-RESOLVE BY NAME IF THE NODE IS GONE. A scripted warp
+		# frees the outgoing chunk and everything in it, so a long script that
+		# warps and then applies a movement to `VAR_LAST_TALKED` was reaching
+		# into a dead instance. Every other target already resolved by
+		# `local_id` each time it was used; this one uniquely held a reference.
+		if is_instance_valid(vm.subject):
+			return vm.subject
+		if vm.subject_local_id == "":
+			return null
+		return _ow.manager.find_entity_by_local_id(vm.subject_local_id)
 	return _ow.manager.find_entity_by_local_id(target)
 
 

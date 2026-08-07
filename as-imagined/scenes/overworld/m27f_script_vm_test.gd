@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 274
+const EXPECTED_TOTAL := 284
 
 var _total := 0
 var _failed := 0
@@ -102,6 +102,7 @@ func _ready() -> void:
 	_test_m27g_g3a_ingame_trade()
 	_test_m27g_g5_native()
 	_test_m27g_g6_event_script()
+	_test_m27g_g8_g9()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -2285,3 +2286,86 @@ func _test_m27g_g6_event_script() -> void:
 	_chk("R.21 while a script naming an absent label IS reported",
 			EventRegistry.verify_text({}).size() > 0)
 	EventRegistry.clear()
+
+
+## --- S. [M27G G8/G9] special routing, and the two persistence gaps ---
+func _test_m27g_g8_g9() -> void:
+	# --- G8: an unhandled special routes to a registered handler ---
+	#
+	# ⚠️ THE REGISTRY IS INJECTED INTO THE VM, not consulted by the driver, and
+	# S.02 is why: without it the VM could no longer tell an unimplemented
+	# special from a handled one, and only the driver would know. That would
+	# quietly break the property this engine rests on — `step()` alone says what
+	# a script did and why it stopped. `m27f_stage4_test` B.04/B.05 assert it
+	# from a bare VM and are right to.
+	var reg := NativeEventRegistry.new()
+	reg.register("SomeAsyncSpecial", func(_d, _a) -> Variant: return 1)
+	var vm := ScriptVM.new(_src({
+		"A": [_op("special", ["SomeAsyncSpecial"]), _op("setflag", ["FLAG_AFTER"]),
+				_op("end")],
+	}), FlagStore.new())
+	vm.natives = reg
+	vm.start("A")
+	_run(vm)
+	_chk("S.01 an unhandled special with a registered handler waits on it",
+			vm.pause_reason == ScriptVM.Pause.WAIT_NATIVE
+			and vm.pending_native == "SomeAsyncSpecial")
+	var vm2 := ScriptVM.new(_src({
+		"A": [_op("special", ["NoHandlerAnywhere"]), _op("end")],
+	}), FlagStore.new())
+	vm2.natives = reg
+	vm2.start("A")
+	_run(vm2)
+	_chk("S.02 one with NO handler still halts, from the VM alone",
+			vm2.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and vm2.diagnostic.contains("NoHandlerAnywhere"))
+	# ⚠️ A `specialvar` naming a destination other than VAR_RESULT is
+	# deliberately NOT routed: `resume_after_native` answers into VAR_RESULT, so
+	# serving it would write the wrong slot silently — worse than halting.
+	var vm3 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_TEMP_3", "SomeAsyncSpecial"]), _op("end")],
+	}), FlagStore.new())
+	vm3.natives = reg
+	vm3.start("A")
+	_run(vm3)
+	_chk("S.03 a specialvar answering into another var halts rather than mis-writing",
+			vm3.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
+
+	# --- G9a: the subject survives losing its node ---
+	var npc := NPC.new()
+	npc.local_id = "LOCALID_TEST_SUBJECT"
+	var vm4 := ScriptVM.new(_src({"A": [_op("end")]}), FlagStore.new())
+	vm4.start("A", npc)
+	_chk("S.04 the subject's local_id is captured, not just the node",
+			vm4.subject_local_id == "LOCALID_TEST_SUBJECT")
+	npc.free()
+	_chk("S.05 and it outlives the node a warp would free",
+			not is_instance_valid(vm4.subject)
+			and vm4.subject_local_id == "LOCALID_TEST_SUBJECT")
+
+	# --- G9b: script-driven object-event changes persist ---
+	ObjectEventState.clear()
+	_chk("S.06 nothing is recorded until a script changes something",
+			not ObjectEventState.has_any())
+	ObjectEventState.record("PalletTown_Frlg", "LOCALID_OAK", "cell", Vector2i(4, 7))
+	ObjectEventState.record("PalletTown_Frlg", "LOCALID_OAK", "facing", 2)
+	var ov := ObjectEventState.overrides_for("PalletTown_Frlg", "LOCALID_OAK")
+	_chk("S.07 both fields land under one map+local_id key",
+			ov.get("cell") == Vector2i(4, 7) and int(ov.get("facing", -1)) == 2)
+	_chk("S.08 and a different map with the same local_id is untouched",
+			ObjectEventState.overrides_for("PewterCity_Frlg", "LOCALID_OAK").is_empty())
+	# ⚠️ Vector2i does not survive JSON — the same reason SaveManager stores the
+	# player's cell as two ints. The round trip is where that would bite.
+	var payload := ObjectEventState.to_save()
+	var json_round = JSON.parse_string(JSON.stringify(payload))
+	ObjectEventState.clear()
+	ObjectEventState.from_save(json_round if json_round is Dictionary else {})
+	var back := ObjectEventState.overrides_for("PalletTown_Frlg", "LOCALID_OAK")
+	_chk("S.09 an override survives a real JSON round trip, cell included",
+			back.get("cell") == Vector2i(4, 7) and int(back.get("facing", -1)) == 2)
+	# Untrusted input, like every other loader here.
+	ObjectEventState.clear()
+	ObjectEventState.from_save({"PalletTown_Frlg|LOCALID_OAK": "not a dictionary"})
+	_chk("S.10 a hand-edited save fails closed rather than half-loading",
+			not ObjectEventState.has_any())
+	ObjectEventState.clear()

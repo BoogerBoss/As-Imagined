@@ -46,6 +46,18 @@ const RESULT_NONE := 0
 const RESULT_POISONED := 1
 const RESULT_AT_ONE_HP := 2
 
+## [M27G G7 follow-up] Names still to be announced, drained one per `message`
+## by the authored poison script.
+##
+## ⚠️ **THIS EXISTS SO THE NOTICE CAN BE A SCRIPT AT ALL.** The pages are built
+## at RUNTIME — one per Pokémon sitting at 1 HP — and `message` names a STATIC
+## label, so there was no way to show N of them without a second, free-standing
+## message-box driver in `_process`. The script loops instead: a `native`
+## buffers the next name and answers 1, or answers 0 when the queue is empty.
+## That keeps every page inside the op stream, which is what lets `describe()`
+## still tell the truth about a running poison notice.
+static var pending_names: PackedStringArray = PackedStringArray()
+
 ## `gText_PkmnFainted_FldPsn` (`src/strings.c:662`) — the `>= GEN_4` variant.
 ## The `< GEN_4` build of this same symbol reads "{STR_VAR_1} fainted…", which
 ## is the string a faint-based port would have used.

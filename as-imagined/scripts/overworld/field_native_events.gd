@@ -125,3 +125,23 @@ static func register_all(reg: NativeEventRegistry) -> void:
 						ow._cell, ow._facing, ow._elev,
 						OverworldSession.playtime_seconds()))
 		return 1 if ok else 0)
+
+
+	# --- [M27G G7 follow-up] Field poison -------------------------------------
+	#
+	# ⚠️ Buffers the next name and answers 1, or answers 0 when drained — which
+	# is what lets the notice be a LOOP in the op stream instead of N pages
+	# handed to a box nobody in the VM knows about. Writes only TextBuffers,
+	# which is runtime-only (source's own gStringVar1) and explicitly not a
+	# flag, a var, or a branch.
+	# ⚠️ Writes the RUNNING VM's OWN buffers, not a fresh TextBuffers — those are
+	# what `ScriptDriver.expanded_pages()` expands the corpus line through, so a
+	# private instance would buffer a name nothing ever reads.
+	reg.register("BufferNextPoisonSurvivor", func(driver, _args) -> Variant:
+		if FieldPoison.pending_names.is_empty():
+			return 0
+		var next: String = FieldPoison.pending_names[0]
+		FieldPoison.pending_names.remove_at(0)
+		if driver.vm != null:
+			driver.vm.buffers.set_slot(0, next)
+		return 1)

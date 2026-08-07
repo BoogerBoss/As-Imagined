@@ -121,8 +121,15 @@ NewGame_Text_LetsGo::
 @ park it on when it was built, so `_poison_step()` opened the box directly and
 @ expressed the lock by returning early from `_process` — a second, parallel way
 @ to be a cutscene. Now it is a script like everything else.
-FieldPoison_Text_Fainted::
-	.string "{STR_VAR_1} fainted…$"
+@
+@ ⚠️ VERBATIM FROM `FieldPoison.MESSAGE`, and the first draft of this block got
+@ it wrong — it said "{STR_VAR_1} fainted…", which is a different event
+@ entirely. The notice fires when a poisoned Pokémon is left sitting at exactly
+@ 1 HP and the poison CLEARS; a faint is not what happened, and the mon is
+@ still standing.
+FieldPoison_Text_Survived::
+	.string "{STR_VAR_1} survived the poisoning.\n"
+	.string "The poison faded away!$"
 
 @ --- Save --------------------------------------------------------------------
 @

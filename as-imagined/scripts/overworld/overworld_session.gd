@@ -283,3 +283,4 @@ static func reset() -> void:
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""
+	ObjectEventState.clear()

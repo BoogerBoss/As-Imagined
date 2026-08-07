@@ -71,6 +71,10 @@ static func build_payload(map_name: String, cell: Vector2i, facing: int,
 		"wallet": OverworldSession.wallet.to_save(),
 		"respawn": OverworldSession.respawn.to_save(),
 		"party": OverworldSession.player_party().to_save(),
+		# [M27G G9] Script-driven object-event changes — source's own
+		# `objectEventTemplates` equivalent. Absent from older saves, which
+		# `from_save` reads as "no overrides" rather than failing.
+		"object_events": ObjectEventState.to_save(),
 		# ⚠️ Vector2i does not survive JSON, so the cell is stored as two ints
 		# rather than relying on a stringified "(45, 21)" that would have to be
 		# parsed back by hand.
@@ -146,6 +150,7 @@ static func apply(payload: Dictionary) -> int:
 	OverworldSession.bag.from_save(payload.get("bag", {}))
 	OverworldSession.wallet.from_save(payload.get("wallet", {}))
 	OverworldSession.respawn.from_save(payload.get("respawn", {}))
+	ObjectEventState.from_save(payload.get("object_events", {}))
 	TextBuffers.identity = OverworldSession.identity
 	var party := BattleParty.new()
 	var dropped := party.from_save(payload.get("party", []))

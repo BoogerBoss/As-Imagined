@@ -9499,8 +9499,8 @@
 "FarawayIsland_Interior_Text_TheFeelingOfBeingWatchedFaded": [
 "The feeling of being watched faded…"
 ],
-"FieldPoison_Text_Fainted": [
-"{STR_VAR_1} fainted…"
+"FieldPoison_Text_Survived": [
+"{STR_VAR_1} survived the poisoning.\nThe poison faded away!"
 ],
 "FiveIsland_House1_Text_HusbandWentOffFishing": [
 "Don't worry about buying anything\nfor dinner tonight!",

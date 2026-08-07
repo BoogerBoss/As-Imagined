@@ -211,7 +211,21 @@ var pending_object_ops: Array[Dictionary] = []
 
 ## Which entity this script belongs to, so `faceplayer` and friends have a
 ## subject. May be null for a map-level script.
+##
+## ⚠️ **[M27G G9] THE `local_id` BESIDE IT IS THE DURABLE HALF.** A scripted
+## warp calls `_teardown_and_load`, which FREES the outgoing chunk and every
+## `OverworldEntity` in it — so a script that warps and then refers to
+## `VAR_LAST_TALKED` was holding a reference to a dead node. Every OTHER
+## movement target already went through `find_entity_by_local_id`; this one was
+## the exception, and the only one that could dangle.
+##
+## Kept as a reference AND a name: the reference is right in the overwhelmingly
+## common case (no warp, same frame), the name is what survives one.
 var subject: OverworldEntity = null
+
+## The subject's own `local_id`, captured at `start()`. Empty for a map-level
+## script or an entity with no id.
+var subject_local_id: String = ""
 
 ## [M27I I2] The three script string buffers. Runtime-only, like source's own
 ## gStringVar1-3 globals — deliberately NOT in FlagStore, which is save state.
@@ -220,6 +234,21 @@ var buffers := TextBuffers.new()
 ## [M27I I3] The player's bag. Injected like `_flags` so a test can hand in a
 ## fresh one; defaults to a private bag so a VM built without one still runs.
 var bag := Bag.new()
+
+## [M27G G8] The `native` handler table, injected like `bag`.
+##
+## ⚠️ **INJECTED SO THE VM CAN STILL DIAGNOSE AN UNIMPLEMENTED SPECIAL BY
+## ITSELF.** G8 routes an unhandled `special` to `WAIT_NATIVE` instead of
+## halting outright — but without this the VM could no longer tell an
+## unimplemented special from a handled one, and only the DRIVER would know.
+## That would have quietly broken the property this whole engine rests on:
+## `step()` alone is enough to say what a script did and why it stopped.
+## `m27f_stage4_test` B.04/B.05 assert exactly that, from a bare VM with no
+## driver anywhere, and they are right to.
+##
+## Null means "no registry" — every special that is not already synchronous
+## halts, which is the pre-G8 behaviour and the correct default for a test.
+var natives: NativeEventRegistry = null
 
 ## [M27O O1] The respawn point, injected like `bag` so a test can supply one.
 var respawn := RespawnPoint.new()
@@ -292,6 +321,9 @@ func _init(source: ScriptSource, flags: FlagStore) -> void:
 func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	script_label = label
 	subject = p_subject
+	subject_local_id = ""
+	if p_subject != null and "local_id" in p_subject:
+		subject_local_id = str(p_subject.local_id)
 	pc = 0
 	current_op = ""
 	diagnostic = ""
@@ -708,6 +740,33 @@ func step() -> bool:
 				return _create_ingame_trade_pokemon()
 			if FieldSpecials.run(fn):
 				return true
+			# [M27G G8] ⚠️ **THE LAST STOP BEFORE THE HALT, AND THE POINT IS THE
+			# COST OF THE *NEXT* ONE.** An async special used to need four
+			# coordinated edits — a Pause member here, an intercept above, an
+			# `answer_*` method, and a driver branch — which is what
+			# `ChangePokemonNickname`, `ChoosePartyMon` and
+			# `CreateInGameTradePokemon` each paid. Routed here it needs one:
+			# register a handler under the special's own name.
+			#
+			# ⚠️ Checked AFTER `FieldSpecials`, so a synchronous special that
+			# already answers in-frame keeps doing so — no behaviour moves.
+			# And BEFORE the halt, so an unimplemented one still halts and
+			# names itself: that discipline is the only honest coverage
+			# measure this project has, and G8 does not soften it.
+			#
+			# ⚠️ There is NO CONTENT WORK left behind this for the corridor.
+			# `docs/m27_corridor_opcode_scope.md` walked the 32 baked maps: of
+			# 39 reachable special names, 17 are implemented, 18 are
+			# permanently-excluded multiplayer content, and the remaining 4 are
+			# blocked on OTHER milestones (M33's Pokédex ×5, M30's move tutor,
+			# a friendship system nothing owns, and a `SaveGame` whose every
+			# corridor caller is Cable-Club-gated). This is plumbing for what
+			# comes next, not a backlog being worked.
+			if natives != null and natives.has(fn):
+				pending_native = fn
+				pending_native_args = args.slice(1)
+				pause_reason = Pause.WAIT_NATIVE
+				return false
 			pause_reason = Pause.UNKNOWN_OP
 			diagnostic = "special '%s' is not implemented" % fn
 			return false
@@ -747,6 +806,18 @@ func step() -> bool:
 				if _flags != null:
 					_flags.var_set(dest, FieldSpecials.specialvar_value(vfn))
 				return true
+			# [M27G G8] Same routing as `special` above. ⚠️ The handler's return
+			# lands in VAR_RESULT via `resume_after_native`, so a `specialvar`
+			# naming a DIFFERENT destination var is deliberately NOT served
+			# here — it would answer into the wrong slot silently, which is
+			# worse than halting. Halting names the function, and a future
+			# session can widen `resume_after_native` to take a destination if
+			# a real call site ever needs one.
+			if dest == "VAR_RESULT" and natives != null and natives.has(vfn):
+				pending_native = vfn
+				pending_native_args = []
+				pause_reason = Pause.WAIT_NATIVE
+				return false
 			pause_reason = Pause.UNKNOWN_OP
 			diagnostic = "specialvar '%s' is not implemented" % vfn
 			return false

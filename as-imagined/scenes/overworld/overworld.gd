@@ -752,36 +752,19 @@ func _process(_delta: float) -> void:
 	# Sits ABOVE the message-box block because a yes/no draws OVER the message it
 	# is asking about (layer 85 vs 80) and must take the input first — which is
 	# exactly what the condition below already assumed by excluding itself.
-	# [M27G G7] ⚠️ **THE FREE-STANDING YES/NO DRIVER IS GONE.** It existed because
-	# `run_new_game` opened a yes/no outside the VM, and it had to be ADDED after
-	# `[M27K K-b]`'s gender question shipped unanswerable from the keyboard. Oak's
-	# speech and the save prompt are both scripts now, so the VM's own
-	# WAIT_YES_NO branch is the only yes/no driver again. Do not restore it —
-	# make the caller a script instead.
+	# [M27G G7] ⚠️ **BOTH FREE-STANDING INPUT DRIVERS ARE GONE.** One drove a
+	# yes/no opened outside the VM, one drove a message box opened outside it,
+	# both gated on `_vm == null`. The yes/no one had to be ADDED after
+	# `[M27K K-b]`'s gender question shipped unanswerable from the keyboard,
+	# which is the whole reason this block treats a second input path as a
+	# defect rather than a convenience.
 	#
-	# ⚠️ **THE MESSAGE-BOX DRIVER BELOW IS THE LAST ONE, AND IT HAS EXACTLY ONE
-	# USER: `_poison_step`.** It is not deleted, and the reason is a real
-	# limitation rather than an oversight. The poison notice builds its pages at
-	# RUNTIME — one per Pokémon that just hit 1 HP, each with that Pokémon's own
-	# name buffered — and the VM's `message` opcode names a STATIC label in the
-	# text corpus. There is no opcode for "show these N pages I just computed".
-	#
-	# The obvious workaround does not work either: a `native` handler cannot
-	# `await` the message box, because while the VM sits on WAIT_NATIVE the
-	# driver is in its WAIT_NATIVE branch and nothing is advancing the box. See
-	# `docs/m27g_scope.md` G7 for the two ways out (a dynamic-text opcode, or
-	# letting WAIT_NATIVE pump the box) — both are real design calls, neither
-	# belongs in a phase whose job was deleting the OTHER driver.
-
-	if _vm == null and _box != null and _box.is_open \
-			and (_yes_no == null or not _yes_no.is_open):
-		# `advance` skips the typewriter on the first press (source lets you
-		# skip) and closes itself once past the last page, so this is the whole
-		# interaction — the same shape the VM's own WAIT_BUTTON branch uses.
-		if Input.is_action_just_pressed("ui_accept"):
-			_box.advance()
-		return
-
+	# Every caller is a script now — Oak's speech, saving, and the field-poison
+	# notice — so the VM's own WAIT_BUTTON / WAIT_YES_NO branches are the only
+	# drivers again. **If a future beat needs a box, make it a script.** The
+	# poison notice is the worked example for the hard case: pages built at
+	# runtime, shown by a loop that buffers one name per pass
+	# (`FieldPoisonEvents`).
 	# [M27K K-b] The naming screen owns input outright while it is up, above
 	# even the message box — it is a screen, not a prompt over one.
 	if _naming != null and _naming.is_open:
@@ -1453,18 +1436,18 @@ func _poison_step() -> void:
 		# screen flash, which this project has no equivalent for. Damage still
 		# happened; the player just is not told about it.
 		return
-	var pages := PackedStringArray()
+	# [M27G G7 follow-up] Hand the names to the SCRIPT rather than opening a box
+	# here. `_poison_step` was the last caller that drove the message box
+	# outside the VM, and the last reason a second input driver existed in
+	# `_process`. The script loops one `message` per name; see
+	# `FieldPoisonEvents`.
+	var names := PackedStringArray()
 	for mon: BattlePokemon in FieldPoison.cure_at_one_hp(party):
-		# [M27I I2] Through the real buffer/expansion path rather than a format
-		# string, because the message IS `{STR_VAR_1}`-shaped in source and the
-		# nickname genuinely goes through `StringGet_Nickname` into gStringVar1.
-		var buffers := TextBuffers.new()
-		buffers.set_slot(0, mon.species.species_name if mon.species != null else "")
-		pages.append(buffers.expand(FieldPoison.MESSAGE))
-	if pages.is_empty():
+		names.append(mon.species.species_name if mon.species != null else "")
+	if names.is_empty():
 		return
-	if _box != null:
-		_box.open(pages)
+	FieldPoison.pending_names = names
+	run_script(FieldPoisonEvents.LABEL)
 
 
 ## [Map scripts follow-up] A `Trigger` on the cell just arrived at

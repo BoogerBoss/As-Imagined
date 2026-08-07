@@ -236,6 +236,13 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 		return false
 	add_child(root)
 	register_chunk(map_name, data, root, origin)
+	# [M27G G9] Re-apply anything a script permanently changed about this map's
+	# object events. ⚠️ HERE, not at bake time and not in the scene: the baked
+	# `.tscn` is a reproducible artifact (`check_bake_diff` depends on that) and
+	# must keep describing the map as authored, so a runtime override belongs in
+	# the save and is layered back on load. Same shape as `entity_visible`
+	# reading a FLAG rather than the scene knowing it is hidden.
+	_apply_object_event_overrides(map_name, root)
 	# Not just this chunk's skirt: a newly loaded neighbour takes ownership of
 	# cells an existing chunk was skirting over, so the seam only closes if the
 	# OTHER side repaints too. Scoped to chunks that reach these cells.
@@ -259,6 +266,39 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	else:
 		refresh_skirts_near(chunk_rect(map_name))
 	return true
+
+
+## [M27G G9] Layer saved script-driven changes back onto a freshly loaded
+## chunk. Silent and cheap when nothing was ever changed, which is the norm.
+func _apply_object_event_overrides(map_name: String, root: Node2D) -> void:
+	if root == null or not ObjectEventState.has_any():
+		return
+	for e in _entities_under(root):
+		if not ("local_id" in e) or str(e.local_id) == "":
+			continue
+		var ov := ObjectEventState.overrides_for(map_name, str(e.local_id))
+		if ov.is_empty():
+			continue
+		if ov.has("cell"):
+			e.cell = ov["cell"]
+		if ov.has("movement_type") and e is NPC:
+			(e as NPC).movement_type = str(ov["movement_type"])
+		# ⚠️ Facing LAST: `set_facing` rebuilds the sprite frame, and doing it
+		# before a cell change would leave the sprite correct and the node in
+		# the wrong place for a frame.
+		if ov.has("facing") and e is NPC:
+			(e as NPC).set_facing(int(ov["facing"]))
+
+
+func _entities_under(root: Node2D) -> Array[OverworldEntity]:
+	var out: Array[OverworldEntity] = []
+	for stratum in root.get_children():
+		if not (stratum is Node2D):
+			continue
+		for c in stratum.get_children():
+			if c is OverworldEntity:
+				out.append(c)
+	return out
 
 
 ## The registry half, split from the loading half so it can be driven with

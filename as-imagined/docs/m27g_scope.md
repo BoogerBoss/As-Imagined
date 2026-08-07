@@ -700,8 +700,8 @@ free-standing yes/no driver would have left **saving** unanswerable from the
 keyboard — the identical bug this phase exists to fix, reintroduced by the
 phase fixing it. Found by deleting the driver and asking what else used it.
 
-⚠️ **THE FREE-STANDING MESSAGE-BOX DRIVER IS STILL THERE, with exactly one
-user: `_poison_step`.** Not an oversight — a real limitation. The poison notice
+⚠️ **[CLOSED, same day — see G8/G9's own entry.] THE FREE-STANDING MESSAGE-BOX
+DRIVER WAS STILL THERE, with exactly one user: `_poison_step`.** Not an oversight — a real limitation. The poison notice
 builds its pages at RUNTIME (one per Pokémon that just hit 1 HP, each with that
 Pokémon's own name buffered) and `message` names a STATIC label in the text
 corpus. There is no opcode for "show these N pages I just computed". The
@@ -762,9 +762,23 @@ writes `VAR_RESULT`; an unregistered one still halts and names itself.
 stands, and it is the only honest coverage measure.
 
 **Done when.** The routing exists and one previously-halting special is
-served by a handler. **Re-run the corridor reachability walk and record the
-result** (absorbing `m27g_recon.md` build-order item 5 and
-`m27_corridor_opcode_scope.md`'s own re-run note).
+served by a handler.
+
+**✅ DONE 2026-08-07.** `special` and `specialvar` route to
+`NativeEventRegistry` **after** `FieldSpecials` and **before** the halt.
+
+⚠️ **THE REGISTRY IS INJECTED INTO `ScriptVM`, NOT CONSULTED BY THE DRIVER**,
+and the first cut got this wrong. Routing at the driver meant the VM could no
+longer tell an unimplemented special from a handled one — only the driver
+knew — which quietly breaks the property this whole engine rests on: `step()`
+alone says what a script did and why it stopped. `m27f_stage4_test` B.04/B.05
+assert exactly that from a bare VM with no driver anywhere, and caught it.
+
+⚠️ **A `specialvar` naming a destination other than `VAR_RESULT` is
+deliberately NOT routed.** `resume_after_native` answers into `VAR_RESULT`, so
+serving one would write the wrong slot silently — worse than halting. Widening
+`resume_after_native` to take a destination is a one-line change if a real call
+site ever needs it.
 
 **Do NOT.** Port M33/M30/friendship specials — they are blocked on systems,
 not on this. Attempt anything corpus-wide. Implement anything reached only
@@ -813,6 +827,35 @@ tested rather than merely described).
 
 **Done when.** Both gaps are closed or explicitly deferred with a recorded
 decision, and the corridor suite is green.
+
+**✅ DONE 2026-08-07 — both closed.**
+
+**`_vm.subject`**: `ScriptVM` now captures `subject_local_id` at `start()`, and
+`resolve_movement_entity` re-resolves by name when the node is gone. Every
+*other* movement target already resolved by `local_id` on each use; this one
+uniquely held a reference across a teardown.
+
+**Object-event persistence**: new `ObjectEventState`, keyed by **map +
+`local_id`** — the node is exactly the thing that dies, so a per-node key
+could not survive the teardown it exists to survive. `setobjectxyperm` /
+`setobjectmovementtype` / `turnobject` record; `MapManager._install_chunk`
+re-applies on load; `SaveManager` persists it as `object_events` (absent from
+older saves, read as "no overrides"). ⚠️ Applied at LOAD, never baked into the
+`.tscn` — the baked scene is a reproducible artifact that `check_bake_diff`
+depends on, and must keep describing the map as authored. Same shape as
+`entity_visible` reading a flag rather than the scene knowing it is hidden.
+⚠️ Visibility is deliberately NOT stored here: `addobject`/`removeobject`
+toggle a FLAG, which is already saved.
+
+**Plus, closing G7's own leftover:** `_poison_step` is now
+`FieldPoisonEvents`, and **the last free-standing message-box driver is
+deleted**. Rob's call on the shape: the script LOOPS — a `native` buffers the
+next survivor's name and answers 1, or answers 0 when drained; `message` shows
+the one static corpus line; `goto` comes back. No new opcode, no driver change,
+and every page stays inside the op stream so `describe()` still tells the truth
+about a running notice. ⚠️ The first draft of that corpus line said
+"{STR_VAR_1} fainted…" — `FieldPoison.MESSAGE` is about *surviving* the
+poisoning, a different event entirely, and the mon is still standing.
 
 **Superseded content, kept so it is not re-derived:** the original G9 opcode
 list (`createvobject`/`turnvobject`, `setobjectxy`, `getplayerxy`,
