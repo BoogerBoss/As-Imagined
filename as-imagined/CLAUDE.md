@@ -392,6 +392,88 @@ reference procedure above: that outcome is the start of a research task and a
 decision point for Rob, never a stopping point and never a licence to
 improvise.
 
+## Standing rule: port the behaviour, not the mechanism — "would a player notice?"
+
+**Rob's call, 2026-08-07.** Fidelity to `pokeemerald-expansion` is about what the
+game DOES, not how the engine does it. Where the two can be separated, this
+project prefers whatever Godot does best.
+
+**The test, and it is deliberately a blunt one:**
+
+> **Would a player notice? If yes, match source. If it is only visible in a
+> stack trace, use the engine.**
+
+⚠️ **THIS IS NOT A LOOSENING OF STEP 0, AND IT IS NOT A LICENCE TO IMPROVISE.**
+You still go and read the real function first — every time, and for the same
+reasons. What changes is only what you do with what you find: having established
+what the behaviour IS, you are free to express it the way Godot expresses things,
+rather than transliterating C into GDScript.
+
+⚠️ **IT IS ALSO NOT A CHANGE OF SCOPE.** "The scope is what the expanded engine
+does, not whatever I think would be cool" still stands, unamended. This rule
+governs IMPLEMENTATION, never the feature list. A mechanic the reference does not
+have is still an idea to flag, not a thing to add.
+
+### What is behaviour (match it)
+
+Anything a player can observe, and anything a player's SAVE depends on:
+
+- **Battle mechanics** — damage, accuracy, AI scoring, effect ordering, turn
+  order, status rules. This is the product; both products sit on it.
+- **Pulled assets** — sprites, fonts, window art, backgrounds. Real reference
+  art, per the asset rule.
+- **Script semantics** — the command vocabulary (17,137 imported labels depend on
+  it), flag/var conventions, `applymovement` being asynchronous while
+  `waitmovement` blocks, `trainerbattle`'s outcome routing, the interaction
+  dispatch order including the counter hop.
+- **Text** — control codes, page splits, and how many times the player presses A
+  to get through a conversation.
+
+### What is mechanism (use Godot)
+
+Anything only a developer sees:
+
+- Data structures, file formats, class layout, how state is stored.
+- Scheduling — how a thing is made to happen over several frames.
+- Input plumbing, draw-order plumbing, resource loading.
+- Anything whose GBA shape exists because of a hardware constraint this project
+  does not have.
+
+### Worked examples, both directions
+
+**Diverged, correctly.** `ScriptVM` is a Godot-native interpreter over a JSON IR,
+not a byte-level VM over a 231-entry command table. No ROM is ever loaded, the
+importer reads assembly TEXT, and the JSON is greppable and hand-editable —
+which is what made `field_script_source/` possible at all. A player cannot tell.
+
+**Diverged, correctly.** `native` (M27G G5) lets a script hand control to
+arbitrary Godot code. It is a port of source's own `SetupNativeScript`, but the
+handler is a Callable in a registry rather than a function pointer in a table —
+and handlers may be coroutines, which source has no concept of.
+
+**MATCHED, correctly, and it looked like plumbing.** `applymovement` queues and
+returns while `waitmovement` blocks. Collapsing that into one blocking call is
+the obvious "simplification" and would break every cutscene where two actors
+move at once — which is most of them. ⚠️ **Async/sync IS behaviour**, however
+much it reads like implementation.
+
+**MATCHED, correctly, after nearly not being.** `trainerbattle`'s three outcomes
+resolve to two DIFFERENT continuation points, and the already-beaten skip lives
+one level below the command. A tidier design would re-challenge Brock forever.
+
+### The failure mode this rule exists to prevent — in BOTH directions
+
+- **Porting plumbing you did not need.** A GBA task scheduler reimplemented in
+  GDScript so that ported scripts have something to run on, when
+  `AnimationPlayer` already is one.
+- **"Simplifying" something load-bearing.** The two matched examples above both
+  look like implementation detail from the outside and are not.
+
+**When genuinely unsure, the tiebreak is Step 0 plus this file's own reference
+procedure: scope it, then bring Rob the call.** Guessing in either direction is
+the thing to avoid — and a divergence, once chosen, is recorded at the site like
+every other one here.
+
 ## Standing rule: flag, don't silently fix, out-of-scope findings
 
 **When work turns up a real problem outside the current task's scope, flag it
