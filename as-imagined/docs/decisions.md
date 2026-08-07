@@ -27820,6 +27820,147 @@ to load, `_ready` never runs, nothing calls `quit()`, and the run times out with
 no summary line. Worth recognising the shape — a timeout is not always a slow
 test.
 
+## [M26E4 rework, Phase 2-4] SKILLS/MOVES real-coordinate positioning, two decode-adjacent bugs, EXP-bar tile extraction
+
+Continuation of the M26E4 rework session (real `pokeemerald_expansion`
+tile/tilemap/palette decode replacing the Emerald UI Pack sourcing for the
+Summary screen; Phase 1 — the GbaLayer container and shared chrome — landed
+earlier in this same session, before this entry's own scope begins).
+
+[Correction, same session] Every citation in this entry, and every one
+made across Phases 1-4, points at `reference/pokeemerald_expansion` --
+this project's own single canonical reference (CLAUDE.md's "Ground truth /
+reference" section) -- not FireRed. An earlier draft of this entry's own
+opening line said "FireRed/Emerald," echoed uncritically from this
+session's own inherited task framing rather than from any actual source
+citation; none of the real citations below, nor anything in
+`summary_screen.gd`/`gen_summary_screen_sprites.py` themselves, ever
+pointed at a FireRed source tree. Flagged and fixed here rather than left
+to mislead a future reader, per this file's own standing convention.
+
+**Phase 2 (SKILLS page), three fixes, one real finding beyond the original
+plan:**
+
+1. **Vertical alignment.** ItemLabel/RibbonsLabel and all 6 stat value labels
+   were TOP-aligned (Label's own default) inside their real 64px-tall row
+   boxes, reading as scattered rather than 3 clean rows. `vertical_alignment
+   = 1` on all 8.
+
+2. **Missing stat-name labels — a real finding, not assumed.** Dumping
+   `page_skills.bin`'s own raw tile indices at the real
+   `PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT/RIGHT` coordinates
+   (`pokemon_summary_screen.c:523-544`) showed only repeating box-fill/
+   border tiles (35/36/51/52/108/109), zero glyph variety — confirmed
+   against the adjacent "ITEM"/"RIBBON" header row, whose tile indices ARE
+   genuinely varied (137-159 etc.) and render as real text. Cross-checked
+   directly against source: `PrintTextOnWindow(PSS_LABEL_WINDOW_..., gText_HP4,
+   ...)` etc. (`:3300-3310`) print "HP"/"ATTACK"/"DEFENSE"/"SP. ATK"/"SP.
+   DEF"/"SPEED" dynamically onto a real BG0 text window — never baked into
+   the tilemap this project decodes. Added 6 new static Label nodes
+   (`HpNameLabel` etc.), positioned from the same window template's real
+   tile coordinates (tile 10,7 / tile 22,7, both width matching where the
+   paired VALUE window begins). Static text, so no `.text` write needed in
+   `_refresh_skills_page()` — only the existing visibility toggle, extended
+   to a new `_stat_name_labels` array.
+
+3. **Stat-value horizontal alignment.** All 6 value labels were
+   `horizontal_alignment = 2` (right), inherited from an earlier pass —
+   confirmed WRONG against `PrintLeftColumnStats`/`PrintRightColumnStats`
+   (`:3934-3969`), which left-align at a small fixed native offset (x=4/x=2)
+   in the non-IV/EV branch. Removed the right-align override on all 6;
+   fixed the value-column-crowds-into-the-next-label-column look the
+   right-align was causing.
+
+**Phase 3 (MOVES page), one repositioning pass, one cursor-convention
+decision, one real bug found via screenshot and fixed:**
+
+- Repositioned the 4 move rows (type badge/name/PP) and the 4 move-detail
+  nodes (Power/Accuracy/Category icon/Description) into `GbaLayer`, using
+  real coordinates from `sPageMovesTemplate`
+  (`PSS_DATA_WINDOW_MOVE_NAMES`/`_MOVE_PP`/`_MOVE_DESCRIPTION`,
+  `:702-729`), `PSS_LABEL_WINDOW_MOVES_POWER_ACC` (`:559-566`), and
+  `SetMoveTypeIcons`'s own per-row sprite placement (`x=85, y=32+16*i`,
+  `:4414-4433`, center-anchored per `SetTypeSpritePosAndPal`'s `+16,+8`
+  convention resolving back to a plain top-left when the icon's own
+  32x16 size is applied).
+
+- **Cursor convention, decided**: move rows stay OUT of the shared "▶"
+  cursor-group convention (already correctly documented pre-session — a
+  toggle-a-detail-panel row isn't a mutually-exclusive-action list). Source's
+  own real cursor here is a sprite composite (`move_select.png`, unpulled) —
+  deferred as real scope beyond a repositioning pass, matching Phase 1's own
+  "cursor... deferred to later phases" note. In its place: a cheap
+  text-color highlight (`_COLOR_SELECTED_NAME_FG`) on the selected row's own
+  name label.
+
+- **Real bug found via the mandated screenshot pass, not by any test**: the
+  MOVES page swapped `PageOverlay`'s texture to the OLD Emerald-UI-Pack
+  `summary_bg_movedetail.png` (512x384) the instant a move was selected —
+  carried over from the 001_Summary.rb recipe's own `drawSelectedMove`
+  (`@sprites["background"].setBitmap(...)`). That asset's 4:3 aspect doesn't
+  fill the real 3:2 GbaLayer box, leaving an unfilled void where the
+  Backdrop showed through, with the row list's own labels (never hidden)
+  rendering over a jarring green/teal backdrop mismatched to the new purple
+  decode. Directly dumping `page_battle_moves.bin`'s own tile rows 15-19
+  (the real Power/Acc + Description window coordinates) found the SAME
+  repeating box-fill/border tiles as Phase 2's stat-label finding — the box
+  frames are already baked into the ONE static tilemap this project already
+  decodes. Real source never swaps backgrounds for the detail view; it just
+  reveals extra windows on the page's own tilemap
+  (`PutWindowTilemap(PSS_LABEL_WINDOW_MOVES_POWER_ACC)`'s own show/hide-
+  in-place shape). Fix: `_refresh()` always uses `_PAGE_OVERLAY[_page]`,
+  full stop. `summary_screen_test.gd`'s own `_test_moves_background_swaps_
+  only_when_selected` asserted the OLD (wrong) swap — rewritten in place to
+  assert the corrected behavior, the same "a genuine correctness fix
+  legitimately invalidates a stale test assumption" shape this project
+  already follows elsewhere. `summary_bg_movedetail.png` itself is left on
+  disk, now unconsumed by any code — an orphaned asset, matching this
+  project's own established convention for a superseded file (not deleted
+  here; flagged for the Phase 5 asset-cleanup pass already on record).
+
+**Phase 4 (EXP bar + status icon assets — pull only, not wired, E4-4's own
+job per the already-locked project scope):**
+
+- **Status icons: nothing to pull.** `sStatusIconsSpriteSheet` resolves to
+  `graphics/interface/status_icons.png` (`graphics.c:1706-1707`) — confirmed
+  byte-identical (zero-diff `ImageChops`) to
+  `assets/sprites/battle_ui/interface/party_status_icons.png`, already
+  pulled by `gen_party_screen_sprites.py`'s own M26E3 E3-1 pass. Noted, not
+  duplicated.
+
+- **EXP bar: not a separate asset in source at all.**
+  `DrawExperienceProgressBar` (`:3075-3110`) writes raw tile INDICES
+  (`0x2062`..`0x206A`) directly into the SKILLS page's own live tilemap
+  buffer — masking the palette-bank bits (`& 0x3FF`, the same mask
+  `decode_page()` already applies) gives tile indices 98-106, 9 tiles
+  already sitting in the SAME `tiles.png` atlas every other summary asset
+  is decoded from. Visually confirmed via a dedicated zoomed render (not
+  trusted from the raw index math alone): a real progressive left-to-right
+  fill sequence, tile 98 fully unlit (checkered dark) through tile 106
+  fully lit (checkered lime), matching source's own "8 ticks per 8px
+  segment" description exactly. New `gen_exp_bar_ticks()` in
+  `gen_summary_screen_sprites.py`, output `summary_exp_bar_ticks.png`
+  (72x8 native, one 9-tile horizontal strip for a future consumer to slice
+  8px-wide sub-regions from). Not wired into any node.
+
+**Flagged, not fixed — for Rob's own call**: "Torrent" (ability text) renders
+twice in the persistent portrait panel, confirmed present as early as the
+Phase 2 SKILLS screenshot (predates Phase 3, not caused by anything in this
+entry). Likely related to the already-documented "Trainer Memo/Ability panel
+— E4-4's own future job" deferral from Phase 1, but not traced further this
+session — Rob chose to defer investigating it and move on to Phase 4.
+
+**Docs scope note**: this entry intentionally does NOT touch CLAUDE.md's own
+M26E4 roadmap row — that file is already flagged (project memory:
+"Split CLAUDE.md next housekeeping pass") as near its own size cap, and a
+full dated status-history bullet for this whole rework (matching the
+project's usual convention) would be substantial. Left for Rob's own
+housekeeping pass, or a dedicated follow-up if he'd rather have it now.
+
+126/126 `summary_screen_test.tscn` assertions passing throughout (tier-
+specific suite only — a full project-wide regression sweep is Rob's own
+manual step per this project's standing convention, not run here).
+
 ## [M27H H4 fix] Caught Pokemon were handed over fainted
 
 The catch site ends the battle by setting the opponent's HP to 0 and `fainted`

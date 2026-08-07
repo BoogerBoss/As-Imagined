@@ -176,6 +176,7 @@ HOLD_EFFECT_BLUNDER_POLICY = 118  # M18r: +2 Speed when the holder's own move mi
 HOLD_EFFECT_EVIOLITE = 91        # M18s: +50% Def AND SpDef if CanEvolve(species)
 HOLD_EFFECT_ASSAULT_VEST = 92    # M18s: +50% SpDef only + status-move restriction
 HOLD_EFFECT_BERSERK_GENE = 129   # M18u: +2 Atk + infinite self-confusion, switch-in only
+HOLD_EFFECT_PREVENT_EVOLVE = 37  # M28: Everstone — blocks ALL evolution methods while held
 HOLD_EFFECT_METRONOME = 61       # M18u: +20%/consecutive same-move use, capped at 5 uses
 HOLD_EFFECT_PRIMAL_ORB = 108     # M18w: Red Orb AND Blue Orb share this exact value --
                                   #       species-differentiated via required_species
@@ -549,6 +550,26 @@ ITEMS = [
     #    function Deep Sea Scale/Metal Powder (M18g) already occupy. No
     #    hold_effect_param needed -- both are fixed 1.5x, no per-item magnitude.
     {"id": 494, "name": "Eviolite",       "hold_effect": HOLD_EFFECT_EVIOLITE},
+    # M28: ITEM_EVERSTONE = 245 (include/constants/items.h:323). Blocks ALL
+    # evolution methods while held (checked once, before the method dispatch,
+    # in source's own GetEvolutionTargetSpecies) — see ItemManager.blocks_evolution.
+    {"id": 245, "name": "Everstone",      "hold_effect": HOLD_EFFECT_PREVENT_EVOLVE},
+    # [M28c] The 10 real evolution-trigger items data/evolutions.json's own
+    # item-method entries reference by name (via PokemonRegistry.item_id_of)
+    # that had no ItemData at all until now. Pure evolution triggers — no
+    # real battle hold-effect in modern games, so no hold_effect is set.
+    # Ids resolved via data/item_name_to_id.json (already the authoritative
+    # bridge from ITEM_* names to real ids, built for M27I).
+    {"id": 227, "name": "Dragon Scale"},
+    {"id": 211, "name": "Fire Stone"},
+    {"id": 214, "name": "Leaf Stone"},
+    {"id": 796, "name": "Linking Cord"},
+    {"id": 217, "name": "Moon Stone"},
+    {"id": 234, "name": "Prism Scale"},
+    {"id": 216, "name": "Sun Stone"},
+    {"id": 213, "name": "Thunder Stone"},
+    {"id": 228, "name": "Up-Grade"},
+    {"id": 212, "name": "Water Stone"},
     {"id": 503, "name": "Assault Vest",   "hold_effect": HOLD_EFFECT_ASSAULT_VEST},
 
     # ── M18u: Berserk Gene + Metronome item (2) — unrelated mechanics sharing this

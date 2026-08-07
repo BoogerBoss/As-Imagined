@@ -39,7 +39,7 @@ func _ready() -> void:
 	_test_legal_pick_opens_action_submenu_forced()
 	_test_submenu_primary_press_emits_mon_chosen_and_closes()
 	_test_submenu_cancel_press_closes_and_reenables_list()
-	_test_summary_button_is_a_disabled_stub()
+	_test_summary_button_now_opens_a_real_summary_screen()
 	_test_escape_closes_submenu_first_when_open()
 	_test_escape_after_submenu_closed_still_cancels_voluntary()
 	_test_escape_is_a_no_op_during_forced_replacement()
@@ -520,9 +520,18 @@ func _test_submenu_cancel_press_closes_and_reenables_list() -> void:
 			not _find_slot_button(overlay, 1).disabled)
 
 
-func _test_summary_button_is_a_disabled_stub() -> void:
-	var active := _make_mon("SummaryStubActive")
-	var bench := _make_mon("SummaryStubBench")
+# [M26E4-2, was _test_summary_button_is_a_disabled_stub] E3-3 shipped
+# Summary as a real but disabled stub, explicitly flagged as "M26E4's own
+# future hook" -- that hook is now real. This test's own name and assertion
+# are updated in place (not left contradicting the shipped behavior) to
+# match: Summary is enabled and pressing it opens a real SummaryScreen
+# overlay, per switch_select_screen.gd's own new `_on_submenu_summary_
+# pressed` -- full coverage of the overlay's own contract (idempotency, the
+# real return-path-reopens-at-last-viewed-slot behavior, ESC precedence)
+# lives in summary_screen_test.gd, not duplicated here.
+func _test_summary_button_now_opens_a_real_summary_screen() -> void:
+	var active := _make_mon("SummaryRealActive")
+	var bench := _make_mon("SummaryRealBench")
 	var bs := _make_battle_screen_with_font()
 	bs._player_party = _singles_party_with_bench(active, [bench])
 	bs._bm = _make_bare_bm()
@@ -532,9 +541,15 @@ func _test_summary_button_is_a_disabled_stub() -> void:
 	var submenu_buttons: Array[Button] = []
 	_collect_buttons(overlay._action_submenu, submenu_buttons)
 
-	_chk("Summary is a real, present button (§0a decision 3's own future hook for M26E4)",
+	_chk("Summary is a real, present button",
 			_base_text(submenu_buttons[1]) == "Summary")
-	_chk("Summary is disabled -- stubbed, not yet functional", submenu_buttons[1].disabled)
+	_chk("Summary is no longer a disabled stub -- M26E4-2 wired it", not submenu_buttons[1].disabled)
+
+	submenu_buttons[1].pressed.emit()
+	_chk("pressing Summary opens a real overlay",
+			overlay._summary_screen != null and is_instance_valid(overlay._summary_screen))
+	_chk("the submenu is hidden (not destroyed) while Summary is open",
+			overlay._action_submenu != null and not overlay._action_submenu.visible)
 
 
 # ── F. ESC handling: closes the submenu first if one is open, matching the

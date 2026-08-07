@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://dy8o2btq5x1yf"
+path="res://.godot/imported/latin_normal_frlg_colorable.fnt-c5ccf5423900db21e0edd358087b4ebc.fontdata"
+
+[deps]
+
+source_file="res://assets/fonts/latin_normal_frlg_colorable.fnt"
+dest_files=["res://.godot/imported/latin_normal_frlg_colorable.fnt-c5ccf5423900db21e0edd358087b4ebc.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2

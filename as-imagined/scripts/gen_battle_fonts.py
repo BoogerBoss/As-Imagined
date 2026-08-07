@@ -82,12 +82,32 @@ import re
 from pathlib import Path
 from PIL import Image
 
-from ref_path import REF
+from ref_path import REF, REF_FRLG
 
 ROOT = Path(__file__).resolve().parent.parent
 REF_FONTS = Path(REF) / "graphics/fonts"
 FONTS_C = Path(REF) / "src/fonts.c"
 OUT_DIR = ROOT / "assets/fonts"
+
+# [Fire Red summary-screen font swap] Fire Red's own real
+# `pokemon_summary_screen.c` was checked directly: 29 of its 32 FONT_*
+# call sites are FONT_NORMAL (nickname/level/page name/stat values/move
+# names+PP/EXP text/trainer memo -- essentially everything except the
+# small "controls" hint row at the bottom, which is FONT_SMALL and is not
+# reproduced by this project's Summary screen at all). So FONT_NORMAL's
+# own `latin_normal.png` is the one real asset this swap needs.
+#
+# Confirmed reusable without any changes to the extraction logic below:
+# Fire Red's `graphics/fonts/latin_normal.png` is the same 256x512,
+# 16x16-glyph-cell layout as Emerald's; `src/fonts.c`'s own
+# `gFontNormalLatinGlyphWidths[]` is the identical 512-entry format;
+# the glyph cell's 4-role preview palette
+# ((144,200,255)/(56,56,56)/(216,216,216)/(255,255,255)) is byte-identical;
+# and every character this project's own CHARMAP actually uses (79 of
+# them, spot-checked individually, not sampled) resolves to the SAME
+# glyph id in both engines' own charmap.txt.
+REF_FRLG_FONTS = Path(REF_FRLG) / "graphics/fonts"
+FRLG_FONTS_C = Path(REF_FRLG) / "src/fonts.c"
 
 GLYPH_CELL = 16  # source grid cell size, both axes, both font variants
 
@@ -141,19 +161,20 @@ ROLE_BY_RAW_RGB = {
 }
 
 
-def _parse_width_table(array_name: str) -> list[int]:
-    text = FONTS_C.read_text()
-    m = re.search(array_name + r"\[\] = \{(.*?)\};", text, re.S)
+def _parse_width_table(fonts_c_path: Path, array_name: str) -> list[int]:
+    text = fonts_c_path.read_text()
+    m = re.search(array_name + r"\[\] =\s*\{(.*?)\};", text, re.S)
     if not m:
-        raise RuntimeError(f"could not find {array_name} in fonts.c")
+        raise RuntimeError(f"could not find {array_name} in {fonts_c_path}")
     nums = [int(x) for x in re.findall(r"\d+", m.group(1))]
     if len(nums) != 512:
         raise RuntimeError(f"{array_name}: expected 512 entries, got {len(nums)}")
     return nums
 
 
-FONT_NORMAL_WIDTHS = _parse_width_table("gFontNormalLatinGlyphWidths")
-FONT_SMALL_WIDTHS = _parse_width_table("gFontSmallLatinGlyphWidths")
+FONT_NORMAL_WIDTHS = _parse_width_table(FONTS_C, "gFontNormalLatinGlyphWidths")
+FONT_SMALL_WIDTHS = _parse_width_table(FONTS_C, "gFontSmallLatinGlyphWidths")
+FRLG_FONT_NORMAL_WIDTHS = _parse_width_table(FRLG_FONTS_C, "gFontNormalLatinGlyphWidths")
 
 # (source png, width table, real glyph height in px -- confirmed via
 # direct pixel dump: content occupies exactly this many rows from the
@@ -161,6 +182,7 @@ FONT_SMALL_WIDTHS = _parse_width_table("gFontSmallLatinGlyphWidths")
 FONT_SOURCES = {
     "normal": (REF_FONTS / "latin_normal.png", FONT_NORMAL_WIDTHS, 15),
     "small": (REF_FONTS / "latin_small.png", FONT_SMALL_WIDTHS, 13),
+    "frlg_normal": (REF_FRLG_FONTS / "latin_normal.png", FRLG_FONT_NORMAL_WIDTHS, 15),
 }
 
 # context name -> (font variant, foreground RGB, shadow RGB, bulk-fill RGBA)
@@ -181,6 +203,40 @@ COLOR_CONTEXTS = {
     "latin_small_healthbox": ("small", (65, 65, 65), (222, 213, 180), (0, 0, 0, 0)),
     "latin_small_popup_name": ("small", (249, 253, 255), (143, 129, 149), (0, 0, 0, 0)),
     "latin_small_popup_ability": ("small", (0, 0, 0), (143, 129, 149), (0, 0, 0, 0)),
+    # [M26E4-3] A genuinely TRANSPARENT-accent variant of the "menu" context,
+    # for any screen that draws text over VARIED background art rather than
+    # one fixed-color panel. Real finding, this session: "menu"'s own
+    # accent=(255,255,255,255) is deliberately OPAQUE -- correct for its
+    # original real-source purpose (a GBA window whose own background genuinely
+    # IS that exact color, so the bulk-fill is invisible by color-matching, not
+    # by transparency -- see this file's own §comment on message/menu above,
+    # and CLAUDE.md's own "the 4th channel always matches the text box color
+    # and is therefore never seen" note). SummaryScreen's own SKILLS/MOVES
+    # pages draw text directly over the Emerald UI Pack's own multi-colored
+    # page art (purple/yellow/green/white panels in the same screen), where no
+    # single accent color could ever color-match everything -- confirmed via a
+    # real screenshot pass that "latin_normal_menu" produces a plainly visible
+    # solid-color/white box behind EVERY glyph there (legible but visually
+    # wrong), and that a non-white runtime `font_color` override on that font
+    # (attempted for nature/PP-tier coloring) produces an even worse solid-
+    # color BLOCK, since the opaque accent gets tinted right along with the
+    # foreground stroke (accent and foreground are indistinguishable when
+    # tinted by pure black, since 0 * anything = 0). fg=shadow=WHITE here
+    # specifically so a runtime `font_color`/`font_shadow_color` override
+    # reproduces the requested color EXACTLY (white is the multiplicative
+    # identity), with accent genuinely transparent so the real background art
+    # always shows through regardless of what color a caller picks.
+    "latin_normal_colorable": ("normal", (255, 255, 255), (255, 255, 255), (0, 0, 0, 0)),
+
+    # [Fire Red summary-screen font swap] Same "colorable" convention as
+    # latin_normal_colorable above (fg=shadow=white so a runtime
+    # font_color/font_shadow_color override reproduces the requested
+    # color exactly, accent transparent so background art shows through)
+    # but sourced from Fire Red's own latin_normal.png rather than
+    # Emerald's -- the real font FONT_NORMAL resolves to in Fire Red's
+    # own pokemon_summary_screen.c. Scoped to the Summary screen only;
+    # every other context above stays Emerald-sourced.
+    "latin_normal_frlg_colorable": ("frlg_normal", (255, 255, 255), (255, 255, 255), (0, 0, 0, 0)),
 }
 
 

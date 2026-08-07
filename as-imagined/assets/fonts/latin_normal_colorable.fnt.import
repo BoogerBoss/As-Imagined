@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://dq1cwvhsr73cv"
+path="res://.godot/imported/latin_normal_colorable.fnt-61d63ab14ce688018a2e81069b708519.fontdata"
+
+[deps]
+
+source_file="res://assets/fonts/latin_normal_colorable.fnt"
+dest_files=["res://.godot/imported/latin_normal_colorable.fnt-61d63ab14ce688018a2e81069b708519.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2

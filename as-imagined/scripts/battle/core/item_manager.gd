@@ -1046,6 +1046,20 @@ static func _can_evolve(mon: BattlePokemon) -> bool:
 	return not PokemonRegistry.get_evolutions(mon.species.national_dex_num).is_empty()
 
 
+# M28: Everstone. Source's own gate (GetEvolutionTargetSpecies,
+# pokemon.c:4557-4562) runs BEFORE the method-mode switch, unconditionally,
+# for every evolution method — so this is a single shared "can this mon
+# evolve at all right now" check, not duplicated per method. Cross-checked
+# against this project's own already-correct HOLD_EFFECT_* neighbors
+# (33-38 range all present and accounted for) — 37 was the one free ordinal.
+const HOLD_EFFECT_PREVENT_EVOLVE: int = 37
+
+
+static func blocks_evolution(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_PREVENT_EVOLVE
+
+
 # M18g: item-driven DEFENSE stat modifier (Deep Sea Scale, Metal Powder). M18s
 # extends this SAME pipeline stage with Eviolite/Assault Vest — a genuinely NEW
 # pipeline stage as of M18g, since no item-side defense-stat modifier existed in

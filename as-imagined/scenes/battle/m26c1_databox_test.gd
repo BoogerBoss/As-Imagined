@@ -27,6 +27,10 @@ func _ready() -> void:
 	_test_exp_bar_fraction_real_species_midpoint()
 	_test_exp_bar_fraction_real_species_at_threshold()
 	_test_exp_bar_fraction_clamped_non_negative()
+	_test_exp_to_next_unknown_species_returns_zero()
+	_test_exp_to_next_level_100_returns_zero()
+	_test_exp_to_next_real_species_exact_value()
+	_test_exp_to_next_real_species_at_threshold()
 	_test_real_scene_structure()
 	_test_status_icon_default_preview_texture()
 	_test_split_name_level_labels_exist()
@@ -154,6 +158,52 @@ func _test_exp_bar_fraction_clamped_non_negative() -> void:
 	mon.current_exp = 0
 	var frac := bs._exp_bar_fraction(mon)
 	_chk("an out-of-range current_exp clamps to a non-negative fraction", frac >= 0.0)
+
+
+# ── [M26E4-1] _exp_to_next — the "EXP points / NEXT LV." derivation ───────
+
+func _test_exp_to_next_unknown_species_returns_zero() -> void:
+	var bs := BattleScreenShared.new()
+	var sp := PokemonSpecies.new()
+	sp.species_name = "Fixture"
+	sp.types.append(TypeChart.TYPE_NORMAL)
+	sp.base_hp = 100
+	sp.base_attack = 80
+	sp.base_defense = 80
+	sp.base_sp_attack = 80
+	sp.base_sp_defense = 80
+	sp.base_speed = 80
+	var mon := BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	_chk("a hand-built fixture mon (dex 0, no real growth-rate data) degrades to 0, not a crash",
+			bs._exp_to_next(mon) == 0)
+
+
+func _test_exp_to_next_level_100_returns_zero() -> void:
+	var bs := BattleScreenShared.new()
+	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 100)  # Bulbasaur
+	_chk("a level-100 mon (nothing left to progress toward) returns 0",
+			bs._exp_to_next(mon) == 0)
+
+
+func _test_exp_to_next_real_species_exact_value() -> void:
+	var bs := BattleScreenShared.new()
+	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 10)  # Bulbasaur, real growth-rate data
+	var species_data: Dictionary = PokemonRegistry.get_species(1)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var exp_next: int = PokemonRegistry.get_exp_for_level(growth_rate, 11)
+	mon.current_exp = exp_next - 37
+	_chk("exp_to_next reports exactly source's own table[level+1] - exp",
+			bs._exp_to_next(mon) == 37)
+
+
+func _test_exp_to_next_real_species_at_threshold() -> void:
+	var bs := BattleScreenShared.new()
+	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 10)
+	var species_data: Dictionary = PokemonRegistry.get_species(1)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	mon.current_exp = PokemonRegistry.get_exp_for_level(growth_rate, 11)
+	_chk("a mon sitting exactly at its own next-level threshold reports 0 remaining",
+			bs._exp_to_next(mon) == 0)
 
 
 # ── 9-11. [Doubles-split roadmap, step 6] Retargeted from the old

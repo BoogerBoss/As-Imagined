@@ -155,6 +155,7 @@ signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/si
 signal money_awarded(amount: int)  # [M24b] fired once, right before battle_ended(0), only when the opponent side had a real TrainerData attached
 signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
 signal level_up(pokemon: BattlePokemon, new_level: int)  # [M20b] fired once per level crossed
+signal evolved(pokemon: BattlePokemon, old_species_dex: int, new_species_dex: int)  # [M28a] fired once per evolution
 signal ev_gained(recipient: BattlePokemon, stat_idx: int, amount: int)  # [M20c] fired once per stat actually increased
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
@@ -7699,6 +7700,15 @@ func _check_level_up(recipient: BattlePokemon) -> void:
 		for entry: Dictionary in learnset:
 			if int(entry.get("level", -1)) == lvl:
 				_try_learn_move_at_level(recipient, int(entry.get("move_id", -1)))
+		# [M28b] ⚠️ dex/learnset are refreshed here, immediately, because a
+		# multi-level jump crossing an evolution's level mid-loop would
+		# otherwise keep reading the OLD species' learnset for every
+		# subsequent level in this same award — a real bug, not a style
+		# choice (verified: dex/learnset are captured ONCE before this loop
+		# starts, above).
+		if _try_evolve_on_level_up(recipient, lvl):
+			dex = recipient.species.national_dex_num
+			learnset = PokemonRegistry.get_learnset(dex)
 
 
 # [M20b] Mirrors source's 3-way MonTryLearningNewMove branch
@@ -7734,6 +7744,213 @@ func _try_learn_move_at_level(recipient: BattlePokemon, move_id: int) -> void:
 # since Neutralizing Gas suppresses field-wide including the holder's own side.
 func _is_neutralizing_gas_active() -> bool:
 	return AbilityManager.is_neutralizing_gas_active(_combatants)
+
+
+# ── [M28a] Evolution — the PERMANENT mutation primitive ─────────────────────
+#
+# Sibling in SHAPE to the Transform trio (_reset_mon_species/_reset_mon_stats/
+# _reset_mon_ability/_reset_mon_type, ~line 9252) but PERMANENT rather than
+# switch-in-reverted. Placed here, not next to that trio, because this is
+# level-up/move-learn machinery, not switch-in machinery — it is never
+# touched by any switch-in code path.
+#
+# ⚠️ EACH FUNCTION BELOW DELIBERATELY BYPASSES THE species/ability SETTERS'
+# CAPTURE-ONCE GUARD by writing original_species/original_ability/
+# original_types/original_attack-etc DIRECTLY. This is load-bearing, not
+# cosmetic: `species`'s own setter (battle_pokemon.gd) captures
+# `original_species` ONLY on the very first assignment ("today there is
+# exactly ONE assignment site for this field anywhere" — that comment is
+# what this feature knowingly breaks, deliberately, for the first time).
+# `_reset_mon_species`/`_reset_mon_ability`/`_reset_mon_type` run at EVERY
+# switch-in site and restore species/ability/types from `original_*` — so an
+# un-refreshed `original_species` after evolution would make the very next
+# switch-in silently revert the evolution.
+func _evolve_mon_species(mon: BattlePokemon, new_species: PokemonSpecies) -> void:
+	mon.species = new_species
+	mon.original_species = new_species                  # bypass capture-once guard
+	mon.original_types = new_species.types.duplicate()   # keep _reset_mon_type's own invariant intact
+
+
+func _evolve_mon_stats(mon: BattlePokemon) -> void:
+	var old_max_hp: int = mon.max_hp
+	mon._calculate_stats()                               # reads mon.species fresh — already the new one
+	if mon.max_hp > old_max_hp:
+		mon.current_hp += (mon.max_hp - old_max_hp)      # flat additive delta — same rule as M20b's own level-up HP bump
+	if mon.current_hp > mon.max_hp:
+		mon.current_hp = mon.max_hp
+	mon.original_attack = mon.attack                     # bypass — a later Transform-revert should restore
+	mon.original_defense = mon.defense                   # to POST-evolution stats, not pre-evolution ones
+	mon.original_sp_attack = mon.sp_attack
+	mon.original_sp_defense = mon.sp_defense
+	mon.original_speed = mon.speed
+
+
+func _evolve_mon_ability(mon: BattlePokemon, old_abilities: Array[int], new_abilities: Array[int]) -> void:
+	var slot: int = PokemonFactory.ABILITY_SLOT_PRIMARY
+	if mon.original_ability != null:
+		var idx: int = old_abilities.find(mon.original_ability.ability_id)
+		if idx >= 0:
+			slot = idx
+	var new_id: int = new_abilities[slot] if slot < new_abilities.size() else 0
+	var new_ability: AbilityData = null
+	if new_id > 0:
+		var path := "res://data/abilities/ability_%04d.tres" % new_id
+		if ResourceLoader.exists(path):
+			new_ability = ResourceLoader.load(path) as AbilityData
+	mon.ability = new_ability
+	mon.original_ability = new_ability                   # bypass capture-once guard
+
+
+# Source's real EvolutionRenameMon: auto-update the nickname to the new
+# species' own default name ONLY if the current nickname exactly equals the
+# OLD species' own default (i.e. the player never renamed it). A genuinely
+# custom nickname is left untouched.
+func _evolve_mon_nickname(mon: BattlePokemon, old_species_name: String, new_species_name: String) -> void:
+	if mon.nickname == old_species_name:
+		mon.nickname = new_species_name
+
+
+# Source's real MonTryLearningNewMoveEvolution: reads the NEW species' own
+# learnset, at the mon's CURRENT level, for entries where level==0 (a real
+# "learned on evolving" wildcard, distinct from a level-N entry) OR
+# level==mon.level. `_try_learn_move_at_level` is fully evolution-agnostic —
+# reused unchanged.
+#
+# ⚠️ CURRENTLY DEAD CODE, BUILT ANYWAY: data/learnsets.json has ZERO
+# level==0 entries anywhere (confirmed by direct scan) — correct per source,
+# just unobservable with this project's current data.
+func _evolve_mon_moves(mon: BattlePokemon, target_dex: int) -> void:
+	for entry: Dictionary in PokemonRegistry.get_learnset(target_dex):
+		var lvl: int = int(entry.get("level", -1))
+		if lvl == 0 or lvl == mon.level:
+			_try_learn_move_at_level(mon, int(entry.get("move_id", -1)))
+
+
+# Orchestrates the mutation in source's real order (evolution_scene.c's
+# EVOSTATE_SET_MON_EVOLVED -> EVOSTATE_TRY_LEARN_MOVE): species -> stats ->
+# ability -> nickname -> move-learn.
+func _evolve_mon(mon: BattlePokemon, target_dex: int) -> void:
+	var old_dex: int = mon.species.national_dex_num
+	var old_species_name: String = mon.species.species_name
+	var old_abilities: Array[int] = mon.species.abilities
+	var new_species: PokemonSpecies = PokemonRegistry.get_species_resource(target_dex)
+	if new_species == null:
+		return
+	_evolve_mon_species(mon, new_species)
+	_evolve_mon_stats(mon)
+	_evolve_mon_ability(mon, old_abilities, new_species.abilities)
+	_evolve_mon_nickname(mon, old_species_name, new_species.species_name)
+	_evolve_mon_moves(mon, target_dex)
+	evolved.emit(mon, old_dex, target_dex)
+
+
+# ── [M28b] Evolution — level-up-triggered dispatch ───────────────────────────
+
+# AFFECTION_FOUR_HEARTS, source's own standard friendship threshold
+# (include/constants/pokemon.h:217). This project's evolutions.json carries
+# qualifier TAGS (which IF_* apply) but no per-entry numeric arg values, so
+# this is a hardcoded stand-in for the one tag that's cheap to check.
+# ⚠️ CURRENTLY UNREACHABLE: friendship never changes from a species' static
+# base_friendship anywhere in this codebase (max ~140 in this roster) — built
+# for source fidelity, becomes live the instant a friendship-mutation system
+# exists.
+const EVOLUTION_FRIENDSHIP_THRESHOLD: int = 220
+
+
+# The 9 real IF_* qualifier tags used anywhere in this project's own
+# evolutions.json (confirmed by a full scan — docs/m28_recon.md §1.3/§3).
+# IF_MIN_BEAUTY/IF_TIME/IF_NOT_TIME fail closed (deferred to M28e — no
+# Beauty/clock system exists); IF_HOLD_ITEM never appears on a level_up
+# entry in this project's data (item-method entries only), so it's not
+# reachable from this dispatch regardless.
+func _evolution_conditions_met(mon: BattlePokemon, conditions: Array) -> bool:
+	for tag in conditions:
+		match String(tag):
+			"IF_ATK_LT_DEF":
+				if not (mon.attack < mon.defense): return false
+			"IF_ATK_GT_DEF":
+				if not (mon.attack > mon.defense): return false
+			"IF_ATK_EQ_DEF":
+				if not (mon.attack == mon.defense): return false
+			"IF_MIN_FRIENDSHIP":
+				if not (mon.friendship >= EVOLUTION_FRIENDSHIP_THRESHOLD): return false
+			"IF_NOT_REGION":
+				pass  # vacuously true — this project is single-region (Kanto); all 3 real
+				      # users (Cubone/Koffing/Quilava) have only this one evolution path anyway
+			_:
+				return false
+	return true
+
+
+# First-table-order-match-wins, matching source's own explicit, commented
+# departure from vanilla (pokemon.c: "stop checking the rest of the
+# evolutions... If you have overlapping evolutions, put the ones you want to
+# happen first on top of the list") — the FULL array is still walked in
+# order (not just the first "level_up" entry), since a species can list
+# item/trade entries interleaved with level_up ones.
+#
+# `condition <= lvl`, not `==` — source's own EVO_LEVEL semantics are "at
+# least this level," which is what correctly handles a multi-level jump
+# (Rare Candy, a big Exp award) crossing an evolution's level mid-loop.
+func _resolve_level_up_evolution(mon: BattlePokemon, lvl: int) -> int:
+	for entry: Dictionary in PokemonRegistry.get_evolutions(mon.species.national_dex_num):
+		if String(entry.get("method", "")) != "level_up":
+			continue
+		if int(entry.get("condition", -1)) > lvl:
+			continue
+		if not _evolution_conditions_met(mon, entry.get("conditions", [])):
+			continue
+		return int(entry.get("target_dex", -1))
+	return -1
+
+
+func _try_evolve_on_level_up(mon: BattlePokemon, lvl: int) -> bool:
+	if ItemManager.blocks_evolution(mon, _is_neutralizing_gas_active()):
+		return false
+	var target_dex: int = _resolve_level_up_evolution(mon, lvl)
+	if target_dex <= 0:
+		return false
+	_evolve_mon(mon, target_dex)
+	return true
+
+
+# ── [M28c] Evolution — item-triggered dispatch ───────────────────────────────
+#
+# The minimal "use item X on party member Y" seam docs/m28_recon.md §6
+# decision 4 recommended building AHEAD of M27I's own Bag UI — the
+# evolution-dispatch logic doesn't care where the call comes from, so this
+# is callable directly today (tests, debug tooling) and wired to a real Bag
+# screen later with no rework.
+#
+# ⚠️ ITEM_LINKING_CORD (the trade-evolution substitute items, M28d) needs NO
+# separate code — its 4 evolutions.json entries are shaped identically to
+# every other method:"item" entry, so the generic dispatch below covers them
+# once Linking Cord exists as a real item.
+
+func _resolve_item_evolution(mon: BattlePokemon, item_id: int) -> int:
+	for entry: Dictionary in PokemonRegistry.get_evolutions(mon.species.national_dex_num):
+		if String(entry.get("method", "")) != "item":
+			continue                                     # walk the FULL array in file order,
+			                                              # same shape as _resolve_level_up_evolution
+		if PokemonRegistry.item_id_of(String(entry.get("condition", ""))) != item_id:
+			continue
+		if not _evolution_conditions_met(mon, entry.get("conditions", [])):
+			continue                                     # reused — this is what makes IF_NOT_REGION
+			                                              # actually checked (Pikachu/Exeggcute), not bypassed
+		return int(entry.get("target_dex", -1))
+	return -1
+
+
+# Returns whether the item actually triggered an evolution — the caller
+# (a test today, a future Bag screen) needs this to know whether to consume it.
+func try_evolve_with_item(mon: BattlePokemon, item_id: int) -> bool:
+	if ItemManager.blocks_evolution(mon, _is_neutralizing_gas_active()):
+		return false
+	var target_dex: int = _resolve_item_evolution(mon, item_id)
+	if target_dex <= 0:
+		return false
+	_evolve_mon(mon, target_dex)
+	return true
 
 
 # [M19-rampage] whether Uproar's lock is active on ANY live combatant right now —

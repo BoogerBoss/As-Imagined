@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m28evotest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m28_evolution_test.gd" id="1_m28evotest"]
+
+[node name="M28EvolutionTest" type="Node"]
+script = ExtResource("1_m28evotest")

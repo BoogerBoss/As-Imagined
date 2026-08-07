@@ -32,6 +32,27 @@ REPO_ROOT = os.path.dirname(PROJECT)
 
 REF = os.path.join(REPO_ROOT, "reference", "pokeemerald_expansion")
 
+# Fire Red's own reference clone -- a SIBLING checkout, not under this
+# project's own `reference/` directory at all (it lives at a completely
+# separate absolute path chosen when it was cloned, `/home/rob/
+# pokefirered-expansion`). Added for the M26E4 Fire-Red-art-swap task:
+# Rob's own explicit call was that Fire Red art fits this project ("Kanto
+# with an original story") better than Emerald's, and the FRLG-derived
+# summary-screen decode (`gen_summary_screen_sprites_frlg.py`) is the first
+# generator that needs it. Exported the same way REF is -- one constant,
+# nothing derives its own path -- so a future FRLG-sourced generator
+# doesn't reinvent this and doesn't hardcode the absolute path inline.
+REF_FRLG = "/home/rob/pokefirered-expansion"
+
+
+def _verify_frlg():
+    if not os.path.isdir(REF_FRLG):
+        raise SystemExit(
+            "ref_path: Fire Red reference clone not found at %s -- see "
+            "CLAUDE.md's own Ground-truth table, or re-clone from "
+            "github.com/cawtds/pokefirered-expansion." % REF_FRLG
+        )
+
 
 def assert_inside_project(path, label):
     """Fail at import if a generated OUTPUT path escapes the project.

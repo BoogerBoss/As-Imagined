@@ -189,6 +189,12 @@ var _message_revert_timer: float = -1.0
 
 var _action_submenu: Control = null
 
+# [M26E4-2] The Summary overlay this submenu opens, tracked so a second
+# press (or a stray re-entry) can never stack a duplicate -- mirrors
+# battle_screen_shared.gd's own established `_item_select_overlay`/
+# `_switch_select_overlay` idempotency-guard convention.
+var _summary_screen: SummaryScreen = null
+
 
 func setup(parent_bs, field_slot: int, is_forced_replacement: bool) -> void:
 	_parent_bs = parent_bs
@@ -444,8 +450,15 @@ func _show_action_submenu(picked_slot: int) -> void:
 	var primary_btn := _make_submenu_button(primary_text, 0)
 	primary_btn.pressed.connect(_on_submenu_primary_pressed.bind(picked_slot))
 
+	# [M26E4-2] Summary is now a real, wired button -- E3-3's own stub
+	# resolved. Opens a real SummaryScreen overlay over this whole screen
+	# (the submenu is merely hidden, not destroyed, while it's up); on
+	# close, the real return-path contract fires (docs/m26_e4_recon.md
+	# §1.3): the submenu is torn down and a fresh one is opened for
+	# whichever party slot Summary was last showing, not necessarily the
+	# slot that was originally picked here.
 	var summary_btn := _make_submenu_button("Summary", 1)
-	summary_btn.disabled = true
+	summary_btn.pressed.connect(_on_submenu_summary_pressed.bind(picked_slot))
 
 	var cancel_btn := _make_submenu_button("Cancel", 2)
 	cancel_btn.pressed.connect(_on_submenu_cancel_pressed)
@@ -480,6 +493,38 @@ func _on_submenu_primary_pressed(picked_slot: int) -> void:
 
 func _on_submenu_cancel_pressed() -> void:
 	_close_action_submenu()
+
+
+# [M26E4-2] Opens SummaryScreen for the picked slot. The submenu is hidden
+# (not destroyed) rather than closed outright -- there's no re-entrant state
+# to preserve, but leaving it alive avoids re-enabling/re-disabling the whole
+# slot-button list a second time for what is, from the player's perspective,
+# a single continuous "I'm looking at my roster" excursion.
+func _on_submenu_summary_pressed(picked_slot: int) -> void:
+	if _summary_screen != null and is_instance_valid(_summary_screen):
+		return
+	if _action_submenu != null:
+		_action_submenu.visible = false
+
+	var scene: PackedScene = load("res://scenes/battle/summary_screen.tscn")
+	var overlay: SummaryScreen = scene.instantiate()
+	add_child(overlay)
+	overlay.closed.connect(_on_summary_screen_closed)
+	overlay.setup(_parent_bs, _parent_bs._player_party, picked_slot)
+	_summary_screen = overlay
+
+
+# [M26E4-2, real return-path contract -- docs/m26_e4_recon.md §1.3] "the
+# party menu reopens directly into the action submenu" for whichever slot
+# Summary was LAST showing (gLastViewedMonIndex), not necessarily the slot
+# that opened it -- Up/Down inside Summary may have moved on to a different
+# party member entirely.
+func _on_summary_screen_closed(last_viewed_slot: int) -> void:
+	if _summary_screen != null and is_instance_valid(_summary_screen):
+		_summary_screen.queue_free()
+	_summary_screen = null
+	_close_action_submenu()
+	_show_action_submenu(last_viewed_slot)
 
 
 func _close_action_submenu() -> void:
@@ -774,6 +819,18 @@ func _on_cancel_pressed() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo
 			and (event as InputEventKey).keycode == KEY_ESCAPE):
+		return
+	# [M26E4-2] While Summary is open (a real child overlay of this screen,
+	# hiding rather than destroying the submenu underneath -- see
+	# _on_submenu_summary_pressed), ESC belongs to IT alone: SummaryScreen's
+	# own _unhandled_input already consumes the key and closes itself via the
+	# real return-path contract. This guard makes this screen's own ESC
+	# handling below a genuine no-op for that entire window regardless of
+	# which node's _unhandled_input Godot happens to dispatch to first --
+	# without it, a hidden-but-still-alive `_action_submenu` could be torn
+	# down by this screen's own handler on the same keypress that closes
+	# Summary, racing the real _on_summary_screen_closed rebuild.
+	if _summary_screen != null and is_instance_valid(_summary_screen):
 		return
 	# [M26E3-3] ESC backs the action submenu out to the list first, if one
 	# is open -- a real, always-available step regardless of voluntary/

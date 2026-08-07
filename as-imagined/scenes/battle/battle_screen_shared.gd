@@ -4502,6 +4502,27 @@ func _exp_bar_fraction(mon: BattlePokemon) -> float:
 	return clampf(float(into) / float(needed), 0.0, 1.0)
 
 
+# [M26E4-1] The one-line "EXP points / NEXT LV." derivation the recon (docs/
+# m26_e4_recon.md §2.2/§5.2) flagged as missing — how much MORE experience
+# `mon` needs to reach its own next level, i.e. exactly source's own
+# `table[level+1] - exp` shown on the real SKILLS page. A sibling to
+# _exp_bar_fraction() immediately above (same real data path, same
+# disclosed level-100/no-growth-data fallback: 0, not a fabricated value or
+# a crash), kept as its own function rather than derived FROM the bar
+# fraction, since the bar rounds to a float fraction while this needs the
+# real integer Exp count the SKILLS page prints verbatim.
+func _exp_to_next(mon: BattlePokemon) -> int:
+	if mon.species == null or mon.level >= 100:
+		return 0
+	var dex: int = mon.species.national_dex_num
+	var species_data: Dictionary = PokemonRegistry.get_species(dex)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var exp_next_level: int = PokemonRegistry.get_exp_for_level(growth_rate, mon.level + 1)
+	if exp_next_level <= 0:
+		return 0
+	return max(0, exp_next_level - mon.current_exp)
+
+
 
 # [M23.11 Phase 5a] One-time wiring, called from _ready(). BattleStage's
 # own "Background" TextureRect (see battle_screen.tscn — the FIRST child
