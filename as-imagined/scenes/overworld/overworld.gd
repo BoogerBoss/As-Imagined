@@ -752,23 +752,32 @@ func _process(_delta: float) -> void:
 	# Sits ABOVE the message-box block because a yes/no draws OVER the message it
 	# is asking about (layer 85 vs 80) and must take the input first — which is
 	# exactly what the condition below already assumed by excluding itself.
-	if _vm == null and _yes_no != null and _yes_no.is_open:
-		if _yes_no.accepts_input:
-			if Input.is_action_just_pressed("ui_up"):
-				_yes_no.move(-1)
-			elif Input.is_action_just_pressed("ui_down"):
-				_yes_no.move(1)
-			elif Input.is_action_just_pressed("ui_cancel"):
-				_yes_no.cancel()
-			elif Input.is_action_just_pressed("ui_accept"):
-				_yes_no.confirm()
-		return
+	# [M27G G7] ⚠️ **THE FREE-STANDING YES/NO DRIVER IS GONE.** It existed because
+	# `run_new_game` opened a yes/no outside the VM, and it had to be ADDED after
+	# `[M27K K-b]`'s gender question shipped unanswerable from the keyboard. Oak's
+	# speech and the save prompt are both scripts now, so the VM's own
+	# WAIT_YES_NO branch is the only yes/no driver again. Do not restore it —
+	# make the caller a script instead.
+	#
+	# ⚠️ **THE MESSAGE-BOX DRIVER BELOW IS THE LAST ONE, AND IT HAS EXACTLY ONE
+	# USER: `_poison_step`.** It is not deleted, and the reason is a real
+	# limitation rather than an oversight. The poison notice builds its pages at
+	# RUNTIME — one per Pokémon that just hit 1 HP, each with that Pokémon's own
+	# name buffered — and the VM's `message` opcode names a STATIC label in the
+	# text corpus. There is no opcode for "show these N pages I just computed".
+	#
+	# The obvious workaround does not work either: a `native` handler cannot
+	# `await` the message box, because while the VM sits on WAIT_NATIVE the
+	# driver is in its WAIT_NATIVE branch and nothing is advancing the box. See
+	# `docs/m27g_scope.md` G7 for the two ways out (a dynamic-text opcode, or
+	# letting WAIT_NATIVE pump the box) — both are real design calls, neither
+	# belongs in a phase whose job was deleting the OTHER driver.
 
 	if _vm == null and _box != null and _box.is_open \
 			and (_yes_no == null or not _yes_no.is_open):
 		# `advance` skips the typewriter on the first press (source lets you
 		# skip) and closes itself once past the last page, so this is the whole
-		# interaction — the same shape as the VM's own WAIT_BUTTON branch.
+		# interaction — the same shape the VM's own WAIT_BUTTON branch uses.
 		if Input.is_action_just_pressed("ui_accept"):
 			_box.advance()
 		return
@@ -1131,26 +1140,10 @@ var active_slot: int:
 
 
 func _on_start_menu_save() -> void:
-	if _box == null or _yes_no == null:
-		return
-	# ⚠️ The box stays OPEN under the prompt rather than being dismissed first —
-	# the same shape the VM's own WAIT_YES_NO path uses, so the question is still
-	# on screen while it is being answered. `_say` would await `closed` and make
-	# the player press A just to reach the choice.
-	_box.open(PackedStringArray([TextBuffers.new().expand(SAVE_CONFIRM)]))
-	_yes_no.open()
-	var yes: bool = await _yes_no.chosen
-	_box.close()
-	if not yes:
-		return
-	await _say([SAVE_IN_PROGRESS])
-	var ok := SaveManager.save(active_slot, SaveManager.build_payload(
-			manager.chunk_owning(_cell), _cell, _facing, _elev,
-			OverworldSession.playtime_seconds()))
-	# ⚠️ Expanded through TextBuffers, so `{PLAYER}` is the name the player chose
-	# at `[M27K K-b]` rather than a hardcoded one — this is the same line source
-	# writes as `gText_PlayerSavedGame`.
-	await _say([SAVE_DONE] if ok else SAVE_FAILED)
+	# [M27G G7] Was an `await` coroutine opening a yes/no outside the VM — the
+	# same shape as `run_new_game`, and the reason deleting the free-standing
+	# yes/no driver would have broken saving. See `StartMenuEvents`.
+	run_script(StartMenuEvents.LABEL)
 
 
 func _on_start_menu_pokemon() -> void:
@@ -1227,66 +1220,19 @@ const ITEM_MSG_BECAME_HEALTHY := "{STR_VAR_1} became healthy."
 ## clickable directly — picking a look IS the answer, rather than a separate
 ## text choice followed by the portrait appearing after the fact.
 func run_new_game() -> void:
-	if _box == null or _naming == null or _oak_overlay == null:
-		return
+	# [M27G G7] Was a ~60-line `await` coroutine. It is now an authored script
+	# (`NewGameEvents`) run through the ordinary driver, which is what let the
+	# duplicate input drivers below be deleted — see that file's own header for
+	# why the coroutine had to go, and `docs/m27g_scope.md` G7.
+	#
+	# ⚠️ The identity is reset HERE rather than in the script: it is scene setup,
+	# not a beat of the cutscene, and the script's very first `native` already
+	# reads `OverworldSession.identity` for the portrait.
 	OverworldSession.identity = PlayerIdentity.new()
 	TextBuffers.identity = OverworldSession.identity
-	var id := OverworldSession.identity
-
-	_oak_overlay.show_solo("oak")
-	# ⚠️ Source's real scene boot fades IN from black
-	# (`Task_OakSpeech_Init`'s `BeginNormalPaletteFade`) — this project's own
-	# hard cut-to-visible was the one piece of boot presentation missing.
-	await _oak_overlay.fade_in()
-	await _say([OAK_WELCOME, OAK_THIS_WORLD])
-	# ⚠️ Source pairs the ball-release beat with THIS line
-	# (`Task_OakSpeech_IsInhabitedFarAndWide` plays it, per
-	# docs/m27k_oak_speech_visuals_recon.md §A4) — not before, not after.
-	await _oak_overlay.release_random_pokemon()
-	await _say([OAK_INHABITED, OAK_I_STUDY, OAK_ABOUT_YOURSELF])
-
-	await _say([OAK_ASK_GENDER])
-	# ⚠️ BOY == RED, the same polarity source's own sMaleNameChoices/
-	# sFemaleNameChoices split carries — no second convention introduced.
-	var boy: bool = await _oak_overlay.pick_gender()
-	id.gender = PlayerIdentity.Gender.BOY if boy else PlayerIdentity.Gender.GIRL
-
-	_oak_overlay.show_solo("red" if boy else "leaf")
-	await _say([OAK_YOUR_NAME])
-	# ⚠️ SOURCE LETS THE PLAYER SAY NO AND RETYPE — `Task_OakSpeech_
-	# HandleConfirmNameInput`'s NO branch loops back into naming with no
-	# extra text; reproduced here as a plain retry loop. `_box` stays OPEN
-	# under the prompt (not `_say`, which would force an extra dismiss press
-	# before the choice could even be answered) — the same shape the SAVE
-	# confirmation (`_on_start_menu_save`) already uses.
-	while true:
-		id.set_name(await _ask_name("Your name?", id.name_choices()))
-		_box.open(PackedStringArray([TextBuffers.new().expand(OAK_SO_YOUR_NAME)]))
-		_yes_no.open()
-		var name_yes: bool = await _yes_no.chosen
-		_box.close()
-		if name_yes:
-			break
-
-	_oak_overlay.show_solo("rival")
-	await _say([OAK_RIVAL_INTRO, OAK_RIVAL_NAME])
-	while true:
-		id.set_rival_name(await _ask_name("Your rival's name?",
-				PlayerIdentity.RIVAL_NAMES))
-		_box.open(PackedStringArray([TextBuffers.new().expand(OAK_CONFIRM_RIVAL_NAME)]))
-		_yes_no.open()
-		var rival_yes: bool = await _yes_no.chosen
-		_box.close()
-		if rival_yes:
-			break
-	await _say([OAK_REMEMBER_RIVAL])
-
-	# ⚠️ Source's `Task_OakSpeech_ReshowPlayersPic` shows the PLAYER's own
-	# portrait for this line, not Oak's — it's addressed directly to
-	# `{PLAYER}`. `show_solo("oak")` here was a real bug, not a divergence.
-	_oak_overlay.show_solo("red" if boy else "leaf")
-	await _say([OAK_LETS_GO])
-	await _oak_overlay.fade_out()
+	if _oak_overlay == null or _driver == null:
+		return
+	run_script(NewGameEvents.LABEL)
 
 
 ## Show pages and wait for them to be dismissed. Expanded at print time, like

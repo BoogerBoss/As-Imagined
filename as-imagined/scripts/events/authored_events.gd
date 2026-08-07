@@ -23,3 +23,5 @@ extends RefCounted
 
 static func register_all() -> void:
 	PalletTownEvents.register_all()
+	NewGameEvents.register_all()
+	StartMenuEvents.register_all()

@@ -472,38 +472,29 @@ func _test_drive_findings() -> void:
 	# question could never be answered from the keyboard. Asserted on the SHAPE of
 	# `_process`, which is all a headless test can reach — the behaviour itself
 	# was confirmed by the live drive.
-	# ⚠️ **[M27G G4] THESE THREE NOW SPAN TWO FILES, AND THAT IS THE REFACTOR,
-	# NOT A WEAKENING.** G4 moved the VM's own pause dispatch out of
-	# `overworld.gd` into `script_driver.gd`, so "the VM's branch" and "the
-	# free-standing branch" no longer live in one text to be ordered against
-	# each other. The property being asserted is unchanged — there are still
-	# TWO drivers, and the free-standing one still takes input first — it is
-	# just that one of them is now in another file.
+	# ⚠️ **[M27G G7] H.04–H.06 ARE RETIRED, AND THAT WAS ALWAYS THE PLAN.**
+	# They asserted that a SECOND, free-standing yes/no input driver existed in
+	# `_process` and ran before the message box — the workaround added after
+	# `[M27K K-b]`'s gender question shipped unanswerable from the keyboard,
+	# because `run_new_game` opened a yes/no outside the VM.
 	#
-	# ⚠️ A source-text assertion cannot survive code movement by construction,
-	# which is why G4's own definition of done was amended from "no test edits"
-	# to "no BEHAVIOURAL assertion changes" rather than contorting the refactor
-	# to keep a string in place. Recorded so a later session does not read this
-	# edit as a test being bent to fit.
+	# G7 removed the cause: Oak's speech and the save prompt are both authored
+	# SCRIPTS now, so the VM's own WAIT_YES_NO branch is the only yes/no driver
+	# again and the duplicate is deleted. An assertion that the duplicate exists
+	# would now fail for the right reason, which is why G4 repointed these
+	# rather than deleting them and left a note saying they die here.
 	#
-	# ⚠️ ALL THREE DIE AT G7, WHICH IS THE POINT. G7 folds `run_new_game` into
-	# the VM and deletes the free-standing driver outright; at that moment this
-	# section should be removed, not repointed again.
-	var src := FileAccess.open("res://scenes/overworld/overworld.gd",
-			FileAccess.READ).get_as_text()
-	var drv := FileAccess.open("res://scripts/overworld/script_driver.gd",
-			FileAccess.READ).get_as_text()
-	var vm_branch := drv.find("ScriptVM.Pause.WAIT_YES_NO")
-	var free_branch := src.find("_vm == null and _yes_no != null and _yes_no.is_open")
-	_chk("H.04 a yes/no outside the VM has an input driver at all",
-			free_branch >= 0)
-	_chk("H.05 and it is a SECOND one — the VM's own branch lives in the driver",
-			vm_branch >= 0)
-	# ⚠️ It must sit ABOVE the message-box block, because a yes/no draws OVER the
-	# message it is asking about and has to take the input first.
-	var box_branch := src.find("_vm == null and _box != null and _box.is_open")
-	_chk("H.06 and it takes input BEFORE the message box underneath it",
-			box_branch >= 0 and free_branch < box_branch)
+	# What replaced the coverage, and it is stronger: `m27k_newgame_test`
+	# section H now drives the whole speech — including both confirm/retry
+	# loops — with REAL KEY PRESSES through the one remaining driver. That
+	# tests the behaviour these three could only approximate by grepping the
+	# shape of `_process`.
+	#
+	# ⚠️ One free-standing MESSAGE-box driver survives, with exactly one user
+	# (`_poison_step`) and a documented reason: the poison notice builds its
+	# pages at runtime and the VM's `message` opcode names a static label. See
+	# `overworld.gd`'s own comment at the branch and `docs/m27g_scope.md` G7.
+	_gated += 3
 
 
 ## --- I. [M27L L3] the title screen and slot selection ---
@@ -721,4 +712,21 @@ func _test_new_game_boot() -> void:
 			local == ow.NEW_GAME_CELL)
 	_chk("K.10 and it is standable, so the player is not spawned inside scenery",
 			ow.manager.collision_at(ow._cell) == 0)
+	# ⚠️ [M27G G7] ABANDON THE RUNNING SPEECH BEFORE FREEING. A new-game boot now
+	# starts an authored SCRIPT, and this test only wants the spawn — it never
+	# drives the cutscene. Freeing while a `native` handler is suspended leaves
+	# that handler's coroutine holding a dead node, which Godot reports as
+	# "N resources still in use at exit" and the runner correctly fails on.
+	# `_abandon_script` is exactly the "stop without reporting a coverage gap"
+	# path the whiteout already uses.
+	# ⚠️ Abandon, THEN let the in-flight beat settle. `_abandon_script` drops the
+	# VM, but a `native` handler that is already suspended cannot be cancelled —
+	# GDScript has no coroutine cancellation — so it keeps a reference to the
+	# scene until whatever it awaits (here a fade tween) actually completes.
+	# Waiting a beat is the difference between 3 leaked resources and none. This
+	# is a real property of the `native` design, recorded in docs/m27g_scope.md
+	# G7 rather than papered over: handlers must await things that always finish.
+	ow._abandon_script()
+	for _i in range(45):
+		await get_tree().process_frame
 	ow.queue_free()

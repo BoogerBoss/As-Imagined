@@ -5,17 +5,36 @@ extends RefCounted
 ##
 ## ⚠️ **THIS IS THE ESCAPE HATCH, AND IT HAS A RULE.**
 ##
-## > `native` is for PRESENTATION and ENGINE CAPABILITY — never for control
-## > flow, never for state.
+## > `native` is for PRESENTATION and ENGINE CAPABILITY — **never for flags,
+## > vars, or control flow.**
 ##
-## The moment a handler starts setting flags and branching, the op stream stops
-## being the whole story: `describe()` stops telling the truth, a frozen test
-## can no longer see what a script is doing, and save state stops being
-## re-derivable from flags and vars. That is the coroutine architecture
+## The moment a handler sets a flag or branches, the op stream stops being the
+## whole story: `describe()` stops telling the truth, a frozen test can no
+## longer see what a script is doing, and save state stops being re-derivable
+## from flags and vars. That is the coroutine architecture
 ## `docs/m27g_architecture_recon.md` declined, rebuilt inside the hatch. A
 ## handler may RETURN a value (it lands in VAR_RESULT and the script branches on
 ## it, exactly like a `special`) — that is answering a question, not owning the
 ## decision.
+##
+## ⚠️ **REFINED AT G7 — Rob's call, 2026-08-07.** This rule originally read
+## "never for state", which G7 could not satisfy: Oak's speech has to write the
+## player's NAME and GENDER, and a name cannot round-trip through VAR_RESULT
+## (it is an int). Two things make identity different from the state the rule
+## is actually protecting:
+##
+##   * **It is not flags or vars.** `PlayerIdentity` is its own saved field, so
+##     nothing about it is "re-derivable from flags and vars" in the first
+##     place — the property the rule exists to preserve is untouched.
+##   * **There is no opcode to be faithful to.** Source does naming in engine
+##     code (`oak_speech.c`), not through any script command, so a handler is
+##     the honest home rather than a shortcut around one.
+##
+## So handlers MAY drive engine-owned state that no opcode represents
+## (identity today; party or bag if a future beat needs it). They still may not
+## touch flags, vars, or where the script goes next. ⚠️ A handler that writes
+## persistent state also owes a thought to re-entrancy — Oak's speech is exempt
+## because it runs exactly once, before any save exists.
 ##
 ## What belongs here: fades, camera work, tweens, particles, shaders, sprite
 ## flourishes, screen transitions — everything source expresses through field

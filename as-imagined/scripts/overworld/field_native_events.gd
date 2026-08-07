@@ -10,10 +10,15 @@ extends RefCounted
 ## from `ScriptVM` — the mechanism should not know the content.
 ##
 ## ⚠️ **THE RULE, restated because this is where it will be broken first:**
-## `native` is for PRESENTATION and ENGINE CAPABILITY, never control flow and
-## never state. A handler may return a value into VAR_RESULT — answering a
-## question the script then branches on — but must not set flags, move the
-## player, or decide what happens next.
+## `native` is for PRESENTATION and ENGINE CAPABILITY, never **flags, vars, or
+## control flow**. A handler may return a value into VAR_RESULT — answering a
+## question the script then branches on — but must not set a flag, write a var,
+## or decide what happens next.
+##
+## ⚠️ Handlers MAY drive engine-owned state that no opcode represents — the Oak
+## handlers below write `PlayerIdentity`, because source does naming in engine
+## code and there is no script command to be faithful to. See
+## `NativeEventRegistry`'s header for the full refinement (G7, Rob's call).
 
 
 ## Register every built-in handler. Called once from `ScriptDriver.setup`.
@@ -49,3 +54,74 @@ static func register_all(reg: NativeEventRegistry) -> void:
 			seconds = maxf(0.0, float(str(args[0])) / 60.0)
 		await driver.scene().get_tree().create_timer(seconds).timeout
 		return null)
+
+
+	# --- [M27G G7] Oak's speech -----------------------------------------------
+	#
+	# ⚠️ **EVERY DIVERGENCE `[M27K K-b]` RECORDED IS PRESERVED HERE**, and each
+	# is Rob's own call rather than a simplification — a later session comparing
+	# against `oak_speech.c` will find all three and must not "restore" them:
+	#
+	#   * the gender question shows Red and Leaf SIDE BY SIDE and picking a look
+	#     IS the answer. Source shows no portrait during the choice at all —
+	#     Oak's slides off, then a bare 2-line text menu asks BOY/GIRL.
+	#   * the ball releases a RANDOM roster species, not source's fixed
+	#     Nidoran♀, fully random across all 386 including legendaries.
+	#   * gender is asked BEFORE the name, which is load-bearing rather than
+	#     cosmetic: `PlayerIdentity.name_choices()` keys its preset list on it.
+	reg.register("OakFadeIn", func(driver, _args) -> Variant:
+		await driver.scene()._oak_overlay.fade_in()
+		return null)
+	reg.register("OakFadeOut", func(driver, _args) -> Variant:
+		await driver.scene()._oak_overlay.fade_out()
+		return null)
+	# `oak` / `red` / `leaf` / `rival`. Instant, so nothing to await.
+	reg.register("OakPortrait", func(driver, args) -> Variant:
+		driver.scene()._oak_overlay.show_solo(str(args[0]) if args.size() > 0 else "oak")
+		return null)
+	# ⚠️ Shows whichever portrait the player CHOSE. `_oak_overlay` cannot know
+	# the gender, so the script passes it — which is why this is a separate
+	# handler from OakPortrait rather than a call site deciding the string.
+	reg.register("OakPortraitPlayer", func(driver, _args) -> Variant:
+		driver.scene()._oak_overlay.show_solo(
+			"red" if OverworldSession.identity.gender == PlayerIdentity.Gender.BOY
+			else "leaf")
+		return null)
+	reg.register("OakBallRelease", func(driver, _args) -> Variant:
+		await driver.scene()._oak_overlay.release_random_pokemon()
+		return null)
+	# ⚠️ WRITES IDENTITY — see the refined rule above. Returns nothing the script
+	# branches on: the answer IS the state, and the very next beat reads it back
+	# through OakPortraitPlayer.
+	reg.register("OakPickGender", func(driver, _args) -> Variant:
+		var boy: bool = await driver.scene()._oak_overlay.pick_gender()
+		OverworldSession.identity.gender = PlayerIdentity.Gender.BOY if boy \
+				else PlayerIdentity.Gender.GIRL
+		return null)
+	# ⚠️ WRITES IDENTITY, and a name cannot round-trip through VAR_RESULT (an
+	# int) — which is precisely the case that forced the rule refinement. The
+	# preset list is gender-keyed, which is why the gender question runs first.
+	reg.register("OakAskPlayerName", func(driver, _args) -> Variant:
+		var id := OverworldSession.identity
+		driver.scene()._naming.open("Your name?", id.name_choices())
+		id.set_name(await driver.scene()._naming.name_chosen)
+		return null)
+	reg.register("OakAskRivalName", func(driver, _args) -> Variant:
+		var id := OverworldSession.identity
+		driver.scene()._naming.open("Your rival's name?", PlayerIdentity.RIVAL_NAMES)
+		id.set_rival_name(await driver.scene()._naming.name_chosen)
+		return null)
+
+
+	# --- [M27G G7] Saving ------------------------------------------------------
+	#
+	# ⚠️ Returns 1/0 and the script branches on it — a handler ANSWERING a
+	# question, which the rule permits without qualification. It writes no flag
+	# and no var; the save file is engine-owned state with no opcode.
+	reg.register("SaveGame", func(driver, _args) -> Variant:
+		var ow = driver.scene()
+		var ok := SaveManager.save(OverworldSession.active_slot,
+				SaveManager.build_payload(ow.manager.chunk_owning(ow._cell),
+						ow._cell, ow._facing, ow._elev,
+						OverworldSession.playtime_seconds()))
+		return 1 if ok else 0)

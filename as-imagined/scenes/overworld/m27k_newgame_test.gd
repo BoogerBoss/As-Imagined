@@ -13,7 +13,7 @@ extends Node
 ##   * `{PLAYER}` now reads the chosen name, retiring a hardcode that lived in
 ##     three places agreeing by luck.
 
-const EXPECTED_TOTAL := 65
+const EXPECTED_TOTAL := 66
 
 ## Comfortably past the cap, so the refusal is what stops it and not the loop.
 const NAME_OVERFILL := 20
@@ -238,16 +238,37 @@ func _test_placeholders() -> void:
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	_chk("E.06 the overworld runs a new game", ow.has_method("run_new_game"))
 	_chk("E.07 and drives the naming screen", ow.has_method("_drive_naming"))
-	# ⚠️ Source's own beats, in source's own order.
+	# ⚠️ Source's own beats, in source's own order — read from the CORPUS now
+	# rather than from `overworld.gd` consts. [M27G G7] moved Oak's dialogue
+	# into `field_script_source/data/scripts/authored_text.inc` when the speech
+	# became a script, so there is one place for every line in the game.
+	var texts := {}
+	if FileAccess.file_exists("res://data/map_texts.json"):
+		var pt = JSON.parse_string(FileAccess.open(
+				"res://data/map_texts.json", FileAccess.READ).get_as_text())
+		if pt is Dictionary:
+			texts = pt
+	var joined := func(label: String) -> String:
+		return " ".join(PackedStringArray(texts.get(label, [])))
 	_chk("E.08 the speech opens where source opens",
-			str(ow.OAK_WELCOME).contains("Glad to meet you"))
+			joined.call(NewGameEvents.TEXT_WELCOME).contains("Glad to meet you"))
+	# ⚠️ The ORDER is load-bearing, not stylistic: PlayerIdentity.name_choices()
+	# keys its preset list on gender, so the script must ask gender first.
 	_chk("E.09 asks gender before the name",
-			str(ow.OAK_ASK_GENDER).contains("boy")
-			and str(ow.OAK_YOUR_NAME).contains("your name"))
+			joined.call(NewGameEvents.TEXT_ASK_GENDER).contains("boy")
+			and joined.call(NewGameEvents.TEXT_YOUR_NAME).contains("your name"))
 	_chk("E.10 and closes on the legend line",
-			str(ow.OAK_LETS_GO).contains("legend"))
+			joined.call(NewGameEvents.TEXT_LETS_GO).contains("legend"))
 	_chk("E.11 the name-back line is a placeholder, expanded at print time",
-			str(ow.OAK_SO_YOUR_NAME).contains("{PLAYER}"))
+			joined.call(NewGameEvents.TEXT_SO_YOUR_NAME).contains("{PLAYER}"))
+	# [M27G G7] The speech is a script now, and its beats are assertable as
+	# DATA — something the coroutine could never offer.
+	var ops: Array = NewGameEvents.opening()
+	var op_names := PackedStringArray()
+	for o in ops:
+		op_names.append(str(o["op"]))
+	_chk("E.12 the speech is an op list, not a coroutine",
+			op_names.has("native") and op_names.has("message"))
 	ow.free()
 
 
@@ -349,12 +370,32 @@ func _wait_until(cond: Callable, max_seconds: float = 6.0) -> void:
 		await get_tree().process_frame
 
 
-## Drains a `MessageBox` fully. `advance()` first skips typing (still open),
-## then pages forward, finally closing on the last page — looping until it
-## reports closed is robust to any page count.
+## [M27G G7] ⚠️ **PRESSES A REAL KEY. It used to call `box.advance()` directly,
+## and that is the exact anti-pattern this project already has a name for:**
+##
+## > A driver that reaches past the input layer cannot test the input layer.
+##
+## While Oak's speech was an `await` coroutine, a direct call worked because
+## nothing but the box itself was involved. Now the box is advanced by the
+## VM's own WAIT_BUTTON branch, so a direct call moves the box while leaving
+## the SCRIPT parked — the test would drift out of step with the thing it is
+## testing and report green. Tapping the key is what actually exercises the
+## path a player uses.
+func _tap(action: String) -> void:
+	Input.action_press(action)
+	await get_tree().process_frame
+	Input.action_release(action)
+	await get_tree().process_frame
+
+
+## Drains a `MessageBox` fully by pressing A, the way a player does. The guard
+## is generous (60 presses) so it can only ever fire on a genuine stall, never
+## on a long page list.
 func _advance_box(box: MessageBox) -> void:
-	while box.advance():
-		await get_tree().process_frame
+	var guard := 0
+	while box.is_open and guard < 60:
+		await _tap("ui_accept")
+		guard += 1
 
 
 func _test_name_confirm_and_lets_go_portrait() -> void:
@@ -363,9 +404,19 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	add_child(ow)
 
+	# ⚠️ [M27G G7] Reads the CORPUS, not an `overworld.gd` const. Oak's dialogue
+	# moved into `field_script_source/data/scripts/authored_text.inc` when the
+	# speech became a script — one place for every line in the game.
+	var _corpus_texts := {}
+	if FileAccess.file_exists("res://data/map_texts.json"):
+		var _pt = JSON.parse_string(FileAccess.open(
+				"res://data/map_texts.json", FileAccess.READ).get_as_text())
+		if _pt is Dictionary:
+			_corpus_texts = _pt
+	var _rival_pages: Array = _corpus_texts.get(NewGameEvents.TEXT_CONFIRM_RIVAL, [])
 	_chk("H.01 the rival-confirm text is source's own, verbatim, and a placeholder",
-			str(ow.OAK_CONFIRM_RIVAL_NAME).contains("{RIVAL}")
-			and str(ow.OAK_CONFIRM_RIVAL_NAME).contains("was it"))
+			_rival_pages.size() == 1 and str(_rival_pages[0]).contains("{RIVAL}")
+			and str(_rival_pages[0]).contains("was it"))
 
 	# Let `_ready()`/`run_new_game.call_deferred()` fire, then work through
 	# fade_in and the opening WELCOME/THIS_WORLD pages.
@@ -398,7 +449,7 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 			ow._box.is_open and ow._yes_no.is_open)
 	await _wait_until(func(): return ow._yes_no.accepts_input)
 	var first_name: String = OverworldSession.identity.name
-	ow._yes_no.cancel()
+	await _tap("ui_cancel")
 
 	await _wait_until(func(): return ow._naming.is_open)
 	_chk("H.03 saying NO reopens naming — the loop actually retries",
@@ -409,7 +460,7 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 	ow._naming.confirm()
 	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
 	await _wait_until(func(): return ow._yes_no.accepts_input)
-	ow._yes_no.confirm()
+	await _tap("ui_accept")
 
 	await _wait_until(func(): return not ow._yes_no.is_open and not ow._naming.is_open)
 	var second_name: String = OverworldSession.identity.name
@@ -427,7 +478,7 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
 	await _wait_until(func(): return ow._yes_no.accepts_input)
 	var first_rival: String = OverworldSession.identity.rival_name
-	ow._yes_no.cancel()
+	await _tap("ui_cancel")
 
 	await _wait_until(func(): return ow._naming.is_open)
 	_chk("H.05 the rival question retries the same way", ow._naming.is_open)
@@ -436,7 +487,7 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 	ow._naming.confirm()
 	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
 	await _wait_until(func(): return ow._yes_no.accepts_input)
-	ow._yes_no.confirm()
+	await _tap("ui_accept")
 
 	await _wait_until(func(): return not ow._yes_no.is_open and not ow._naming.is_open)
 	var second_rival: String = OverworldSession.identity.rival_name
@@ -452,4 +503,12 @@ func _test_name_confirm_and_lets_go_portrait() -> void:
 			ow._oak_overlay._solo.texture.resource_path.ends_with("leaf.png"))
 
 	await _advance_box(ow._box)
+	# ⚠️ [M27G G7] WAIT FOR THE SCRIPT TO FINISH BEFORE FREEING. The closing
+	# beat is `native "OakFadeOut"`, and freeing the scene while a handler is
+	# still suspended leaves the handler's own coroutine holding a reference to
+	# a dead node — Godot reports it as "N resources still in use at exit",
+	# which `run_overworld_tests.sh` correctly fails the run on. The coroutine
+	# is un-cancellable by design; letting the cutscene END is the fix, and it
+	# is also what a player does.
+	await _wait_until(func(): return ow._vm == null)
 	ow.queue_free()

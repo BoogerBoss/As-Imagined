@@ -9499,6 +9499,9 @@
 "FarawayIsland_Interior_Text_TheFeelingOfBeingWatchedFaded": [
 "The feeling of being watched faded…"
 ],
+"FieldPoison_Text_Fainted": [
+"{STR_VAR_1} fainted…"
+],
 "FiveIsland_House1_Text_HusbandWentOffFishing": [
 "Don't worry about buying anything\nfor dinner tonight!",
 "…That's what my husband said when\nhe went off fishing today.",
@@ -18511,6 +18514,37 @@
 "NavelRock_Harbor_Text_SailorReturn": [
 "Did… Did you hear that?\nThat low growling from deep in there.",
 "Are you sure it's safe?\nDo you think we should leave?"
+],
+"NewGame_Text_AskGender": [
+"Now tell me. Are you a boy?\nOr are you a girl?"
+],
+"NewGame_Text_ConfirmRivalName": [
+"…Er, was it {RIVAL}?"
+],
+"NewGame_Text_Inhabited": [
+"…is inhabited far and wide by\ncreatures called POKéMON.",
+"For some people, POKéMON are pets.\nOthers use them for battling.",
+"But first, tell me a little about\nyourself."
+],
+"NewGame_Text_LetsGo": [
+"{PLAYER}!\nYour very own POKéMON legend is about to unfold!\nA world of dreams and adventures with POKéMON awaits! Let's go!"
+],
+"NewGame_Text_RememberRival": [
+"That's right! I remember now!\nHis name is {RIVAL}!"
+],
+"NewGame_Text_RivalIntro": [
+"This is my grandson.\nHe's been your rival since you both were babies.",
+"…Erm, what was his name now?"
+],
+"NewGame_Text_SoYourName": [
+"Right…\nSo your name is {PLAYER}."
+],
+"NewGame_Text_Welcome": [
+"Hello, there!\nGlad to meet you!",
+"This world…"
+],
+"NewGame_Text_YourName": [
+"Let's begin with your name.\nWhat is it?"
 ],
 "NewMauville_Entrance_Text_DoorIsLocked": [
 "The door is locked."
@@ -36636,6 +36670,19 @@
 ],
 "SouthernIsland_Interior_Text_Sign": [
 "“All dreams are but another reality.\nNever forget…”"
+],
+"StartMenu_Text_SaveConfirm": [
+"Would you like to save the game?"
+],
+"StartMenu_Text_SaveDone": [
+"{PLAYER} saved the game."
+],
+"StartMenu_Text_SaveFailed": [
+"Save error.",
+"Please exchange the\nbackup memory."
+],
+"StartMenu_Text_Saving": [
+"SAVING…\nDON'T TURN OFF THE POWER."
 ],
 "TVSecretBaseSecrets_Text_BaseFailedToInterestPlayer": [
 "Hmm…",

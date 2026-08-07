@@ -686,7 +686,49 @@ retired and the test must not repeat the mistake that hid it. Plus: assert
 **Done when.** `run_new_game` no longer exists as a coroutine, both duplicate
 drivers are deleted, and `m27k_newgame_test` passes driving real input.
 
-**Do NOT yet.** Migrate imported scripts — there is nothing to gain.
+**✅ MOSTLY DONE 2026-08-07 — one of the two drivers survives, deliberately.**
+`NewGameEvents` (Oak's speech, with both confirm/retry loops as real `goto`
+branches) and `StartMenuEvents` (saving) are authored scripts; 7 new Oak
+`native` handlers; Oak's dialogue moved into the corpus. **22/22 suites;
+`m27k_newgame_test` 66 → 67, now driving REAL KEY PRESSES.** Live-driven end
+to end: both yes/no prompts answered by real input, all 6 native beats reached,
+name and rival committed.
+
+⚠️ **A THIRD CALLER WAS MISSING FROM THIS SCOPE — `_on_start_menu_save`.** It
+opened a yes/no outside the VM exactly as `run_new_game` did, so deleting the
+free-standing yes/no driver would have left **saving** unanswerable from the
+keyboard — the identical bug this phase exists to fix, reintroduced by the
+phase fixing it. Found by deleting the driver and asking what else used it.
+
+⚠️ **THE FREE-STANDING MESSAGE-BOX DRIVER IS STILL THERE, with exactly one
+user: `_poison_step`.** Not an oversight — a real limitation. The poison notice
+builds its pages at RUNTIME (one per Pokémon that just hit 1 HP, each with that
+Pokémon's own name buffered) and `message` names a STATIC label in the text
+corpus. There is no opcode for "show these N pages I just computed". The
+obvious workaround fails too: **a `native` handler cannot `await` the message
+box**, because while the VM sits on `WAIT_NATIVE` the driver is in its
+`WAIT_NATIVE` branch and nothing advances the box. Two ways out, both real
+design calls that did not belong in this phase:
+
+1. a dynamic-text opcode (`message_buffered`, pages supplied by the caller), or
+2. letting the `WAIT_NATIVE` branch also pump the box — one driver location,
+   but it lets `native` show dialogue outside the op stream, which erodes
+   "the op stream is the whole story".
+
+⚠️ **A SUSPENDED `native` HANDLER CANNOT BE CANCELLED**, and G7 is where that
+first bit. `abandon()` drops the VM, but a handler already awaiting keeps a
+reference to the scene until the thing it awaits completes — freeing the
+overworld mid-handler leaks ("N resources still in use at exit", which the
+runner fails on). Two tests now wait for the beat to settle. **The standing
+rule this produces: a handler must await something that always finishes.**
+
+**`m27l_save_test` H.04–H.06 are RETIRED**, as G4 predicted. They asserted the
+duplicate yes/no driver existed; it does not any more. The coverage that
+replaced them is stronger — `m27k_newgame_test` section H drives the whole
+speech, both retry loops included, through real key presses.
+
+**Do NOT yet.** Migrate imported scripts — there is nothing to gain. Close the
+poison driver without deciding between the two options above.
 
 ---
 
