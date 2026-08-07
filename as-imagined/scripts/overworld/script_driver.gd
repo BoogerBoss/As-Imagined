@@ -66,12 +66,18 @@ var source: ScriptVM.ScriptSource = null
 ## `WAIT_PARTY_CHOICE` rather than to item-use or a plain browse.
 var party_choice_pending := false
 
+## [M27G G5] `native` handlers, owned per-driver. See NativeEventRegistry.
+var natives := NativeEventRegistry.new()
+
 ## The scene this drives. Untyped — see the class doc comment.
 var _ow = null
 
 
 func setup(ow) -> void:
 	_ow = ow
+	# [M27G G5] The project's own `native` handlers, into THIS driver's own
+	# registry — see NativeEventRegistry's header for why it is not static.
+	FieldNativeEvents.register_all(natives)
 	source = ScriptVM.ScriptSource.new()
 	source.ops_by_label = _read_json("res://data/map_scripts.json")
 	source.texts = _read_json("res://data/map_texts.json")
@@ -87,6 +93,14 @@ func _read_json(path: String) -> Dictionary:
 	var f := FileAccess.open(path, FileAccess.READ)
 	var parsed = JSON.parse_string(f.get_as_text())
 	return parsed if parsed is Dictionary else {}
+
+
+## [M27G G5] The scene, for `native` handlers. Public because a handler is
+## ordinary Godot code living outside this file and legitimately needs the
+## tree — `_ow` itself stays private so the handler surface is one named thing
+## rather than a field everyone reaches into.
+func scene():
+	return _ow
 
 
 func has_script(label: String) -> bool:
@@ -240,8 +254,53 @@ func drive() -> void:
 				_ow._pending_use_item = -1
 				_ow._party_screen.open(vm.party)
 
+		# [M27G G5] `native` — registered Godot code owns the screen until it
+		# reports back. Guarded on `_native_running` rather than on the pause
+		# itself, because the pause STAYS WAIT_NATIVE for the whole handler
+		# (that is what makes it observable) and this branch runs every frame.
+		ScriptVM.Pause.WAIT_NATIVE:
+			if not _native_running:
+				_native_running = true
+				_run_native(vm.pending_native, vm.pending_native_args)
+
 		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
 			finish()
+
+
+## [M27G G5] Whether a `native` handler is in flight. Not on the VM: the VM's
+## job is to record that it is waiting, not to track who is answering.
+var _native_running := false
+
+
+## [M27G G5] ⚠️ **THE ONLY `await` IN THE ENTIRE SCRIPT PIPELINE.**
+##
+## Everything else — the VM, the pause dispatch, the queue drains — is
+## frame-driven and inspectable precisely because nothing suspends. Confining
+## the one genuine suspension to this function means there is exactly ONE place
+## that has to handle "the world may have changed while we were gone", instead
+## of one per cutscene (which is what `run_new_game` costs today, and what G7
+## exists to retire).
+##
+## ⚠️ An unregistered handler HALTS and NAMES ITSELF rather than being skipped —
+## the same discipline an unknown `special` already uses, and for the same
+## reason: a silent skip makes coverage figures lie.
+func _run_native(handler_name: String, handler_args: Array) -> void:
+	var handler := natives.get_handler(handler_name)
+	if not handler.is_valid():
+		_native_running = false
+		if vm != null:
+			vm.pause_reason = ScriptVM.Pause.UNKNOWN_OP
+			vm.diagnostic = "native handler '%s' is not registered" % handler_name
+		return
+	var result: Variant = await handler.call(self, handler_args)
+	_native_running = false
+	# ⚠️ GUARDED, AND THIS IS THE WHOLE REASON THE await IS PENNED IN HERE. A
+	# whiteout, a warp or `abandon()` can all land while a handler is suspended;
+	# `resume_after_native` would then resume a VM that no longer exists, or —
+	# worse — a DIFFERENT script that started in the meantime. Checking the
+	# pause as well as the instance covers both.
+	if vm != null and vm.pause_reason == ScriptVM.Pause.WAIT_NATIVE:
+		vm.resume_after_native(result)
 
 
 ## [M27K K-c] The naming screen reported a name for a script-driven rename.
@@ -414,6 +473,10 @@ func finish() -> void:
 	_ow._box.close()
 	_ow.script_finished.emit(str(d["label"]), str(d["pause"]), str(vm.diagnostic))
 	vm = null
+	# [M27G G5] A script can end while a handler is still suspended (an
+	# unregistered-handler halt does exactly that). Leaving this set would stop
+	# the NEXT script's first `native` from ever starting.
+	_native_running = false
 
 
 func abandon() -> void:
@@ -422,3 +485,4 @@ func abandon() -> void:
 	if _ow._box != null:
 		_ow._box.close()
 	vm = null
+	_native_running = false

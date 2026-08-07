@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 231
+const EXPECTED_TOTAL := 253
 
 var _total := 0
 var _failed := 0
@@ -100,6 +100,7 @@ func _ready() -> void:
 	_test_m27g_g1_batch()
 	_test_m27g_g2_choose_party_mon()
 	_test_m27g_g3a_ingame_trade()
+	_test_m27g_g5_native()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -1992,3 +1993,126 @@ func _test_m27g_g3a_ingame_trade() -> void:
 			+ "never pausing on a yes/no or a party choice at all "
 			+ "(diagnostic if not: '%s')" % vm_r4.diagnostic,
 			vm_r4.pause_reason == ScriptVM.Pause.DONE)
+
+
+## --- Q. [M27G G5] the `native` opcode ---
+##
+## ⚠️ Every assertion here reads the VM from OUTSIDE, the same discipline the
+## rest of this suite uses. That is the whole reason `native` was built as a
+## PAUSE rather than as a coroutine: a suspended handler leaves `pause_reason`,
+## `pending_native` and `describe()["native"]` all readable, so a test can
+## freeze mid-handler and assert. An `await`-based command could not be
+## inspected at all.
+func _test_m27g_g5_native() -> void:
+	var flags := FlagStore.new()
+	var vm := ScriptVM.new(_src({
+		"A": [_op("native", ["Sparkle", "3"]), _op("setflag", ["FLAG_AFTER"]), _op("end")],
+	}), flags)
+	vm.start("A")
+	_run(vm)
+	_chk("Q.01 native pauses on WAIT_NATIVE rather than running on",
+			vm.pause_reason == ScriptVM.Pause.WAIT_NATIVE)
+	_chk("Q.02 and names the handler it is waiting on",
+			vm.pending_native == "Sparkle")
+	_chk("Q.03 extra arguments are carried, the handler name is not among them",
+			vm.pending_native_args.size() == 1 and str(vm.pending_native_args[0]) == "3")
+	_chk("Q.04 describe() reports the handler, so an overlay can name it",
+			str(vm.describe().get("native", "")) == "Sparkle")
+	# ⚠️ THE GUARD THAT MATTERS. WAIT_NATIVE carries a result, so a plain
+	# resume() must refuse it — exactly as it refuses WAIT_BATTLE/WAIT_NAMING/
+	# WAIT_PARTY_CHOICE. Without this a handler's answer is silently dropped and
+	# the script reads as having just carried on.
+	vm.resume()
+	_chk("Q.05 a plain resume() does NOT clear WAIT_NATIVE",
+			vm.pause_reason == ScriptVM.Pause.WAIT_NATIVE)
+	_chk("Q.06 and the script has not advanced past the native",
+			not flags.flag_get("FLAG_AFTER"))
+	vm.resume_after_native(null)
+	_chk("Q.07 resume_after_native releases it", vm.pause_reason == ScriptVM.Pause.NONE)
+	_run(vm)
+	_chk("Q.08 and the script carries on from the next opcode",
+			flags.flag_get("FLAG_AFTER"))
+	_chk("Q.09 the pending handler is cleared once resumed", vm.pending_native == "")
+
+	# A handler that ANSWERS: the value lands in VAR_RESULT and the script
+	# branches on it exactly as it would after a `special`.
+	var flags2 := FlagStore.new()
+	var vm2 := ScriptVM.new(_src({
+		"A": [_op("native", ["AskSomething"]),
+				_op("goto_if_eq", ["VAR_RESULT", "1", "YES"]), _op("end")],
+		"YES": [_op("setflag", ["FLAG_SAID_YES"]), _op("end")],
+	}), flags2)
+	vm2.start("A")
+	_run(vm2)
+	vm2.resume_after_native(1)
+	_run(vm2)
+	_chk("Q.10 a handler's return value reaches VAR_RESULT and branches",
+			flags2.flag_get("FLAG_SAID_YES"))
+
+	# ⚠️ null must LEAVE VAR_RESULT ALONE rather than zeroing it. A presentation
+	# beat sitting between a check and the `goto_if_eq VAR_RESULT` that consumes
+	# it would otherwise silently break that branch.
+	var flags3 := FlagStore.new()
+	flags3.var_set("VAR_RESULT", 7)
+	var vm3 := ScriptVM.new(_src({"A": [_op("native", ["Beat"]), _op("end")]}), flags3)
+	vm3.start("A")
+	_run(vm3)
+	vm3.resume_after_native(null)
+	_chk("Q.11 a handler with nothing to say does not clobber VAR_RESULT",
+			flags3.var_get("VAR_RESULT") == 7)
+
+	# A missing name is a data problem worth naming, not a silent skip.
+	var vm4 := ScriptVM.new(_src({"A": [_op("native", []), _op("end")]}), FlagStore.new())
+	vm4.start("A")
+	_run(vm4)
+	_chk("Q.12 native with no handler name halts rather than continuing",
+			vm4.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
+	_chk("Q.13 and says what was wrong", vm4.diagnostic.contains("handler name"))
+
+	# `start()` must clear a previous script's pending handler, or a fresh VM
+	# reports itself waiting on something nobody asked for.
+	var vm5 := ScriptVM.new(_src({
+		"A": [_op("native", ["Stale"]), _op("end")],
+		"B": [_op("end")],
+	}), FlagStore.new())
+	vm5.start("A")
+	_run(vm5)
+	vm5.start("B")
+	_chk("Q.14 starting a new script clears the previous pending handler",
+			vm5.pending_native == "" and vm5.pending_native_args.is_empty())
+
+	# --- the registry ---
+	#
+	# ⚠️ A LOCAL INSTANCE, not a static table. `NativeEventRegistry` holds
+	# Callables, and a static Dictionary of lambdas outlives the script that
+	# made them — Godot then aborts at process exit with heap corruption
+	# (SIGABRT/134). That was the first cut and it took down four suites the
+	# moment a real overworld started registering handlers; the registry is now
+	# owned per-`ScriptDriver`, which is the correct lifetime anyway. This
+	# section builds its own for the same reason production does.
+	var reg := NativeEventRegistry.new()
+	FieldNativeEvents.register_all(reg)
+	_chk("Q.15 the project's own built-in handlers register",
+			reg.has("FadeToBlack") and reg.has("FadeFromBlack") and reg.has("Wait"))
+	_chk("Q.16 names() lists them, for the overlay", reg.names().size() >= 3)
+	_chk("Q.17 an unregistered handler is reported absent, not defaulted",
+			not reg.has("NoSuchHandler_G5Test"))
+	_chk("Q.18 and get_handler hands back an invalid Callable to halt on",
+			not reg.get_handler("NoSuchHandler_G5Test").is_valid())
+	var hits := [0]
+	reg.register("G5TestHandler", func(_d, _a) -> Variant:
+		hits[0] += 1
+		return null)
+	_chk("Q.19 a registered handler is found", reg.has("G5TestHandler"))
+	# ⚠️ FIRST REGISTRATION WINS. Two under one name is a real conflict: the
+	# second would win invisibly and the first would look implemented.
+	var replaced := reg.register("G5TestHandler", func(_d, _a) -> Variant:
+		hits[0] += 100
+		return null)
+	_chk("Q.20 a duplicate registration is refused rather than clobbering", not replaced)
+	reg.get_handler("G5TestHandler").call(null, [])
+	_chk("Q.21 and the FIRST handler is the one still registered", hits[0] == 1)
+	# Each driver gets its own — a second field session cannot inherit a stale
+	# handler from the last one.
+	_chk("Q.22 a fresh registry starts empty",
+			not NativeEventRegistry.new().has("FadeToBlack"))

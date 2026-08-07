@@ -72,6 +72,21 @@ enum Pause {
 	## cancel) exactly like WAIT_NAMING/WAIT_BATTLE — `resume()` alone is NOT
 	## enough, the caller must go through `answer_party_choice`.
 	WAIT_PARTY_CHOICE,
+	## [M27G G5] `native "Handler"` — registered Godot code owns the screen.
+	##
+	## ⚠️ **THE LAST WAIT THAT EVER NEEDS ADDING, AND THAT IS THE POINT.** Every
+	## pause above bought exactly one feature and cost four coordinated edits
+	## (a member here, an intercept in `step()`, an `answer_*` method, a driver
+	## branch). This one is generic: any future async field behaviour registers
+	## a handler instead. See `docs/m27g_scope.md` §3.2.
+	##
+	## Carries a result (whatever the handler returns, into VAR_RESULT), so
+	## `resume()` alone is NOT enough — the caller goes through
+	## `resume_after_native`.
+	##
+	## Appended, never slotted beside the others, so no existing ordinal
+	## shifts — the same discipline `WAIT_BATTLE` used.
+	WAIT_NATIVE,
 }
 
 ## The one multichoice list Stage 4 implements.
@@ -169,6 +184,12 @@ var pending_battle_script: String = ""
 ## "no continuation script means the win ends the script" rule is correct for THAT
 ## family and wrong for this one, so this flag lets one function serve both.
 var pending_battle_always_continues: bool = false
+
+## [M27G G5] Which registered handler `native` is waiting on, and its extra
+## arguments. Plain readable properties like every other pause carrier, so
+## `describe()` can name the handler and a test can freeze on it.
+var pending_native: String = ""
+var pending_native_args: Array = []
 
 ## [M27F Stage 3] Movements the script has ASKED for but which the scene has not
 ## started yet. `applymovement` is asynchronous in source — it kicks a movement
@@ -297,6 +318,8 @@ func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	pending_wait_target = ""
 	pending_warp = {}
 	pending_object_ops.clear()
+	pending_native = ""
+	pending_native_args = []
 	if _source == null or not _source.has_script(label):
 		pause_reason = Pause.UNRESOLVED
 		diagnostic = "no script named '%s'" % label
@@ -313,7 +336,7 @@ func is_running() -> bool:
 func is_waiting() -> bool:
 	return pause_reason in [Pause.WAIT_MESSAGE, Pause.WAIT_BUTTON, Pause.WAIT_YES_NO,
 			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT, Pause.WAIT_NAMING, Pause.WAIT_WARP,
-			Pause.WAIT_PARTY_CHOICE]
+			Pause.WAIT_PARTY_CHOICE, Pause.WAIT_NATIVE]
 
 
 func is_finished() -> bool:
@@ -322,14 +345,16 @@ func is_finished() -> bool:
 
 ## The caller reports that whatever we were waiting on has happened.
 func resume() -> void:
-	# ⚠️ WAIT_BATTLE, WAIT_NAMING and WAIT_PARTY_CHOICE are deliberately NOT
-	# resumable this way. Each carries a RESULT: a battle's win/loss branch,
-	# the typed nickname, the chosen party slot. Clearing any of them here
-	# would silently drop it and read as "the script just carried on". Use
-	# resume_after_battle() / answer_naming() / answer_party_choice().
+	# ⚠️ WAIT_BATTLE, WAIT_NAMING, WAIT_PARTY_CHOICE and WAIT_NATIVE are
+	# deliberately NOT resumable this way. Each carries a RESULT: a battle's
+	# win/loss branch, the typed nickname, the chosen party slot, a handler's
+	# own return. Clearing any of them here would silently drop it and read as
+	# "the script just carried on". Use resume_after_battle() /
+	# answer_naming() / answer_party_choice() / resume_after_native().
 	if is_waiting() and pause_reason != Pause.WAIT_BATTLE \
 			and pause_reason != Pause.WAIT_NAMING \
-			and pause_reason != Pause.WAIT_PARTY_CHOICE:
+			and pause_reason != Pause.WAIT_PARTY_CHOICE \
+			and pause_reason != Pause.WAIT_NATIVE:
 		pause_reason = Pause.NONE
 
 
@@ -641,6 +666,28 @@ func step() -> bool:
 		# rather than just fading.
 		"fadescreen":
 			return true
+
+		# [M27G G5] `native "Handler"[, arg...]` — hand control to registered
+		# Godot code and resume when it reports back.
+		#
+		# ⚠️ **A PORT, NOT AN INVENTION.** Source's own `ScriptContext` carries a
+		# `nativePtr` and a `SCRIPT_MODE_NATIVE` beside `SCRIPT_MODE_BYTECODE`
+		# (`include/script.h`, `script.c:70`), and `ScrCmd_waitmovement` is built
+		# on it verbatim: `SetupNativeScript(ctx, WaitForMovementFinish)`. This
+		# is that mechanism, with a name instead of a function pointer.
+		#
+		# The VM records WHO it is waiting on and stops. It never learns what a
+		# tween is — the driver resolves the name and owns the waiting, exactly
+		# the split `applymovement` and `trainerbattle` already use.
+		"native":
+			if args.is_empty():
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "native needs a handler name"
+				return false
+			pending_native = str(args[0])
+			pending_native_args = args.slice(1)
+			pause_reason = Pause.WAIT_NATIVE
+			return false
 
 		# [M27F Stage 4] A NARROW carve-out — see FieldSpecials for why an
 		# unknown one halts rather than degrading to a default.
@@ -1261,6 +1308,27 @@ func resume_after_battle(won: bool) -> void:
 	# a plain trainer should instead speak their post-battle line immediately
 	# after the battle rather than only on the next talk, this is the one line.
 	pause_reason = Pause.DONE
+
+
+## [M27G G5] The driver reports that a `native` handler finished.
+##
+## Separate from `resume()` for the same reason `resume_after_battle` is: this
+## pause carries a RESULT. A handler that answers a question (did the player
+## accept? which option?) writes it to VAR_RESULT and the script branches on it
+## exactly as it would after a `special`.
+##
+## ⚠️ A handler with nothing to say passes null and VAR_RESULT is left ALONE,
+## rather than being zeroed. Clobbering it would silently break the common
+## shape where a `native` presentation beat sits between a check and the
+## `goto_if_eq VAR_RESULT` that consumes it.
+func resume_after_native(result: Variant = null) -> void:
+	if pause_reason != Pause.WAIT_NATIVE:
+		return
+	if result != null and _flags != null:
+		_flags.var_set("VAR_RESULT", int(result))
+	pending_native = ""
+	pending_native_args = []
+	pause_reason = Pause.NONE
 
 
 ## The whole conditional-jump family, in one place.
@@ -1951,4 +2019,7 @@ func describe() -> Dictionary:
 		"pages": pending_pages.size(),
 		"depth": _call_stack.size(),
 		"last_compare": last_compare,
+		# [M27G G5] Empty unless WAIT_NATIVE — the overlay and a frozen test
+		# both need to see WHICH handler is running, not just that one is.
+		"native": pending_native,
 	}

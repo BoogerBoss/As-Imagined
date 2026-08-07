@@ -538,13 +538,43 @@ any `Pause` member. Merge the two input drivers (that is G7).
 - a handler yielding across frames leaves `pause_reason == WAIT_NATIVE`
   observable throughout
 
-**Done when.** **`fadescreen` FADE_TO_BLACK works**, properly paired with the
-screen transition, replacing the current no-op — chosen as the acceptance
-target deliberately: it is 128 corpus uses, it is the one no-op whose own
-comment explicitly asks for this pairing, and it is the first
-player-visible win in the block.
+**Done when.** One real handler ships end to end.
+
+**✅ DONE 2026-08-07.** `Pause.WAIT_NATIVE` + the `native` opcode +
+`resume_after_native` in `script_vm.gd`; `NativeEventRegistry` (the table);
+`FieldNativeEvents` (this project's own handlers — `FadeToBlack`,
+`FadeFromBlack`, `Wait`); the driver's `WAIT_NATIVE` branch and `_run_native`,
+which holds the one and only `await` in the whole script pipeline.
+**22/22 suites; `m27f_script_vm_test` 231 → 253 assertions** (new section Q).
+
+Live-driven in the real scene, not only unit-tested: a script of three chained
+native beats (fade out → wait → fade in) was observed **mid-run** sitting on
+`WAIT_NATIVE` with `pending_native == "FadeToBlack"`, then completing and
+running the opcode after them. That mid-run observability is the property the
+whole design exists for, and an `await`-based command could not have it.
+
+⚠️ **THE `fadescreen` OPCODE IS STILL A NO-OP, AND THAT IS DELIBERATE.** This
+section originally named rewiring it as the acceptance target. It should not
+have: `script_vm.gd`'s own comment records that in **106 of 128 corpus uses the
+fade is never closed by another opcode** — source closes it from
+`CB2_ReturnToFieldContinueScriptPlayMapMusic`, plumbing this project does not
+have — so making the opcode fade for real would leave the screen black
+permanently. Pairing it with the screen TRANSITION is a per-call-site analysis
+and its own piece of work. What G5 delivers is the CAPABILITY: a fade is now
+reachable by name (`native "FadeToBlack"`) from an authored script, which is
+what G6 will use and what nothing could do before.
+
+⚠️ **`NativeEventRegistry` is an INSTANCE owned by `ScriptDriver`, not static.**
+The first cut was static, matching `FieldSpecials`. That is wrong for a table of
+**Callables**: a `static var` Dictionary of lambdas outlives the script that
+created them, and Godot aborts at process exit with heap corruption ("corrupted
+size vs. prev_size while consolidating", SIGABRT/134). It took down four suites
+the moment a real overworld started registering handlers. Per-driver ownership
+is the correct lifetime anyway — a handler reaches the scene through
+`driver.scene()`.
 
 **Do NOT yet.** Migrate `run_new_game`. Port the special tail. Add the builder.
+Rewire `fadescreen` (see above).
 
 ---
 
