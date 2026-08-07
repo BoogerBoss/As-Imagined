@@ -76,10 +76,17 @@ Movement_Bow::
 	delay_4
 	step_end
 
+@ ⚠️ AUTHORED DIVERGENCE FROM THE REFERENCE — Rob's call, kept from
+@ ScriptVM.TEXT_OVERRIDES which this replaces. Source's own second page is
+@ "Would you like me to heal your POKéMON back to perfect health?" and it is
+@ dropped here because the nurse no longer ASKS: talking to her has exactly
+@ one purpose, so the confirmation was a keypress between the player and the
+@ only thing they came for (see ScriptVM.AUTO_CONFIRM_LABELS). With the
+@ prompt skipped, the question page would be printed and then answered by
+@ nobody. A later session reading Std_MsgboxYesNo WILL find the prompt in
+@ source and try to "restore" it — this is deliberate, not a lost page.
 Text_WelcomeWantToHealPkmn_Frlg::
-	.string "Welcome to our POKéMON CENTER!\p"
-	.string "Would you like me to heal your\n"
-	.string "POKéMON back to perfect health?$"
+	.string "Welcome to our POKéMON CENTER!$"
 
 Text_TakeYourPkmnForFewSeconds_Frlg::
 	.string "Okay, I'll take your POKéMON for a\n"

@@ -25,17 +25,19 @@ static var _scripts: Dictionary = {}
 ## Labels that collided with the imported corpus, for the test and the overlay.
 static var _rejected: PackedStringArray = PackedStringArray()
 
-## [M27G G6] Authored dialogue. label -> Array of pages.
+## ⚠️ **THERE IS DELIBERATELY NO TEXT REGISTRY HERE.** G6's first cut had one;
+## it was removed the same day. Every line of dialogue in the game — imported
+## and authored alike — lives in `field_script_source/`, per
+## `docs/field_script_authoring.md`'s standing decision that there is no
+## separate text-source tree. Authored lines go in
+## `field_script_source/data/scripts/authored_text.inc`; an authored script
+## then names the label exactly as an imported one does, and
+## `verify_text` below checks at boot that it resolves.
 ##
-## ⚠️ **AUTHORED TEXT LIVES BESIDE AUTHORED OPS, NOT IN `map_texts.json`.** That
-## file is generated from `field_script_source/` and a hand edit to it is
-## discarded on the next regenerate — the exact trap
-## `docs/field_script_authoring.md` records as a standing rule. Registering
-## pages here is what lets an authored script change a line with no Python step
-## at all, which is half the point of the front-end.
-static var _texts: Dictionary = {}
-
-
+## The friction this front-end exists to remove is writing script LOGIC in
+## assembler with no type checking. Text is just strings — no types to check,
+## no autocomplete to gain — so registering it here reached past the problem
+## and cost a second place to grep for a line.
 ## Register one authored script.
 ##
 ## `ops` is what `EventScript.end()` / `.ret()` / `.build()` or `Move.done()`
@@ -48,21 +50,6 @@ static func register(label: String, ops: Array) -> bool:
 		push_warning("EventRegistry: '%s' is registered twice — keeping the first" % label)
 		return false
 	_scripts[label] = ops
-	return true
-
-
-## Register dialogue for an authored script. `pages` is one entry per page —
-## the same shape `ScriptSource.pages_for` hands the message box, where `\n` is
-## a line break within a page and a new entry is a new page.
-static func register_text(label: String, pages: Array) -> bool:
-	if label == "" or pages.is_empty():
-		push_warning("EventRegistry: refusing to register text '%s' (empty)" % label)
-		return false
-	if _texts.has(label):
-		push_warning("EventRegistry: text '%s' is registered twice — keeping the first"
-				% label)
-		return false
-	_texts[label] = pages
 	return true
 
 
@@ -105,30 +92,34 @@ static func merge_into(ops_by_label: Dictionary) -> int:
 	return merged
 
 
-## Merge authored dialogue into a loaded text corpus, in place. Same
-## collision rule as `merge_into`: an imported line wins and the clash is
-## reported, because silently replacing a line of Kanto's dialogue from an
-## authored file is exactly as bad as replacing one of its scripts.
-static func merge_texts_into(texts: Dictionary) -> int:
-	var merged := 0
-	for label in _texts:
-		if texts.has(label):
-			_rejected.append(str(label))
-			push_warning("EventRegistry: authored text '%s' collides with an "
-					% label + "imported line — the imported one is kept. Rename it.")
-			continue
-		texts[label] = _texts[label]
-		merged += 1
-	return merged
-
-
 ## Labels refused by the last `merge_into` because they already existed.
 static func rejected() -> PackedStringArray:
 	return _rejected
 
 
+## [M27G G6 follow-up] Every text label the authored scripts reference, that
+## the corpus does not define. Empty is the healthy answer.
+##
+## ⚠️ Catches at BOOT what would otherwise surface mid-conversation as the VM's
+## own "no text for 'X'" diagnostic — a typo in a label is the one thing the
+## GDScript front-end cannot type-check, because the label is a string naming
+## a row in a corpus compiled by a separate tool.
+static func verify_text(texts: Dictionary) -> PackedStringArray:
+	var missing := PackedStringArray()
+	for label in _scripts:
+		for op in _scripts[label]:
+			if str(op.get("op", "")) != "message":
+				continue
+			var args: Array = op.get("args", [])
+			if args.is_empty():
+				continue
+			var key := str(args[0])
+			if not texts.has(key) and not missing.has(key):
+				missing.append(key)
+	return missing
+
+
 ## Tests only.
 static func clear() -> void:
 	_scripts.clear()
-	_texts.clear()
 	_rejected = PackedStringArray()

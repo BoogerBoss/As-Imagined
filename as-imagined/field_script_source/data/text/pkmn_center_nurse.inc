@@ -1,9 +1,16 @@
+@ ⚠️ AUTHORED DIVERGENCE — the Hoenn counterpart of
+@ Text_WelcomeWantToHealPkmn_Frlg above; see that block for the full
+@ reasoning. Both nurses auto-confirm, so every page after the greeting was
+@ rhetorical.
+@
+@ ⚠️ THE LINE BREAK IS DELIBERATELY ABSENT, and it is the ONE thing here that
+@ is not source's own formatting. ScriptVM.TEXT_OVERRIDES — which this
+@ replaces — collapsed "Hello, and welcome to\nthe POKéMON CENTER." to a
+@ single line, and that single line is what currently ships. Preserved
+@ byte-exact so this migration changes nothing visible. If it overflows the
+@ box, restoring the \n is the fix and is a one-character edit here.
 gText_WouldYouLikeToRestYourPkmn::
-	.string "Hello, and welcome to\n"
-	.string "the POKéMON CENTER.\p"
-	.string "We restore your tired POKéMON\n"
-	.string "to full health.\p"
-	.string "Would you like to rest your POKéMON?$"
+	.string "Hello, and welcome to the POKéMON CENTER.$"
 
 gText_IllTakeYourPkmn::
 	.string "Okay, I'll take your POKéMON\n"

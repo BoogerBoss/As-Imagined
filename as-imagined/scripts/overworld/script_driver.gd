@@ -90,7 +90,17 @@ func setup(ow) -> void:
 	# wins a collision. Merging first would invert that silently.
 	AuthoredEvents.register_all()
 	EventRegistry.merge_into(source.ops_by_label)
-	EventRegistry.merge_texts_into(source.texts)
+	# ⚠️ Authored DIALOGUE is not merged — it lives in the one corpus with
+	# everything else (field_script_source/data/scripts/authored_text.inc), so
+	# it is already in `source.texts` by the time we get here. What is checked
+	# instead is that every label an authored script NAMES actually resolves:
+	# the label is a string naming a row in a separately-compiled corpus, which
+	# is the one thing the GDScript front-end cannot type-check.
+	var missing := EventRegistry.verify_text(source.texts)
+	if not missing.is_empty():
+		push_warning("ScriptDriver: authored scripts name %d text label(s) the "
+				% missing.size() + "corpus does not define: %s. Did gen_map_texts.py run?"
+				% ", ".join(missing))
 
 
 ## [M27F] Both JSONs are read at boot for the same reason the TileSets are: a

@@ -349,22 +349,34 @@ func _test_auto_confirm() -> void:
 
 ## --- G. the authored text override ---
 func _test_text_override() -> void:
-	# ⚠️ CONTENT, not mechanism — the first place this project overrides
-	# reference dialogue, and deliberately keyed on the TEXT SYMBOL so the same
-	# line reads the same way everywhere it is used.
-	_chk("G.01 the nurse question is overridden",
-			ScriptVM.TEXT_OVERRIDES.has("Text_WelcomeWantToHealPkmn_Frlg"))
-	var vm := ScriptVM.new(_src(
-			{"A": [_op("message", ["Text_WelcomeWantToHealPkmn_Frlg"]), _op("end")]},
-			{"Text_WelcomeWantToHealPkmn_Frlg": ["Welcome!", "Would you like me to heal?"]}),
-			FlagStore.new())
-	vm.start("A"); vm.step()
-	_chk("G.02 the override replaces the corpus text, not appends to it",
-			vm.pending_pages.size() == 1)
+	# ⚠️ **REPOINTED 2026-08-07 — this used to assert on `ScriptVM.TEXT_OVERRIDES`,
+	# which no longer exists.** That const held authored replacements for two
+	# imported nurse lines and existed only because the corpus was generated
+	# from a read-only reference clone at the time. `field_script_source/` is a
+	# tracked, hand-editable fork, so overriding a reference line now means
+	# EDITING THE LINE; both entries moved there and the const was retired
+	# rather than becoming a third dialogue source with a VM special-case.
+	#
+	# These assertions are STRONGER for it: they test the shipped CONTENT in
+	# the real compiled corpus rather than the mechanism that used to patch it,
+	# so they would survive the content moving again.
+	if not FileAccess.file_exists("res://data/map_texts.json"):
+		_gated += 4
+		return
+	var parsed = JSON.parse_string(FileAccess.open(
+			"res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var texts: Dictionary = parsed if parsed is Dictionary else {}
+	var pages: Array = texts.get("Text_WelcomeWantToHealPkmn_Frlg", [])
+	_chk("G.01 the nurse greeting is in the corpus at all", not pages.is_empty())
+	# The nurse auto-confirms (AUTO_CONFIRM_LABELS), so source's own second page
+	# would be printed and then answered by nobody.
+	_chk("G.02 the authored edit replaces the corpus text, not appends to it",
+			pages.size() == 1)
 	_chk("G.03 the greeting survives",
-			str(vm.pending_pages[0]).begins_with("Welcome"))
+			pages.size() > 0 and str(pages[0]).begins_with("Welcome"))
 	_chk("G.04 and the question is gone",
-			not str(vm.pending_pages[0]).to_lower().contains("would you like"))
+			pages.size() > 0
+			and not str(pages[0]).to_lower().contains("would you like"))
 
 
 ## --- D. the real nurse script, end to end ---

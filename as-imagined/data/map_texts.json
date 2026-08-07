@@ -19261,6 +19261,13 @@
 "PACIFIDLOG TOWN",
 "“Where the morning sun smiles upon\nthe waters.”"
 ],
+"PalletTown_Authored_Text_SeaBreeze": [
+"The sea wind carries something\nfaintly sweet today.",
+"Someone has scratched a date into\nthe post, and a name worn too far\nto read."
+],
+"PalletTown_Authored_Text_SeaBreezeShort": [
+"The sea wind again. Just the wind."
+],
 "PalletTown_PlayersHouse_1F_Text_AllBoysLeaveOakLookingForYou": [
 "MOM: …Right.\nAll boys leave home someday.\nIt said so on TV.",
 "Oh, yes. PROF. OAK, next door, was\nlooking for you."
@@ -37629,8 +37636,7 @@
 "Can you wait just a little bit?"
 ],
 "Text_WelcomeWantToHealPkmn_Frlg": [
-"Welcome to our POKéMON CENTER!",
-"Would you like me to heal your\nPOKéMON back to perfect health?"
+"Welcome to our POKéMON CENTER!"
 ],
 "Text_WhatAreYouLikeNow": [
 "What are you like now?\nI'd really like to know."
@@ -43750,9 +43756,7 @@
 "Which PC should be accessed?"
 ],
 "gText_WouldYouLikeToRestYourPkmn": [
-"Hello, and welcome to\nthe POKéMON CENTER.",
-"We restore your tired POKéMON\nto full health.",
-"Would you like to rest your POKéMON?"
+"Hello, and welcome to the POKéMON CENTER."
 ],
 "gText_YouWantTheUsual": [
 "I'm delighted to see you, {PLAYER}!\nYou want the usual, am I right?"

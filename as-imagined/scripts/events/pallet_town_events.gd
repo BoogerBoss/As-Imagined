@@ -15,11 +15,13 @@ extends RefCounted
 ## NPC says what is Rob's call. Until then it is reachable by label — which is
 ## how the tests and the live drive run it, and how a trigger would.
 ##
-## Text is inline here rather than in `map_texts.json`, and that is the second
-## half of what this front-end buys: authored content does not need a
-## regenerate step to change a line. `ScriptVM.message` looks a label up in the
-## text corpus and falls back to naming the gap; authored scripts register their
-## own pages through `EventRegistry` alongside the ops.
+## ⚠️ **THE DIALOGUE LIVES IN THE CORPUS, NOT HERE.** These constants name
+## labels defined in `field_script_source/data/scripts/authored_text.inc` —
+## the same place every imported line lives, per
+## `docs/field_script_authoring.md`'s standing "no separate text-source tree"
+## decision. G6 briefly registered pages in GDScript instead; that was undone
+## the same day. Change a line by editing that `.inc` and running
+## `python3 scripts/gen_map_texts.py`.
 
 
 ## ⚠️ Prefixed with the map, ending in a name the reference would never emit —
@@ -41,15 +43,6 @@ const TEXT_SEA_BREEZE_SHORT := "PalletTown_Authored_Text_SeaBreezeShort"
 static func register_all() -> void:
 	EventRegistry.register(LABEL_SIGN_POST, sea_breeze())
 	EventRegistry.register(LABEL_SIGN_POST_AGAIN, sea_breeze_again())
-	# ⚠️ `\n` is a line break WITHIN a page; a new array entry is a new page
-	# (source's own `\p`). The message box paginates on the array, not the text.
-	EventRegistry.register_text(TEXT_SEA_BREEZE, [
-		"The sea wind carries something\nfaintly sweet today.",
-		"Someone has scratched a date into\nthe post, and a name worn too far\nto read.",
-	])
-	EventRegistry.register_text(TEXT_SEA_BREEZE_SHORT, [
-		"The sea wind again. Just the wind.",
-	])
 
 
 ## A signpost by the water. First read is the full beat; afterwards it is one

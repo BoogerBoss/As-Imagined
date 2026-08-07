@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 272
+const EXPECTED_TOTAL := 274
 
 var _total := 0
 var _failed := 0
@@ -2139,6 +2139,12 @@ func _test_m27g_g6_event_script() -> void:
 		if parsed is Dictionary:
 			corpus = parsed
 	var real: Array = corpus.get("PalletTown_EventScript_FatMan", [])
+	var corpus_texts := {}
+	if FileAccess.file_exists("res://data/map_texts.json"):
+		var pt = JSON.parse_string(FileAccess.open(
+				"res://data/map_texts.json", FileAccess.READ).get_as_text())
+		if pt is Dictionary:
+			corpus_texts = pt
 	var built: Array = EventScript.new() \
 			.msgbox_npc("PalletTown_Text_CanStoreItemsAndMonsInPC") \
 			.end()
@@ -2242,9 +2248,10 @@ func _test_m27g_g6_event_script() -> void:
 	EventRegistry.clear()
 	AuthoredEvents.register_all()
 	var ops := {}
-	var texts := {}
 	EventRegistry.merge_into(ops)
-	EventRegistry.merge_texts_into(texts)
+	# ⚠️ Authored dialogue is NOT registered — it lives in the one corpus with
+	# every imported line, so the real `map_texts.json` is what must resolve it.
+	var texts: Dictionary = corpus_texts
 	_chk("R.14 the project's own authored content registers",
 			ops.has(PalletTownEvents.LABEL_SIGN_POST))
 	var flags := FlagStore.new()
@@ -2267,6 +2274,14 @@ func _test_m27g_g6_event_script() -> void:
 	_drive(vm2)
 	_chk("R.18 a second read takes the gated branch to the short label",
 			vm2.script_label == PalletTownEvents.LABEL_SIGN_POST_AGAIN)
-	_chk("R.19 authored dialogue resolves through the same text lookup",
-			texts.has(PalletTownEvents.TEXT_SEA_BREEZE))
+	# ⚠️ THE GUARD THAT REPLACED THE TEXT REGISTRY. An authored script names a
+	# label in a separately-compiled corpus, which is the one thing the GDScript
+	# front-end cannot type-check — so it is checked at boot instead.
+	_chk("R.19 authored dialogue resolves out of the real compiled corpus",
+			texts.has(PalletTownEvents.TEXT_SEA_BREEZE)
+			and texts.has(PalletTownEvents.TEXT_SEA_BREEZE_SHORT))
+	_chk("R.20 and verify_text reports nothing missing for shipped content",
+			EventRegistry.verify_text(texts).is_empty())
+	_chk("R.21 while a script naming an absent label IS reported",
+			EventRegistry.verify_text({}).size() > 0)
 	EventRegistry.clear()

@@ -108,25 +108,17 @@ const MULTI_YESNO := "MULTI_YESNO"
 ## choice with a real cost, and a blanket skip would silently answer all 425 of
 ## them. Both nurses are listed because the corridor reaches the Kanto one and
 ## the corpus still holds the Hoenn one.
-## [M27F Stage 4 follow-up] Authored replacements for specific text entries.
-##
-## ⚠️ **CONTENT, NOT MECHANISM — and the FIRST place this project overrides
-## reference dialogue.** `[M27]`'s own premise is that geometry and systems are
-## imported while content and meaning are authored, so a table like this was
-## always going to exist; this is it starting, with one entry.
-##
-## Keyed on the TEXT SYMBOL rather than the script, so the same line reads the
-## same way wherever it is used. The value is the full page list — `\p` in
-## source splits pages, and dropping a trailing page is the common case.
-const TEXT_OVERRIDES := {
-	# The nurse no longer asks (see AUTO_CONFIRM_LABELS), so the question page
-	# would be rhetorical — printed and then answered by nobody. Source's own
-	# second page is "Would you like me to heal your POKéMON back to perfect
-	# health?"; the greeting stays.
-	"Text_WelcomeWantToHealPkmn_Frlg": ["Welcome to our POKéMON CENTER!"],
-	"gText_WouldYouLikeToRestYourPkmn": ["Hello, and welcome to the POKéMON CENTER."],
-}
-
+## ⚠️ **`TEXT_OVERRIDES` WAS RETIRED 2026-08-07 — do not reintroduce it.**
+## It held authored replacements for two imported nurse lines, and it existed
+## because at the time there was no way to edit imported dialogue: the corpus
+## was generated from the read-only reference clone. `field_script_source/`
+## changed that — it is a tracked, hand-editable fork, so overriding a
+## reference line now means EDITING THE LINE. Both entries were moved there
+## (`data/scripts/pkmn_center_nurse_frlg.inc`,
+## `data/text/pkmn_center_nurse.inc`), each with the reasoning preserved
+## inline, and `data/map_texts.json` regenerated. A third dialogue source with
+## a VM special-case reading it was one too many; this is the one that had
+## become redundant.
 const AUTO_CONFIRM_LABELS := [
 	"EventScript_PkmnCenterNurse_Frlg",       # Kanto — multichoice MULTI_YESNO
 	"Common_EventScript_PkmnCenterNurse",     # Hoenn — yesnobox
@@ -442,11 +434,6 @@ func step() -> bool:
 
 		"message":
 			var text_key := str(args[0]) if args.size() > 0 else ""
-			if TEXT_OVERRIDES.has(text_key):
-				pending_pages = PackedStringArray(TEXT_OVERRIDES[text_key])
-				pending_page_index = 0
-				pause_reason = Pause.WAIT_MESSAGE
-				return true
 			pending_pages = _source.pages_for(text_key)
 			pending_page_index = 0
 			if pending_pages.is_empty():

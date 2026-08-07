@@ -127,6 +127,41 @@ anywhere in the corpus, ending in `end`/`return`, reached by a `call`/
 `goto` from somewhere, or wired into a map's own `OnFrame`/`OnTransition`
 table, or a placed entity's own `script_label`.
 
+## Authored content — scripts in GDScript, text still here
+
+**[M27G G6, 2026-08-07]** Scripts can now also be written in GDScript, under
+`scripts/events/`, using the `EventScript` builder. They compile to the same
+op list this corpus does and land in the same `ops_by_label` table — `ScriptVM`
+cannot tell the two apart, and an authored script can be `goto`'d from an
+imported one.
+
+⚠️ **THEIR DIALOGUE STILL LIVES HERE, and that is deliberate.** G6's first cut
+registered authored text in GDScript, which created exactly the second
+text-source tree the "Why one fork covers both" section above rules out. It
+was undone the same day, Rob's call. Authored lines go in
+**`field_script_source/data/scripts/authored_text.inc`** — the one file in this
+tree with no upstream counterpart, kept separate so "what did we write" stays
+answerable by looking at one place.
+
+The reasoning: the friction the GDScript front-end removes is writing script
+LOGIC in assembler with no type checking. Text is just strings — no types to
+check, no autocomplete to gain — so registering it elsewhere reached past the
+problem and cost a second place to grep for a line.
+
+The one thing GDScript cannot check is that a text label actually resolves,
+since the label names a row in a corpus compiled by a separate tool.
+`EventRegistry.verify_text` closes that at BOOT, naming any label an authored
+script references that the corpus does not define — rather than letting it
+surface mid-conversation as the VM's own "no text for 'X'".
+
+⚠️ **`ScriptVM.TEXT_OVERRIDES` IS RETIRED (same date).** It held authored
+replacements for two imported nurse lines and existed only because this corpus
+used to be generated from the read-only reference clone. Now that the fork is
+hand-editable, overriding a reference line means **editing the line** — both
+entries were moved into `data/scripts/pkmn_center_nurse_frlg.inc` and
+`data/text/pkmn_center_nurse.inc` with their reasoning preserved inline. Do not
+reintroduce it.
+
 ## Standing rule
 
 **Never repoint `gen_map_scripts.py`'s or `gen_map_texts.py`'s `REF`
