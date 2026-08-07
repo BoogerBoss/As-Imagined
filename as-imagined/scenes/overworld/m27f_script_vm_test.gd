@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 253
+const EXPECTED_TOTAL := 272
 
 var _total := 0
 var _failed := 0
@@ -101,6 +101,7 @@ func _ready() -> void:
 	_test_m27g_g2_choose_party_mon()
 	_test_m27g_g3a_ingame_trade()
 	_test_m27g_g5_native()
+	_test_m27g_g6_event_script()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -2116,3 +2117,156 @@ func _test_m27g_g5_native() -> void:
 	# handler from the last one.
 	_chk("Q.22 a fresh registry starts empty",
 			not NativeEventRegistry.new().has("FadeToBlack"))
+
+
+## --- R. [M27G G6] the EventScript authoring front-end ---
+##
+## ⚠️ **R.01 IS THE HIGHEST-VALUE ASSERTION IN THIS FILE.** The whole premise of
+## the front-end is that `ScriptVM` cannot tell an authored script from an
+## imported one. That is only true if the builder emits BYTE-IDENTICAL structure
+## to the compiler — same op names, same arg count, same arg TYPES (strings
+## throughout, even the numbers). Comparing against a real entry from the real
+## `map_scripts.json`, rather than a fixture, is what makes it a proof rather
+## than a restatement.
+func _test_m27g_g6_event_script() -> void:
+	# `PalletTown_EventScript_FatMan` is `msgbox X, MSGBOX_NPC` + `end`, the
+	# single most common script shape in the corpus and the one the compiler
+	# expands through STD_EXPANSIONS.
+	var corpus := {}
+	if FileAccess.file_exists("res://data/map_scripts.json"):
+		var parsed = JSON.parse_string(FileAccess.open(
+				"res://data/map_scripts.json", FileAccess.READ).get_as_text())
+		if parsed is Dictionary:
+			corpus = parsed
+	var real: Array = corpus.get("PalletTown_EventScript_FatMan", [])
+	var built: Array = EventScript.new() \
+			.msgbox_npc("PalletTown_Text_CanStoreItemsAndMonsInPC") \
+			.end()
+	if real.is_empty():
+		_gated += 2
+	else:
+		_chk("R.01 the builder reproduces a REAL compiled script exactly",
+				JSON.stringify(built) == JSON.stringify(real))
+		# Stated separately so a failure says WHICH half diverged.
+		var same_ops := built.size() == real.size()
+		if same_ops:
+			for i in range(built.size()):
+				if str(built[i]["op"]) != str(real[i]["op"]):
+					same_ops = false
+					break
+		_chk("R.02 op sequence matches the compiler's msgbox expansion", same_ops)
+
+	# ⚠️ EVERY ARG IS A STRING, matching the compiler. An int here would run
+	# correctly today (`_resolve_number` calls str() on everything) and diverge
+	# the moment anything compares the two forms — exactly the kind of
+	# near-miss that reads as working.
+	var typed: Array = EventScript.new().set_var("VAR_X", 3).end()
+	_chk("R.03 numeric arguments are emitted as STRINGS, as the compiler does",
+			typed[0]["args"][0] is String and typed[0]["args"][1] is String
+			and str(typed[0]["args"][1]) == "3")
+
+	# --- the mechanical guard §7 requires ---
+	#
+	# ⚠️ Drives a one-op VM for EVERY name in EventScript.OPS and asserts none
+	# halts as UNKNOWN_OP. This makes it impossible to add a builder method for
+	# an opcode the VM does not implement — which would compile cleanly and then
+	# halt mid-conversation at runtime, the exact failure the front-end exists
+	# to remove. A pause (WAIT_MESSAGE and friends) is fine; only UNKNOWN_OP is
+	# a gap.
+	# ⚠️ **THE PROBE TESTS FOR A MISSING `match` CASE, NOT FOR VALID ARGUMENTS**,
+	# and the first cut conflated the two. Driven with empty args, `warp`,
+	# `special`, `specialvar`, `trainerbattle_single`, `trainerbattle_no_intro`
+	# and `native` all halt as UNKNOWN_OP — correctly, because each validates
+	# its own arity and says so. That is a well-formed refusal, not an
+	# unimplemented opcode. The distinction is in the DIAGNOSTIC: the generic
+	# fallthrough at the bottom of `step()` is the only path that says "outside
+	# Stage 1's set", and that is the one this guard is looking for.
+	var unimplemented := PackedStringArray()
+	for op_name in EventScript.OPS:
+		var probe := ScriptVM.new(_src({"A": [_op(str(op_name), [])]}), FlagStore.new())
+		probe.start("A")
+		probe.step()
+		if probe.pause_reason == ScriptVM.Pause.UNKNOWN_OP \
+				and probe.diagnostic.contains("outside"):
+			unimplemented.append(str(op_name))
+	_chk("R.04 every op the builder can emit is implemented by the VM (%s)"
+			% (", ".join(unimplemented) if unimplemented.size() > 0 else "all ok"),
+			unimplemented.is_empty())
+
+	# ⚠️ `step_end` is EXCLUDED, and it is not an oversight: it is the
+	# TERMINATOR, special-cased by `MovementRunner._begin` rather than living in
+	# the action table, so `action("step_end")` is legitimately empty. R.07
+	# asserts `done()` emits it; this loop covers everything that has to resolve
+	# to a real animation.
+	var bad_moves := PackedStringArray()
+	for action in Move.ACTIONS:
+		if str(action) == "step_end":
+			continue
+		if MovementRunner.action(str(action)).is_empty():
+			bad_moves.append(str(action))
+	_chk("R.05 every action the Move builder can emit is known to MovementRunner (%s)"
+			% (", ".join(bad_moves) if bad_moves.size() > 0 else "all ok"),
+			bad_moves.is_empty())
+
+	# --- movement builder ---
+	var walk: Array = Move.new().walk_down(2).face_left().done()
+	_chk("R.06 a repeat count emits that many actions, not one with an argument",
+			walk.size() == 4 and str(walk[0]["op"]) == "walk_down"
+			and str(walk[1]["op"]) == "walk_down")
+	_chk("R.07 done() terminates with step_end, which the runner needs",
+			str(walk[walk.size() - 1]["op"]) == "step_end")
+
+	# --- the registry and its collision rule ---
+	EventRegistry.clear()
+	_chk("R.08 a fresh registry holds nothing", EventRegistry.labels().is_empty())
+	EventRegistry.register("Authored_A", EventScript.new().set_flag("F").end())
+	_chk("R.09 an authored script registers", EventRegistry.has("Authored_A"))
+	_chk("R.10 a duplicate registration is refused, first wins",
+			not EventRegistry.register("Authored_A",
+					EventScript.new().set_flag("G").end()))
+	# ⚠️ THE COLLISION RULE. Silently shadowing an imported label would replace
+	# content somewhere across 17,137 labels nobody reads end to end. The
+	# imported script wins and the clash is reported.
+	var table := {"Imported_B": [{"op": "end", "args": []}]}
+	EventRegistry.register("Imported_B", EventScript.new().set_flag("WRONG").end())
+	var merged := EventRegistry.merge_into(table)
+	_chk("R.11 an authored label that does NOT collide is merged in",
+			table.has("Authored_A") and merged == 1)
+	_chk("R.12 one that DOES collide is refused, and the imported op list stands",
+			table["Imported_B"].size() == 1
+			and str(table["Imported_B"][0]["op"]) == "end")
+	_chk("R.13 and the collision is reported rather than swallowed",
+			"Imported_B" in EventRegistry.rejected())
+
+	# --- an authored script actually runs, through the unmodified VM ---
+	EventRegistry.clear()
+	AuthoredEvents.register_all()
+	var ops := {}
+	var texts := {}
+	EventRegistry.merge_into(ops)
+	EventRegistry.merge_texts_into(texts)
+	_chk("R.14 the project's own authored content registers",
+			ops.has(PalletTownEvents.LABEL_SIGN_POST))
+	var flags := FlagStore.new()
+	var vm := ScriptVM.new(_src(ops, texts), flags)
+	vm.start(PalletTownEvents.LABEL_SIGN_POST)
+	var seen := _drive(vm)
+	_chk("R.15 an authored script runs on the unmodified VM",
+			seen.size() > 0 and not vm.pause_reason == ScriptVM.Pause.UNRESOLVED)
+	_chk("R.16 its native beat pauses exactly as an imported one would",
+			vm.pause_reason == ScriptVM.Pause.WAIT_NATIVE
+			and vm.pending_native == "Wait")
+	vm.resume_after_native(null)
+	_drive(vm)
+	_chk("R.17 and it completes, setting the flag and checkpoint it declares",
+			flags.flag_get("FLAG_AUTHORED_SEA_BREEZE_READ")
+			and flags.var_get(PalletTownEvents.VAR_SCENE) == 1)
+	# The gate branches on the second read — the whole point of the flag.
+	var vm2 := ScriptVM.new(_src(ops, texts), flags)
+	vm2.start(PalletTownEvents.LABEL_SIGN_POST)
+	_drive(vm2)
+	_chk("R.18 a second read takes the gated branch to the short label",
+			vm2.script_label == PalletTownEvents.LABEL_SIGN_POST_AGAIN)
+	_chk("R.19 authored dialogue resolves through the same text lookup",
+			texts.has(PalletTownEvents.TEXT_SEA_BREEZE))
+	EventRegistry.clear()

@@ -605,8 +605,50 @@ Rewire `fadescreen` (see above).
 - an authored script runs end to end through the unmodified driver
 
 **Done when.** One real authored cutscene — **original story content, not a
-port** — runs in the corridor with a `native` beat in it, and `describe()`
-reports it identically to an imported script.
+port** — runs with a `native` beat in it, and `describe()` reports it
+identically to an imported script.
+
+**✅ DONE 2026-08-07.** `EventScript` (the builder), `Move` (movement actions),
+`EventRegistry` (merge + collision rule, ops AND text), `AuthoredEvents` /
+`PalletTownEvents` (the first authored content), merged in `ScriptDriver.setup`.
+**22/22 suites; `m27f_script_vm_test` 253 → 273** (new section R).
+
+**R.01 is the assertion that matters**: the builder reproduces
+`PalletTown_EventScript_FatMan` — a REAL entry from the real
+`map_scripts.json` — byte-identically, proving `msgbox_npc()` expands exactly
+as `gen_map_scripts.py`'s `STD_EXPANSIONS` does. Compared against the live
+corpus rather than a fixture, so it is a proof and not a restatement.
+
+Live-driven: the authored script was found in the live corpus **beside**
+`PalletTown_EventScript_FatMan`, ran through the unmodified driver, opened the
+box on authored text, hit its `native` beat, and completed with its flag and
+checkpoint set.
+
+⚠️ **Authored TEXT is registered too, not put in `map_texts.json`.** That file
+is generated from `field_script_source/` and a hand edit is discarded on the
+next regenerate — `docs/field_script_authoring.md` records that as a standing
+rule. Registering pages alongside the ops is what lets authored content change
+a line with no Python step, which is half the point of the front-end.
+
+⚠️ **A collision `push_warning`s rather than `push_error`s**, and the imported
+script always wins. Not a softening: `run_overworld_tests.sh` fails any run
+containing an ERROR line, so pushing an error would make the collision test
+unrunnable. `SaveManager.read` records the identical call for the identical
+reason. Loudness is preserved by the warning plus `rejected()`.
+
+⚠️ **Two guard probes were wrong on the first cut, and the guards caught
+them** — worth recording because both look like passing tests when written
+naively. (1) R.04 drove each builder op with EMPTY args and flagged `warp`,
+`special`, `specialvar`, both `trainerbattle_*` and `native` as unimplemented;
+they were correctly refusing their own arity. The guard now keys on the
+DIAGNOSTIC — only the generic fallthrough says "outside Stage 1's set". (2)
+R.05 expected `step_end` in `MovementRunner`'s action table; it is the
+TERMINATOR, special-cased in `_begin`, so it is legitimately absent.
+
+**Not yet reached by a placed entity.** Attaching the authored script means
+setting an NPC's `script_label` in a baked map scene — map DATA, and a content
+decision rather than a mechanism one. G6 ships the ability to write scripts;
+which NPC says what is Rob's call.
 
 **Do NOT yet.** Migrate any imported content. Build a visual editor. Write a
 text DSL or a parser — the builder is sufficient.

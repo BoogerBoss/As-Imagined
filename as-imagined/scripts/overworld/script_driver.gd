@@ -81,6 +81,16 @@ func setup(ow) -> void:
 	source = ScriptVM.ScriptSource.new()
 	source.ops_by_label = _read_json("res://data/map_scripts.json")
 	source.texts = _read_json("res://data/map_texts.json")
+	# [M27G G6] Authored scripts join the SAME table the imported ones live in,
+	# which is what makes `ScriptVM` unable to tell them apart — an authored
+	# script can be `goto`'d from an imported one and vice versa.
+	#
+	# ⚠️ Merged AFTER the corpus loads, never before: `merge_into` refuses a
+	# label that already exists and reports it, so the imported script always
+	# wins a collision. Merging first would invert that silently.
+	AuthoredEvents.register_all()
+	EventRegistry.merge_into(source.ops_by_label)
+	EventRegistry.merge_texts_into(source.texts)
 
 
 ## [M27F] Both JSONs are read at boot for the same reason the TileSets are: a
