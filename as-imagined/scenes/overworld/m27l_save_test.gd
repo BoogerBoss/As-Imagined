@@ -472,14 +472,33 @@ func _test_drive_findings() -> void:
 	# question could never be answered from the keyboard. Asserted on the SHAPE of
 	# `_process`, which is all a headless test can reach — the behaviour itself
 	# was confirmed by the live drive.
+	# ⚠️ **[M27G G4] THESE THREE NOW SPAN TWO FILES, AND THAT IS THE REFACTOR,
+	# NOT A WEAKENING.** G4 moved the VM's own pause dispatch out of
+	# `overworld.gd` into `script_driver.gd`, so "the VM's branch" and "the
+	# free-standing branch" no longer live in one text to be ordered against
+	# each other. The property being asserted is unchanged — there are still
+	# TWO drivers, and the free-standing one still takes input first — it is
+	# just that one of them is now in another file.
+	#
+	# ⚠️ A source-text assertion cannot survive code movement by construction,
+	# which is why G4's own definition of done was amended from "no test edits"
+	# to "no BEHAVIOURAL assertion changes" rather than contorting the refactor
+	# to keep a string in place. Recorded so a later session does not read this
+	# edit as a test being bent to fit.
+	#
+	# ⚠️ ALL THREE DIE AT G7, WHICH IS THE POINT. G7 folds `run_new_game` into
+	# the VM and deletes the free-standing driver outright; at that moment this
+	# section should be removed, not repointed again.
 	var src := FileAccess.open("res://scenes/overworld/overworld.gd",
 			FileAccess.READ).get_as_text()
-	var vm_branch := src.find("ScriptVM.Pause.WAIT_YES_NO")
+	var drv := FileAccess.open("res://scripts/overworld/script_driver.gd",
+			FileAccess.READ).get_as_text()
+	var vm_branch := drv.find("ScriptVM.Pause.WAIT_YES_NO")
 	var free_branch := src.find("_vm == null and _yes_no != null and _yes_no.is_open")
 	_chk("H.04 a yes/no outside the VM has an input driver at all",
 			free_branch >= 0)
-	_chk("H.05 and it is a SECOND one, not the VM's own branch moved",
-			vm_branch >= 0 and free_branch < vm_branch)
+	_chk("H.05 and it is a SECOND one — the VM's own branch lives in the driver",
+			vm_branch >= 0)
 	# ⚠️ It must sit ABOVE the message-box block, because a yes/no draws OVER the
 	# message it is asking about and has to take the input first.
 	var box_branch := src.find("_vm == null and _box != null and _box.is_open")

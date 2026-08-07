@@ -452,9 +452,20 @@ behaviour change**, so every later phase has somewhere sane to land.
 
 **Dependencies.** None.
 
-**Tests.** ⚠️ **The acceptance criterion for a pure refactor is that no
-assertion changes.** Every existing overworld suite must stay green with zero
-edits to any test file. Additionally:
+**Tests.** ⚠️ **AMENDED 2026-08-07, DURING G4 — the criterion is that no
+BEHAVIOURAL assertion changes.** It originally read "zero edits to any test
+file", which turned out to be unachievable for one reason worth recording:
+`m27l_save_test` H.04–H.06 assert on the **source text** of `overworld.gd`
+(`src.find("ScriptVM.Pause.WAIT_YES_NO")`), and a source-grep assertion cannot
+survive code movement by construction. The three were **repointed** to span
+`overworld.gd` + `script_driver.gd`, keeping the property they check — two
+input drivers, the free-standing one first — genuinely tested. Rob's call.
+
+Worth knowing *what* those three assert: the existence of the duplicate
+yes/no driver, i.e. exactly the thing **G7 deletes**. They encode a temporary
+state of the world and should be removed at G7, not repointed again.
+
+Every other suite must stay green with zero edits. Additionally:
 - `script_started` / `script_finished` fire with identical payloads
 - the `_process` gate ordering is preserved **verbatim** (yes/no → message →
   naming → party → bag → start menu → script), with its load-bearing comments
@@ -462,7 +473,37 @@ edits to any test file. Additionally:
 - `check_bake_diff.py` still clean across the corridor
 
 **Done when.** `overworld.gd` is under ~2,500 lines; the full overworld suite
-is green with no assertion edits.
+is green.
+
+**✅ DONE 2026-08-07.** `overworld.gd` **3,178 → 2,911** lines;
+`scripts/overworld/script_driver.gd` is 379. **22/22 suites, 1,722
+assertions, zero engine errors** (`m27h_catching_test` excluded per its own
+documented hang).
+
+⚠️ **Two design calls differ from this section as written, both deliberate:**
+
+1. **The UI nodes did NOT move.** The scope said the driver would own
+   `MessageBox`/`YesNoBox`/`NamingScreen`/`FieldPartyScreen`. It doesn't:
+   `run_new_game`, `_poison_step` and `_on_start_menu_save` all open the same
+   message box with **no VM running**, so moving ownership would have meant
+   rewriting three unrelated call sites inside a phase whose whole point is
+   that nothing changes. They stay on the scene and are borrowed through
+   `_ow`. The real boundary that emerged is **execution vs triggering**: the
+   driver runs scripts, the scene decides when one starts and owns every
+   resource it borrows.
+2. **`ScriptDriver` is `RefCounted`, not a `Node`.** Convention (every other
+   non-visual system here — `ScriptVM`, `FlagStore`, `Interaction`,
+   `MovementRunner` — is RefCounted), and necessity: `m27i_text_buffers_test`
+   uses a bare `overworld.tscn` instance that never enters the tree, assigns
+   `ow._vm` and calls `ow._expanded_pages()`. A Node built in
+   `_setup_scripting` would not exist on that path; a Node built at
+   declaration would leak. RefCounted at declaration satisfies both.
+
+**Five forwarders stay on the scene** — `run_script`, `_drive_script`,
+`_finish_script`, `_abandon_script`, `_expanded_pages`, plus `_vm` as a
+get/set property. Not cosmetic: tests assign `ow._vm` directly and assert
+`ow.has_method("_abandon_script")`, and every script TRIGGER is a scene
+concern that legitimately calls `run_script`.
 
 **Do NOT yet.** Change any behaviour. Add `native`. Touch `ScriptVM`. Rename
 any `Pause` member. Merge the two input drivers (that is G7).

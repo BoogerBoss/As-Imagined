@@ -250,9 +250,11 @@ var _in_battle := false
 ## fade and camera did not exist yet. Performed at the end of `_ready`.
 var _pending_whiteout := false
 
-## [M27F] The field script interpreter and its message box. `_vm` is null when
-## no script is running — that is the "is the player in control" test.
-var _vm: ScriptVM = null
+## [M27F] The message box the field script interpreter drives.
+## [M27G G4] `_vm` itself moved to `ScriptDriver`; it is still addressable here
+## as a forwarding property (declared below, with the driver) because "is a
+## script running" — `_vm == null` — remains the "is the player in control"
+## test that this scene's own `_process` gates on.
 var _box: MessageBox = null
 ## [M27F Stage 4] The yes/no prompt, built alongside the message box.
 var _yes_no: YesNoBox = null
@@ -271,8 +273,31 @@ var _pending_use_item: int = -1
 ## [M27G G2] True while `_party_screen` is open FOR THE SCRIPT VM (`special
 ## ChoosePartyMon`), as opposed to the bag's item-use flow or a plain browse —
 ## a third disambiguation alongside `_pending_use_item`'s own two states.
-var _vm_party_choice_pending := false
-var _script_source: ScriptVM.ScriptSource = null
+## [M27G G4] Script execution lives here now. See `script_driver.gd` for the
+## execution-vs-triggering boundary; this scene still owns every decision to
+## START a script, and every scene resource the driver borrows.
+## ⚠️ Created at DECLARATION, not in `_setup_scripting`, and RefCounted rather
+## than a Node — see `script_driver.gd`'s own header for both reasons. The
+## short version: `m27i_text_buffers_test` uses a bare `overworld.tscn`
+## instance that never enters the tree, so `_vm` has to be addressable before
+## `_ready()` ever runs.
+var _driver: ScriptDriver = ScriptDriver.new()
+
+## ⚠️ **A FORWARDING PROPERTY, NOT STORAGE — and it is load-bearing for tests.**
+## `m27i_text_buffers_test` both READS and ASSIGNS `ow._vm` (it hands in a
+## hand-built VM, calls `_expanded_pages()`, then clears it), and `_talk_drive`
+## reads `_ow._vm.pending_pages`. Keeping the name addressable here is what let
+## G4 move the implementation without touching a single assertion.
+##
+## Also read by `_process`'s own gates and by `try_interact` — "is a script
+## running" is genuinely a scene-level question even though the VM is not a
+## scene-level object.
+var _vm: ScriptVM:
+	get:
+		return _driver.vm if _driver != null else null
+	set(value):
+		if _driver != null:
+			_driver.vm = value
 
 signal script_started(label: String)
 signal script_finished(label: String, pause: String, diagnostic: String)
@@ -1300,10 +1325,7 @@ func _on_party_mon_chosen(index: int) -> void:
 	# [M27G G2] Checked FIRST: the VM's own `WAIT_PARTY_CHOICE` is a third,
 	# mutually-exclusive reason this screen could be open, alongside item-use
 	# (`_pending_use_item >= 0`) and a plain browse (neither flag set).
-	if _vm_party_choice_pending:
-		_vm_party_choice_pending = false
-		if _vm != null:
-			_vm.answer_party_choice(index)
+	if _driver.claim_party_choice(index):
 		return
 	if _pending_use_item < 0:
 		return
@@ -1399,10 +1421,7 @@ func _reopen_party_after_item(item_id: int) -> void:
 
 
 func _on_party_cancelled() -> void:
-	if _vm_party_choice_pending:
-		_vm_party_choice_pending = false
-		if _vm != null:
-			_vm.answer_party_choice(-1)
+	if _driver.claim_party_choice(-1):
 		return
 	_pending_use_item = -1
 
@@ -1577,15 +1596,6 @@ func check_trainer_sight() -> TrainerNPC:
 ## must show two different values. Expanding at execution would freeze the
 ## first one, which is most of the corpus, since `STR_VAR_1` is rewritten 176
 ## times and read 1369.
-func _expanded_pages() -> PackedStringArray:
-	if _vm == null:
-		return PackedStringArray()
-	var out := PackedStringArray()
-	for page in _vm.pending_pages:
-		out.append(_vm.buffers.expand(str(page)))
-	return out
-
-
 ## Wait for one entity's movement script to finish.
 ##
 ## Bounded rather than open-ended: a runner that never clears — an unimplemented
@@ -1947,14 +1957,6 @@ func whiteout_payout(highest_level: int) -> int:
 ## from the normal finish path, which reports where a script stopped — a script
 ## abandoned by a blackout did not stop at a coverage gap, so saying so would be
 ## noise.
-func _abandon_script() -> void:
-	if _vm == null:
-		return
-	if _box != null:
-		_box.close()
-	_vm = null
-
-
 func _owning_map_of(e: OverworldEntity) -> String:
 	for map_name in manager.loaded_chunks():
 		var r := manager.chunk_rect(map_name)
@@ -1985,9 +1987,10 @@ func _show_exclamation(t: TrainerNPC) -> void:
 ## interaction should not pay an 8.8 MB parse mid-conversation. Measured at
 ## ~200 ms for the scripts, which is boot cost where a pause is expected.
 func _setup_scripting() -> void:
-	_script_source = ScriptVM.ScriptSource.new()
-	_script_source.ops_by_label = _read_json("res://data/map_scripts.json")
-	_script_source.texts = _read_json("res://data/map_texts.json")
+	# [M27G G4] The driver is created FIRST — `_vm` is a forwarding property
+	# onto it, so anything touching `_vm` before this line would silently read
+	# null rather than erroring.
+	_driver.setup(self)
 	_box = MessageBox.new()
 	add_child(_box)
 	_yes_no = YesNoBox.new()
@@ -2011,15 +2014,6 @@ func _setup_scripting() -> void:
 	_bag_screen.item_use_requested.connect(_on_bag_item_use)
 	_party_screen.mon_chosen.connect(_on_party_mon_chosen)
 	_party_screen.cancelled.connect(_on_party_cancelled)
-
-
-func _read_json(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path):
-		push_warning("overworld: %s missing — scripts will not run" % path)
-		return {}
-	var f := FileAccess.open(path, FileAccess.READ)
-	var parsed = JSON.parse_string(f.get_as_text())
-	return parsed if parsed is Dictionary else {}
 
 
 ## Press A: what does it hit?
@@ -2053,274 +2047,37 @@ func try_interact() -> bool:
 	return run_script(label, e)
 
 
-## Start a script. Public so a test — and later a trigger or a warp — can start
-## one without simulating a button press.
+## [M27G G4] Start a script. Forwards to the driver, which owns execution.
+##
+## Kept on the scene because "run this script" is what every TRIGGER already
+## calls — `try_interact`, `check_step_trigger`, `check_trainer_sight`,
+## `check_on_frame_map_script` and the warp arrival hooks — and those are all
+## scene concerns. The seam is execution, not entry.
 func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
-	_vm = ScriptVM.new(_script_source, flags)
-	# [M27I I3] The session's bag, not the VM's own default — the same reason
-	# `flags` reads through OverworldSession. A per-script bag would forget
-	# every item the moment the script ended.
-	_vm.bag = OverworldSession.bag
-	_vm.respawn = OverworldSession.respawn
-	_vm.wallet = OverworldSession.wallet
-	# [M27K K-a] The session party, for `givemon` — same reason as the bag.
-	_vm.party = OverworldSession.player_party()
-	if not _vm.start(label, p_subject):
-		# Degrade LOUDLY but without breaking play: the VM named what it could
-		# not resolve, so say so and hand control back.
-		push_warning("overworld: %s" % _vm.diagnostic)
-		script_finished.emit(label, "UNRESOLVED", _vm.diagnostic)
-		_vm = null
-		return false
-	script_started.emit(label)
-	return true
+	return _driver.run_script(label, p_subject)
 
 
 ## Advance the running script. Called once per frame while `_vm` is live.
-##
-## THIS is what the VM's external state is for. The driver reads `pause_reason`
-## and decides what the scene should do about it — the VM never awaits, never
-## touches the message box, and never knows what a button is.
 func _drive_script() -> void:
-	if _vm == null:
-		return
-
-	# Run until the VM needs something from us.
-	var guard := 0
-	while _vm.step() and guard < 500:
-		guard += 1
-
-	# [M27F Stage 3] `applymovement` is ASYNCHRONOUS: it queues rather than
-	# pausing, so the script keeps running and a cutscene can start two
-	# entities walking at once. Drained here, after stepping, so everything
-	# queued this frame starts together.
-	_start_pending_movements()
-	# [Map scripts] setobjectxyperm/setobjectmovementtype/turnobject/
-	# addobject/removeobject — same drain shape as movements, immediately
-	# after them so a script that repositions an entity THEN walks it (or
-	# vice versa) sees its own ops applied in the order it issued them.
-	_apply_pending_object_ops()
-
-	match _vm.pause_reason:
-		ScriptVM.Pause.WAIT_MESSAGE:
-			# `message` only OPENS the box. The compiled msgbox chain is
-			# message -> waitmessage -> waitbuttonpress, so the waiting belongs
-			# to WAIT_BUTTON below; resuming here is what lets the VM reach it.
-			if not _box.is_open:
-				_box.open(_expanded_pages())
-			_vm.resume()
-
-		ScriptVM.Pause.WAIT_BUTTON:
-			if _box.is_open:
-				if Input.is_action_just_pressed("ui_accept"):
-					if not _box.advance():
-						_vm.resume()
-			else:
-				_vm.resume()
-
-		ScriptVM.Pause.WAIT_YES_NO:
-			# [M27F Stage 4] A REAL prompt. Stage 1 answered NO unconditionally
-			# as a disclosed stopgap, which made every one of the corpus's 425
-			# yes/no call sites unreachable past the question.
-			#
-			# ⚠️ YES = 1, NO = 0 (`Task_HandleYesNoInput` writes
-			# `gSpecialVar_Result` 1 for row 0 and 0 for row 1 or B). The two are
-			# not interchangeable: `goto_if_eq VAR_RESULT, YES` is what every
-			# call site branches on.
-			if not _yes_no.is_open:
-				_yes_no.open()
-			elif _yes_no.accepts_input:
-				if Input.is_action_just_pressed("ui_up"):
-					_yes_no.move(-1)
-				elif Input.is_action_just_pressed("ui_down"):
-					_yes_no.move(1)
-				elif Input.is_action_just_pressed("ui_cancel"):
-					_yes_no.cancel()
-					_vm.cancel_yes_no()
-				elif Input.is_action_just_pressed("ui_accept"):
-					# ⚠️ The VM writes VAR_RESULT, not this — `yesnobox` and
-					# `multichoice MULTI_YESNO` use OPPOSITE polarity and only
-					# the VM knows which opcode paused.
-					_vm.answer_yes_no(_yes_no.confirm())
-
-		ScriptVM.Pause.WAIT_BATTLE:
-			# The trainer's intro speech runs first, then the battle. Source does
-			# the same (`EventScript_ShowTrainerIntroMsg` precedes `dotrainerbattle`).
-			if _vm.pending_pages.size() > 0:
-				if not _box.is_open:
-					_box.open(_expanded_pages())
-				elif Input.is_action_just_pressed("ui_accept") and not _box.advance():
-					_box.close()
-					_vm.pending_pages = PackedStringArray()
-				return
-			if not start_script_battle(_vm.pending_trainer_key):
-				# Cannot start (no resolvable party, no scene). End the script
-				# rather than retrying this branch every frame forever.
-				push_warning("overworld: battle vs '%s' could not start"
-					% _vm.pending_trainer_key)
-				_vm.resume_after_battle(false)
-				_finish_script()
-
-		ScriptVM.Pause.WAIT_MOVEMENT:
-			# The blocking half. A plain `resume()` is right here because there
-			# is no RESULT to branch on — unlike WAIT_BATTLE, which must never
-			# be resumed this way or the win/loss branch is silently skipped.
-			if not _movement_pending():
-				_vm.resume()
-
-		ScriptVM.Pause.WAIT_NAMING:
-			# [M27K K-c] The keyboard, on a party member the script picked.
-			#
-			# ⚠️ `open_keyboard`, NOT `open` — a nickname has no preset list in
-			# source (`sMonNamingScreenTemplate` is a bare keyboard), and it
-			# accepts an empty entry, which is how you back out once the keyboard
-			# is up. `_drive_naming` handles the keys; this branch only opens it
-			# and waits, because `answer_naming` is what actually resumes the VM.
-			if not _naming.is_open and _vm.naming_slot >= 0:
-				if not _naming.name_chosen.is_connected(_on_script_name_chosen):
-					_naming.name_chosen.connect(_on_script_name_chosen)
-				_naming.open_keyboard(_vm.naming_prompt())
-
-		# [Map scripts] `warp`. Guarded on `_warping` rather than a local
-		# flag — `_do_scripted_warp` sets it at its own very start, the same
-		# way `_do_warp` already does, so this can't be re-triggered every
-		# frame while the fade/teardown/reload is in flight.
-		ScriptVM.Pause.WAIT_WARP:
-			if not _warping:
-				_do_scripted_warp(_vm.pending_warp)
-
-		# [M27G G2] `special ChoosePartyMon` — the real party screen, in
-		# BROWSE mode (no item name), reusing the exact node the bag's own
-		# item-use flow already shares. Guarded on `_vm_party_choice_pending`
-		# rather than `_party_screen.is_open` so a re-entrant frame (the
-		# screen takes a frame to actually open) cannot double-open it.
-		ScriptVM.Pause.WAIT_PARTY_CHOICE:
-			if not _vm_party_choice_pending:
-				_vm_party_choice_pending = true
-				_pending_use_item = -1
-				_party_screen.open(_vm.party)
-
-		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
-			_finish_script()
+	_driver.drive()
 
 
-## [M27K K-c] The naming screen reported a name for a script-driven rename.
-## The VM owns the write — it knows the slot, and it knows that "" means keep.
-func _on_script_name_chosen(value: String) -> void:
-	if _vm != null:
-		_vm.answer_naming(value)
+func _expanded_pages() -> PackedStringArray:
+	return _driver.expanded_pages() if _driver != null else PackedStringArray()
 
 
-## Start every movement the script has asked for since the last drain.
-##
-## Targets are LOCALIDs, not node paths — map data, resolved here rather than in
-## the VM, which has no business knowing what a chunk is.
-func _start_pending_movements() -> void:
-	if _vm == null or _vm.pending_movements.is_empty():
-		return
-	var queued := _vm.pending_movements.duplicate()
-	_vm.pending_movements.clear()
-	for m in queued:
-		var target := str(m.get("target", ""))
-		# Movement scripts are ordinary labels — the compiler indexes every
-		# label uniformly, so `Common_Movement_WalkDown` resolves through the
-		# exact same table `goto` uses. No second pipeline.
-		var ops: Array = _script_source.ops_for(str(m.get("script", "")))
-		if ops.is_empty():
-			push_warning("overworld: movement script '%s' is empty or unresolved"
-					% str(m.get("script", "")))
-			continue
-		if _is_player_target(target):
-			_start_player_movement(target, ops)
-			continue
-		var e := _resolve_movement_entity(target)
-		if e == null or not manager.start_movement_for_entity(e, ops):
-			push_warning("overworld: applymovement target '%s' did not resolve" % target)
+func _finish_script() -> void:
+	_driver.finish()
 
 
-## [Map scripts] Direction token -> StepResolver.Dir, for `turnobject` — the
-## one place a raw `DIR_*` string needs converting; applymovement's own
-## FACE_* actions go through WalkAnim.facing_name instead, a separate table.
-const DIR_TOKEN := {
-	"DIR_SOUTH": StepResolver.Dir.SOUTH,
-	"DIR_NORTH": StepResolver.Dir.NORTH,
-	"DIR_WEST": StepResolver.Dir.WEST,
-	"DIR_EAST": StepResolver.Dir.EAST,
-}
-
-
-## [Map scripts] setobjectxyperm/setobjectmovementtype/turnobject/addobject/
-## removeobject — same drain-and-resolve shape as `_start_pending_movements`,
-## for the same reason: the VM has no business resolving a LOCALID into a
-## scene node.
-##
-## `add`/`remove` both toggle the entity's own `visibility_flag` — every
-## corpus entity reached via `addobject`/`removeobject` already carries one
-## (the importer wires it uniformly), so this reuses the SAME mechanism
-## `entity_visible()` already reads everywhere else rather than adding a
-## second, Godot-native show/hide path that nothing else would check.
-func _apply_pending_object_ops() -> void:
-	if _vm == null or _vm.pending_object_ops.is_empty():
-		return
-	var queued := _vm.pending_object_ops.duplicate()
-	_vm.pending_object_ops.clear()
-	for op: Dictionary in queued:
-		var target := str(op.get("target", ""))
-		match str(op.get("op", "")):
-			"move":
-				var e := _resolve_movement_entity(target)
-				if e != null:
-					e.cell = Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
-			"movement_type":
-				var e2 := _resolve_movement_entity(target) as NPC
-				if e2 != null:
-					e2.movement_type = str(op.get("value", ""))
-			"turn":
-				if not DIR_TOKEN.has(str(op.get("dir", ""))):
-					continue
-				var dir: int = DIR_TOKEN[str(op.get("dir", ""))]
-				if _is_player_target(target):
-					_face_player(dir)
-				else:
-					var e3 := _resolve_movement_entity(target) as NPC
-					if e3 != null:
-						e3.set_facing(dir)
-			"add":
-				var e4 := _resolve_movement_entity(target)
-				if e4 != null and e4.visibility_flag != "":
-					flags.flag_clear(e4.visibility_flag)
-			"remove":
-				var e5 := _resolve_movement_entity(target)
-				if e5 != null and e5.visibility_flag != "":
-					flags.flag_set(e5.visibility_flag)
-			"setmetatile":
-				# `x`/`y` are LOCAL to whichever map the running script belongs
-				# to. Every corridor caller of a map script is scoped to the
-				# player's own CURRENT map by construction (OnLoad/OnTransition
-				# fire for the map just entered; a trigger/NPC script runs from
-				# the tile the player is standing on) — the same assumption
-				# `_map_script_prefix` dispatch already relies on, applied here
-				# rather than threading a map name through the VM itself.
-				var here := manager.chunk_owning(_cell)
-				if here == "":
-					continue
-				var gcell := manager.origin_of(here) \
-						+ Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
-				manager.set_metatile(gcell, int(op.get("metatile_id", 0)),
-						bool(op.get("impassable", false)))
-
-
-static func _is_player_target(target: String) -> bool:
-	return target == "LOCALID_PLAYER" or target == "255"
-
-
-## The non-player half. `VAR_LAST_TALKED` is the entity you are talking to,
-## which the VM already carries as `subject` — 15 corridor call sites use it,
-## and resolving it any other way would be a second source of truth.
-func _resolve_movement_entity(target: String) -> OverworldEntity:
-	if target == "VAR_LAST_TALKED":
-		return _vm.subject if _vm != null else null
-	return manager.find_entity_by_local_id(target)
+## Stop whatever is running WITHOUT reporting a coverage gap — the battle-return
+## path uses it, because a script interrupted by a whiteout has not hit an
+## unimplemented opcode. Kept on the scene alongside the other four forwarders:
+## "abandon the running script" is a scene-level capability even now the
+## implementation lives in the driver, and `m27o_whiteout_test` D.02 asserts the
+## scene exposes it.
+func _abandon_script() -> void:
+	_driver.abandon()
 
 
 ## Walk the PLAYER through the same runner every NPC uses.
@@ -2460,32 +2217,6 @@ func _step_player(dir: int, ticks: int, delta: float) -> void:
 ##
 ## `waitmovement 0` means "everything", not "object 0" — LOCALID_NONE is 0, so
 ## there is no object to name. A named target waits only on that one mover.
-func _movement_pending() -> bool:
-	if _vm == null:
-		return false
-	var who := _vm.pending_wait_target
-	if who == "":
-		return manager.movement().is_busy()
-	if _is_player_target(who):
-		return manager.movement().is_busy(who)
-	var e := _resolve_movement_entity(who)
-	return e != null and manager.is_entity_moving(e)
-
-
-func _finish_script() -> void:
-	if _vm == null:
-		return
-	var d := _vm.describe()
-	if _vm.pause_reason == ScriptVM.Pause.UNKNOWN_OP:
-		# Not an error — 53 opcodes arrive in later stages. Reported so a script
-		# that stops early is visibly a coverage gap rather than a silent no-op.
-		print("overworld: script '%s' stopped at pc=%d — %s"
-				% [d["label"], d["pc"], _vm.diagnostic])
-	_box.close()
-	script_finished.emit(str(d["label"]), str(d["pause"]), str(_vm.diagnostic))
-	_vm = null
-
-
 ## An arrow warp: stand ON the tile, press its direction.
 ##
 ## [M27C C5-4] The third geometry, and the one that leaves a building.
@@ -2721,7 +2452,7 @@ static func _map_script_prefix(map_name: String) -> String:
 ## corridor map's own table before relying on this), so this can never
 ## stall on player input mid-fade.
 func _run_map_script_to_completion(label: String) -> void:
-	if _script_source == null or not _script_source.has_script(label):
+	if _driver == null or not _driver.has_script(label):
 		return
 	if not run_script(label):
 		return
@@ -2751,7 +2482,7 @@ func check_on_frame_map_script() -> bool:
 	if map_name == "":
 		return false
 	var label := _map_script_prefix(map_name) + "_OnFrame"
-	if _script_source == null or not _script_source.has_script(label):
+	if _driver == null or not _driver.has_script(label):
 		return false
 	return run_script(label)
 
