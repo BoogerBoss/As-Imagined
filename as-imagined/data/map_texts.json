@@ -19296,11 +19296,11 @@
 "“Where the morning sun smiles upon\nthe waters.”"
 ],
 "PalletTown_Authored_Text_SeaBreeze": [
-"The sea wind carries something\nfaintly sweet today.",
-"Someone has scratched a date into\nthe post, and a name worn too far\nto read."
+"[Authored-script test signpost.]\nNot game content.",
+"Reading this once sets its flag and\nadvances its checkpoint var."
 ],
 "PalletTown_Authored_Text_SeaBreezeShort": [
-"The sea wind again. Just the wind."
+"[Test signpost, second read.]\nThe gated branch was taken."
 ],
 "PalletTown_PlayersHouse_1F_Text_AllBoysLeaveOakLookingForYou": [
 "MOM: …Right.\nAll boys leave home someday.\nIt said so on TV.",

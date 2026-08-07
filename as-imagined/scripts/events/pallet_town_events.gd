@@ -4,10 +4,21 @@ extends RefCounted
 ## [M27G G6] Authored Pallet Town content — the first script this project wrote
 ## in GDScript rather than compiling out of `field_script_source/`.
 ##
-## ⚠️ **THIS IS A WORKED EXAMPLE, AND IT IS ALSO REAL.** It exists to prove the
-## front-end end to end — a flag gate, a checkpoint, dialogue, and a `native`
-## beat the opcode language cannot express — and it is written to be kept and
-## extended rather than deleted once the tests are green.
+## ⚠️ **A WORKED EXAMPLE AND A TEST FIXTURE — NOT STORY CONTENT.** It exists to
+## prove the front-end end to end: a flag gate, corpus dialogue, a `native`
+## beat the opcode language cannot express, a checkpoint and a terminator, all
+## against the REAL compiled corpus rather than a fixture. Six assertions in
+## `m27f_script_vm_test` (R.14–R.19) read these labels by name, which is why it
+## is kept rather than deleted once the tests are green.
+##
+## ⚠️ **ITS DIALOGUE IS DELIBERATE PLACEHOLDER TEXT — Rob's call, 2026-08-07.**
+## An earlier draft carried invented story content (a signpost by the water, a
+## scratched date, a name worn away). That is a narrative hook in a project
+## whose story is Rob's to write, and this file's own author should have flagged
+## it as an idea rather than committing it as content. The lines now say what
+## they are. **If this is ever wired to a real signpost, rewrite them first** —
+## the tests assert the labels RESOLVE, never what they say, so it costs
+## nothing.
 ##
 ## ⚠️ **NOT YET REACHED BY ANY PLACED ENTITY.** Attaching it means setting an
 ## NPC's `script_label` in a baked map scene, which is map DATA and a content
@@ -45,8 +56,8 @@ static func register_all() -> void:
 	EventRegistry.register(LABEL_SIGN_POST_AGAIN, sea_breeze_again())
 
 
-## A signpost by the water. First read is the full beat; afterwards it is one
-## line, because a script that repeats itself verbatim reads as broken.
+## First read is the full beat; afterwards the gate takes the short branch,
+## which is the thing being demonstrated.
 ##
 ## Demonstrates, in order: a flag gate that branches, a `native` presentation
 ## beat (a real screen fade — something no opcode in this project could reach

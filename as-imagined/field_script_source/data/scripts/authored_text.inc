@@ -36,18 +36,35 @@
 
 @ --- Pallet Town ------------------------------------------------------------
 
-@ A signpost by the water. Read by PalletTownEvents.sea_breeze().
+@ ⚠️ **PLACEHOLDER TEXT, DELIBERATELY NON-CANON — Rob's call, 2026-08-07.**
+@
+@ These two labels belong to `PalletTownEvents`, the worked example that proves
+@ the GDScript authoring front-end end to end (G6). The MECHANISM is real and
+@ load-bearing — it is the only thing exercising a flag gate, corpus dialogue,
+@ a `native` beat, a checkpoint and a terminator together, against the real
+@ compiled corpus rather than a fixture, and six assertions in
+@ `m27f_script_vm_test` (R.14-R.19) read these labels by name.
+@
+@ The PROSE was not. An earlier draft carried invented story content — a
+@ signpost by the water, a scratched date, "a name worn too far to read" — which
+@ is a deliberate narrative hook in a project whose story is Rob's to write, and
+@ it should have been flagged as an idea rather than committed as content. It is
+@ replaced here with text that cannot be mistaken for canon and that documents
+@ the mechanism instead.
+@
+@ ⚠️ If this is ever wired to a real signpost, REPLACE THESE LINES FIRST. The
+@ tests assert that the labels RESOLVE, never what they say, so rewriting them
+@ costs nothing and breaks nothing.
 PalletTown_Authored_Text_SeaBreeze::
-	.string "The sea wind carries something\n"
-	.string "faintly sweet today.\p"
-	.string "Someone has scratched a date into\n"
-	.string "the post, and a name worn too far\n"
-	.string "to read.$"
+	.string "[Authored-script test signpost.]\n"
+	.string "Not game content.\p"
+	.string "Reading this once sets its flag and\n"
+	.string "advances its checkpoint var.$"
 
-@ The second read, reached by the flag gate. A script that repeats itself
-@ verbatim reads as broken.
+@ The second read, reached by the flag gate — proving the branch is taken.
 PalletTown_Authored_Text_SeaBreezeShort::
-	.string "The sea wind again. Just the wind.$"
+	.string "[Test signpost, second read.]\n"
+	.string "The gated branch was taken.$"
 
 
 @ --- New game / Oak's speech ------------------------------------------------
