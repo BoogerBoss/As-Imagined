@@ -24,6 +24,17 @@ extends Resource
 @export var width: int = 0
 @export var height: int = 0
 
+## [M27N] Ordinals match include/constants/weather.h EXACTLY (gaps included —
+## 4/9/10 are confirmed dead in the reference game itself, 15/20-23 are
+## Hoenn-plot/route-specific with no Kanto equivalent), so a future opcode/
+## save-data reference can cite the same numbers as source.
+enum Weather {
+	NONE = 0, SUNNY_CLOUDS = 1, SUNNY = 2, RAIN = 3, RAIN_THUNDERSTORM = 5,
+	FOG_HORIZONTAL = 6, VOLCANIC_ASH = 7, SANDSTORM = 8, SHADE = 11,
+	DROUGHT = 12, DOWNPOUR = 13, UNDERWATER_BUBBLES = 14,
+}
+@export var weather: int = Weather.NONE
+
 @export var metatile: PackedInt32Array = PackedInt32Array()
 @export var collision: PackedInt32Array = PackedInt32Array()
 @export var elevation: PackedInt32Array = PackedInt32Array()
@@ -296,6 +307,7 @@ static func load_from(path: String) -> MapData:
 	m.atlas = str(d.get("atlas", ""))
 	m.width = int(d.get("width", 0))
 	m.height = int(d.get("height", 0))
+	m.weather = int(d.get("weather", 0))
 	m.metatile = _to_ints(d.get("metatile", []))
 	m.collision = _to_ints(d.get("collision", []))
 	m.elevation = _to_ints(d.get("elevation", []))

@@ -734,6 +734,18 @@ def get_tileset(prim, sec):
 # through the data so a later tier need not re-derive it, consumed by nothing.
 CONNECTION_DIRS = {"down": 1, "up": 2, "left": 3, "right": 4, "dive": 5, "emerge": 6}
 
+# [M27N] Ordinals match include/constants/weather.h EXACTLY (gaps included --
+# see MapData.Weather's own doc comment for which values are deliberately
+# absent and why). Every real map.json carries a "weather" string; a map with
+# none at all defaults to WEATHER_NONE.
+WEATHER_NAMES = {
+	"WEATHER_NONE": 0, "WEATHER_SUNNY_CLOUDS": 1, "WEATHER_SUNNY": 2,
+	"WEATHER_RAIN": 3, "WEATHER_RAIN_THUNDERSTORM": 5,
+	"WEATHER_FOG_HORIZONTAL": 6, "WEATHER_VOLCANIC_ASH": 7,
+	"WEATHER_SANDSTORM": 8, "WEATHER_SHADE": 11, "WEATHER_DROUGHT": 12,
+	"WEATHER_DOWNPOUR": 13, "WEATHER_UNDERWATER_BUBBLES": 14,
+}
+
 # 441 of 785 layouts omit border_width/border_height ENTIRELY, and every one of
 # them ships a 4-entry border.bin — so the reference's own default is 2x2.
 # Seven layouts declare 3x2, which is why this is a default rather than a
@@ -791,6 +803,17 @@ def extract_connections(mp):
             "offset": int(c.get("offset", 0)),
         })
     return out
+
+
+def _extract_weather(mp):
+    """map.json's "weather" string -> WEATHER_NAMES ordinal.
+
+    A map with no "weather" key at all defaults to WEATHER_NONE, matching
+    the same fail-safe shape every other optional header field here uses.
+    """
+    w = str(mp.get("weather") or "WEATHER_NONE")
+    assert w in WEATHER_NAMES, "unknown weather %r" % w
+    return WEATHER_NAMES[w]
 
 
 # [M27C C5-4] Arrow warps: a THIRD trigger geometry. You stand ON the tile and
@@ -966,6 +989,7 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         "connections": extract_connections(mp),
         "border": border, "border_width": bw, "border_height": bh,
         "border_layer_type": border_layer_type,
+        "weather": _extract_weather(mp),
     }
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(ATLAS_OUT, exist_ok=True)

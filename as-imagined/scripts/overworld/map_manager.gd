@@ -106,6 +106,33 @@ const PLANE_Z := {
 }
 
 
+## [M27N] The one shared weather ShaderMaterial, applied to every loaded
+## chunk's terrain planes (never Entities_P1/P2 — the player/NPC layer is
+## excluded from grading by construction, not by a special case). Owned by
+## WeatherManager; MapManager only holds a reference so it can (re)apply it
+## at the same two moments `apply_plane_z` already runs (a chunk registering,
+## and a chunk's border skirt growing new layers) — MapManager never reaches
+## into WeatherManager itself, keeping the two decoupled.
+var _weather_material: ShaderMaterial = null
+
+
+func set_weather_material(mat: ShaderMaterial) -> void:
+	_weather_material = mat
+	for map_name in _chunks:
+		var root: Node2D = _chunks[map_name]["root"]
+		_apply_weather_material(root)
+
+
+## Same traversal shape as `apply_plane_z`, but only the TERRAIN planes
+## (never Entities_P1/P2) — a null material clears the effect.
+func _apply_weather_material(root: Node2D) -> void:
+	if root == null or not is_instance_valid(root):
+		return
+	for c in root.get_children():
+		if c is CanvasItem and PLANE_Z.has(c.name) and not str(c.name).begins_with("Entities_"):
+			(c as CanvasItem).material = _weather_material
+
+
 ## map name -> {"data": MapData, "root": Node2D, "origin": Vector2i}
 ##
 ## Keyed by the map's own directory name (`Route1_Frlg`), which is what
@@ -247,6 +274,7 @@ func register_chunk(map_name: String, data: MapData, root: Node2D,
 	if root != null:
 		root.position = Vector2(origin) * CELL
 		apply_plane_z(root)
+		_apply_weather_material(root)
 	rebuild_occupancy(map_name)
 
 
@@ -410,6 +438,7 @@ func _paint_skirt(map_name: String) -> void:
 			root.move_child(layer, plane)
 		skirts.append(layer)
 	apply_plane_z(root)
+	_apply_weather_material(root)
 
 	# What the skirt SHOULD hold, computed before anything is written.
 	var want: Array[Dictionary] = [{}, {}, {}]
@@ -522,6 +551,15 @@ func origin_of(map_name: String) -> Vector2i:
 	if not _chunks.has(map_name):
 		return Vector2i.ZERO
 	return _chunks[map_name]["origin"]
+
+
+## [M27N] The destination's own real weather (MapData.Weather ordinal),
+## or NONE for an unloaded/unknown map — same fail-safe shape as origin_of.
+func weather_of(map_name: String) -> int:
+	if not _chunks.has(map_name):
+		return MapData.Weather.NONE
+	var d: MapData = _chunks[map_name]["data"]
+	return d.weather
 
 
 ## Which chunk's bounds contain this global cell, or "" for the gap between and

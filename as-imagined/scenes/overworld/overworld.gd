@@ -265,6 +265,8 @@ var _party_screen: FieldPartyScreen = null
 var _naming: NamingScreen = null
 ## [M27K K-b visuals] Oak/player/rival portraits during `run_new_game()`.
 var _oak_overlay: OakSpeechOverlay = null
+## [M27N] Field weather — the palette-grade state machine + shared shader.
+var _weather: WeatherManager = null
 var _pending_use_item: int = -1
 ## [M27G G2] True while `_party_screen` is open FOR THE SCRIPT VM (`special
 ## ChoosePartyMon`), as opposed to the bag's item-use flow or a plain browse —
@@ -426,6 +428,12 @@ func _ready() -> void:
 	if not manager.load_chunk(boot_map):
 		push_error("overworld: %s is not baked — run map_baker.tscn" % boot_map)
 		return
+	# [M27N] The boot map's own real weather. Neither `_try_step`'s seamless-
+	# crossing hook nor `_place_player`'s hard-cut-warp hook ever fires for the
+	# map you simply START in, so without this the field boots weatherless
+	# regardless of what the destination map actually carries.
+	if _weather != null:
+		_weather.request_weather(manager.weather_of(boot_map))
 	_resolver = manager.global_resolver()
 	# [M27E E1b] ⚠️ Pushed on EVERY boot, not just a mount. A battle return and a
 	# loaded save both rebuild this scene, and a player who was surfing must
@@ -603,6 +611,14 @@ func _snap_camera_to_player() -> void:
 	if _camera == null or _player == null:
 		return
 	_camera.global_position = _player.global_position.round()
+	# [M27N W3] Pushed from the exact call that just moved the camera, not
+	# polled later — a sibling node reading camera position from its own
+	# `_process()` would reliably see LAST frame's value, since Tweens (the
+	# mid-step camera mover, via `_apply_player_position`) advance after a
+	# frame's own `_process()` calls have already run. Same reasoning this
+	# function's own doc comment already applies to pixel-snapping.
+	if _weather != null:
+		_weather.push_camera_scroll(_camera.global_position * _camera.zoom.x)
 
 
 ## Tween `_player.position` toward `target_local` over `dur` seconds, snapping
@@ -874,6 +890,8 @@ func _try_step(dir: int) -> void:
 	var now_in := manager.chunk_owning(_cell)
 	if now_in != "" and now_in != was_in:
 		manager.request_neighbours(now_in)
+		if _weather != null:
+			_weather.request_weather(manager.weather_of(now_in))
 	_reparent_for_elevation()
 	var t := create_tween()
 	# [M27E E2] ⚠️ LATCHED HERE, AGAINST THE TILE THE PLAYER IS STANDING ON.
@@ -1928,6 +1946,9 @@ func _setup_scripting() -> void:
 	add_child(_naming)
 	_oak_overlay = OakSpeechOverlay.new()
 	add_child(_oak_overlay)
+	_weather = WeatherManager.new()
+	add_child(_weather)
+	manager.set_weather_material(_weather.material())
 	_bag_screen = FieldBagScreen.new()
 	add_child(_bag_screen)
 	_party_screen = FieldPartyScreen.new()
@@ -2557,6 +2578,8 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 	_snap_camera_to_player()
 	if _camera != null:
 		_camera.reset_smoothing()
+	if _weather != null:
+		_weather.request_weather(manager.weather_of(dest))
 	# An interior has none; an outdoor destination needs its own back.
 	manager.load_neighbours(dest)
 	manager.refresh_skirts()
