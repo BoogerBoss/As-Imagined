@@ -52,11 +52,28 @@ different concern entirely)
   reachable ones). Flags and vars are free-form strings with no lookup
   table at all. A genuinely NEW species not in the 386-species roster is a
   data question, unrelated to script authoring.
-- **Which opcodes actually run.** `ScriptVM.step()` implements roughly 90
-  of the reference's 237 field-script commands. A hand-written script
+- **Which opcodes actually run.** `ScriptVM.step()` implements **124 of the
+  reference's 231 field-script commands** (`data/script_cmd_table.inc`),
+  covering **92.3% of all command uses** across the corpus — 57,464 of
+  62,249, measured 2026-08-07 over 974 files in `field_script_source/data/`,
+  excluding the ~79 movement-script actions, which are a separate
+  sub-language handled by `MovementRunner`. *(This bullet previously read
+  "roughly 90 of 237"; both figures were stale.)* A hand-written script
   using an unported opcode compiles cleanly and then halts at runtime with
   `UNKNOWN_OP`, naming itself — exactly the same as it does today for
   anything from the original reference.
+
+  ⚠️ **"Implemented" is not the same as "does something."** A meaningful
+  group is dispatched and deliberately silent because the system behind it
+  does not exist here — `fadescreen` (+`fadescreenspeed`/
+  `fadescreenswapbuffers`), `dofieldeffect`/`waitfieldeffect`,
+  `showmonpic`/`hidemonpic`, `opendoor`/`closedoor`/`waitdooranim`,
+  `showmoneybox`/`showcoinsbox` and their families, and every audio opcode
+  (a project-wide absence, **M36-S**). Each carries its own doc comment at
+  the dispatch site explaining why. A script using one runs to completion
+  and shows nothing, which is a different failure from `UNKNOWN_OP` and will
+  not show up in a coverage count. Closing that category is **M27G G5** —
+  see `docs/m27g_scope.md` §3.1.
 
 ## The edit → regenerate → test loop
 

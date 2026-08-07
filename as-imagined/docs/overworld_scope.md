@@ -2584,13 +2584,42 @@ in CLAUDE.md, `docs/decisions.md` and commit history stays valid.
 | **M27C** | Connected world — stitching, border skirt, connections, warps, map preview, escalators | 3 |
 | **M27D** | Entities & NPCs — object events, movement types, trainer sight | 4 |
 | **M27E** | Field moves & traversal — surf/dive/waterfall, cut/strength/rock smash/flash, forced movement, fishing ← **absorbs M32** | 3/5 |
-| **M27F** | Dialogue & interaction — interaction, Dialogue Manager wiring, speaker names | 5a |
-| **M27G** | Field script engine — its own block, post-specials-scoping. 30–40% of the milestone | 5b |
+| **M27F** | Dialogue & interaction — interaction, ~~Dialogue Manager wiring~~, speaker names. ⚠️ **See the correction note below — F actually built the field script engine, and the Dialogue Manager wiring never happened, deliberately.** | 5a |
+| **M27G** | Field script engine — its own block, post-specials-scoping. 30–40% of the milestone. ⚠️ **Scope of record for G1–G3 is `docs/m27g_recon.md`; for G4–G9 it is `docs/m27g_scope.md`; for which opcodes/specials to implement it is `docs/m27_corridor_opcode_scope.md`.** | 5b |
 | **M27H** | Encounters & battle glue — triggering, Kanto tables, results object, transitions, shiny | 6 |
 | **M27I** | Field UI & menus — start menu, Bag, Party, Summary, options, region map ← **absorbs PC storage from M33** | 7 |
 | **M27J** | Modes & tweaks — EXP variants, Nuzlocke, item limit, speed multiplier | 8 |
 | **M27K** | Game flow — title, main menu + save slots, naming, starter, Hall of Fame, credits | 9a |
 | **M27L** | Save/load — serialisation and slot management ← **absorbs M34** | 9b |
+
+### ⚠️ Correction, 2026-08-07 — the M27F/M27G rows above no longer describe what shipped
+
+The two rows are effectively **swapped relative to reality**, and a session
+reading them cold would misplace a whole block of work. Recorded here rather
+than by rewriting the rows, so the original scoping intent stays legible
+beside what actually happened.
+
+| Row | What it says | What actually shipped |
+|---|---|---|
+| **M27F** | "Dialogue & interaction" | **The entire field script engine** — `ScriptVM` (Stages 1–4 plus the "Map scripts" batch), `Interaction`, `MessageBox`, `TextTyper`, `YesNoBox`, `TextBuffers`, and the `gen_map_scripts.py` / `gen_map_texts.py` compilers |
+| **M27G** | "Field script engine" | **The `special`/`specialvar` surface** (G1–G3), and from G4 the rest of the engine — driver extraction, the `native` opcode, the GDScript authoring front-end |
+
+⚠️ **"Dialogue Manager wiring" never happened, and that was the right call.**
+`addons/dialogue_manager` is on disk but **its plugin is not enabled**, there
+are **zero `.dialogue` files**, and the one file referencing it
+(`scripts/overworld/text_typer.gd`) is a **vendored copy** whose header
+records a reasoned refusal to integrate: `DialogueLabel.type_out()` does not
+type `.text` — it reads a `dialogue_line` object from four private seams, and
+upstream rewrote that exact interaction in v3.8.0, so a duck-typed stand-in
+would break silently on any release. The vendoring is documented at the site;
+this row is the only place that still implies the wiring is planned work.
+
+**Scopes of record for M27G**, since it now spans three documents:
+
+- `docs/m27g_recon.md` — the `special` surface; scope for **G1–G3** (shipped)
+- `docs/m27g_scope.md` — architecture; scope for **G4–G9**
+- `docs/m27_corridor_opcode_scope.md` — **which** opcodes/specials to
+  implement, audited against the 32 baked maps
 
 ### Downstream: narrowed, retired, or unchanged
 

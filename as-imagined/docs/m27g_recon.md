@@ -322,6 +322,31 @@ established for map baking itself.
 5. **Re-run this recon's own reachability walk** whenever the corridor
    grows, rather than scoping the region-wide tail now.
 
+⚠️ **G4 ONWARD IS SCOPED ELSEWHERE — 2026-08-07.** This document remains the
+scope of record for **G1–G3** (all shipped) and for the reachability method.
+Two newer documents own everything after:
+
+- **`docs/m27g_scope.md`** — scope of record for **G4–G9**: extract
+  `ScriptDriver`, the `native` opcode, an `EventScript` GDScript authoring
+  front-end, folding the free coroutines in, routing specials through the
+  registry, and two save-shape gaps. Written after an architecture
+  investigation (`docs/m27g_architecture_recon.md`) into whether to replace
+  `ScriptVM` with an `await`-based `EventRunner`. **Conclusion: do not** —
+  this project already runs that hybrid architecture and it covers 92.3% of
+  field-script command uses.
+- **`docs/m27_corridor_opcode_scope.md`** — scope of record for **which**
+  opcodes and specials to implement, audited against the 32 baked maps. It
+  **supersedes item 5 above** and reaches a stronger conclusion than this
+  document did: of 39 reachable special names, 17 implemented / 18
+  permanently-excluded multiplayer / 4 blocked on M33, M30 and a friendship
+  system. ⚠️ **The specials side is effectively closed for this scope; no
+  specials work is proposed.**
+
+⚠️ **This document's own "51 distinct functions / 99 uses" figure is
+superseded by that audit's 39**, which parsed the baked maps' own
+`scripts.inc` files directly rather than the compiled corpus. The *method*
+here was right and is what both later documents reuse; the number moved.
+
 Not scoped here, deliberately: `DaisyMassageServices`'s real friendship
 effect (blocked on a friendship system nothing currently owns), and every
 Tier 2/3 item (each already has a home, or is already excluded).
