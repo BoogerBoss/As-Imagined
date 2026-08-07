@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 217
+const EXPECTED_TOTAL := 231
 
 var _total := 0
 var _failed := 0
@@ -1081,7 +1081,20 @@ func _test_trainer_battle_family() -> void:
 	_chk("L.04 and no continuation script -- the macro has no such argument",
 			ni.pending_battle_script == "")
 	ni.resume_after_battle(true)
-	_chk("L.05 winning with no continuation ends the script",
+	# ⚠️ CORRECTED, not merely updated: this used to assert the win ENDS the
+	# script, matching `trainerbattle_single`'s `gotobeatenscript`-ends-when-
+	# empty rule. Direct source read (`EventScript_DoNoIntroTrainerBattle`,
+	# `data/scripts/trainer_battle.inc:47-54`) shows `trainerbattle_no_intro`
+	# shares that handler with `trainerbattle_earlyrival` -- `dotrainerbattle`
+	# then an UNCONDITIONAL `gotopostbattlescript`, so a win falls through to
+	# the next opcode exactly like the already-beaten skip, never ending on
+	# an empty continuation. The old assertion was never exercised against
+	# source; this is the fix, not a re-litigation of a settled behavior.
+	_chk("L.05 winning with no continuation FALLS THROUGH -- gotopostbattlescript "
+			+ "is unconditional for this family, not gotobeatenscript's ends-when-empty rule",
+			ni.pause_reason == ScriptVM.Pause.NONE)
+	_run(ni)
+	_chk("L.05b ...and reaches the calling script's own end (lockall, end)",
 			ni.pause_reason == ScriptVM.Pause.DONE)
 
 	var ni_short := ScriptVM.new(_src({
@@ -1182,6 +1195,91 @@ func _test_trainer_battle_family() -> void:
 	_chk("L.16 too few args is UNKNOWN_OP here too",
 			rematch_double_short.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
 
+	# -- trainerbattle_earlyrival: `trainer, flags, lose_text, victory_text`.
+	# Shares `EventScript_DoNoIntroTrainerBattle` with `trainerbattle_no_intro`
+	# above -- no intro message, and (unlike trainerbattle_rematch) the
+	# ordinary already-beaten check is NOT bypassed, since source dispatches
+	# it through the same `SetMapVarsToTrainerA` path as a first-time battle,
+	# not through `GetRematchTrainerId`.
+	var flags_er := FlagStore.new()
+	var er := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_earlyrival",
+				["TRAINER_RIVAL_OAKS_LAB", "RIVAL_BATTLE_TUTORIAL", "Defeat", "Victory"]),
+				_op("lockall"), _op("end")],
+	}, texts), flags_er)
+	er.start("A")
+	_run(er)
+	_chk("L.17 trainerbattle_earlyrival pauses on WAIT_BATTLE",
+			er.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+	_chk("L.18 with NO intro message -- intro_text_a is NULL in the macro's "
+			+ "own expansion (event.inc:831-832)", er.pending_pages.is_empty())
+	_chk("L.19 the defeat text is args[2] (lose_text), NOT args[1] (flags)",
+			er.pending_battle_defeat_text == "Defeat")
+	er.resume_after_battle(true)
+	_chk("L.20 winning FALLS THROUGH here too -- the identical shared-handler "
+			+ "reasoning as trainerbattle_no_intro's L.05",
+			er.pause_reason == ScriptVM.Pause.NONE)
+	_run(er)
+	_chk("L.20b ...and reaches the calling script's own end",
+			er.pause_reason == ScriptVM.Pause.DONE)
+
+	var er_beaten := FlagStore.new()
+	er_beaten.set_trainer_defeated("TRAINER_RIVAL_OAKS_LAB")
+	var er2 := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_earlyrival",
+				["TRAINER_RIVAL_OAKS_LAB", "RIVAL_BATTLE_TUTORIAL", "Defeat", "Victory"]),
+				_op("lockall"), _op("end")],
+	}, texts), er_beaten)
+	er2.start("A")
+	_run(er2)
+	_chk("L.21 UNLIKE trainerbattle_rematch, an already-beaten rival battle "
+			+ "IS skipped -- this variant has no rematch-tier remap to bypass "
+			+ "the check for", er2.pause_reason == ScriptVM.Pause.DONE)
+
+	var er_short := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_earlyrival", ["TRAINER_RIVAL_OAKS_LAB", "Flags"]),
+				_op("end")],
+	}, texts), FlagStore.new())
+	er_short.start("A")
+	_run(er_short)
+	_chk("L.22 too few args is UNKNOWN_OP, not a crash",
+			er_short.pause_reason == ScriptVM.Pause.UNKNOWN_OP
+			and er_short.diagnostic.contains("trainerbattle_earlyrival"))
+
+	# -- the real compiled corpus: the Bulbasaur-branch rival battle, driven
+	# end to end through the real EndRivalBattle chain.
+	if not (FileAccess.file_exists("res://data/map_scripts.json")
+			and FileAccess.file_exists("res://data/map_texts.json")):
+		_gated += 4
+		return
+	var ops_er: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var texts_er: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var flags_real := FlagStore.new()
+	var party_real := BattleParty.new()
+	party_real.members = [PokemonFactory.create_battle_pokemon(1, 5)]
+	var vm_real := ScriptVM.new(_src(ops_er, texts_er), flags_real)
+	vm_real.party = party_real
+	vm_real.start("PalletTown_ProfessorOaksLab_EventScript_RivalBattleBulbasaur")
+	_drive(vm_real)
+	_chk("L.23 the real compiled starter-rival script reaches WAIT_BATTLE with "
+			+ "the real trainer key (diagnostic if not: '%s')" % vm_real.diagnostic,
+			vm_real.pause_reason == ScriptVM.Pause.WAIT_BATTLE
+			and vm_real.pending_trainer_key == "TRAINER_RIVAL_OAKS_LAB_BULBASAUR_FRLG")
+	vm_real.resume_after_battle(true)
+	_drive(vm_real)
+	_chk("L.24 ...and winning runs the WHOLE real EndRivalBattle chain to DONE "
+			+ "(diagnostic if not: '%s')" % vm_real.diagnostic,
+			vm_real.pause_reason == ScriptVM.Pause.DONE)
+	_chk("L.24b -- with the real post-battle state genuinely set: "
+			+ "VAR_MAP_SCENE advanced to 4 and FLAG_BEAT_RIVAL_IN_OAKS_LAB set",
+			flags_real.var_get("VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB") == 4
+			and flags_real.flag_get("FLAG_BEAT_RIVAL_IN_OAKS_LAB"))
+	_chk("L.24c -- and the party was genuinely healed by the real "
+			+ "HealPlayerParty special this chain calls",
+			party_real.members[0].current_hp == party_real.members[0].max_hp)
+
 
 ## Section M -- the small opcode batch: checkplayergender, random,
 ## setorcopyvar, the audio no-ops, bufferboxname, fadescreen's two siblings,
@@ -1265,6 +1363,30 @@ func _test_small_opcode_batch() -> void:
 	_run(vm_snd)
 	_chk("M.08 waitse/playmoncry/waitmoncry are no-ops, not a stall",
 			vm_snd.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- [Corridor op-code scope] fadeoutbgm joins the same audio no-op group
+	# -- its one corridor use is the Pokémon Center Jigglypuff easter egg --
+	var vm_fob := ScriptVM.new(_src({
+		"A": [_op("fadeoutbgm", ["0"]), _op("end")],
+	}), FlagStore.new())
+	vm_fob.start("A")
+	_run(vm_fob)
+	_chk("M.08b fadeoutbgm is a no-op, same class as playbgm/playse",
+			vm_fob.pause_reason == ScriptVM.Pause.DONE)
+
+	# -- [Corridor op-code scope] copyobjectxytoperm: a documented no-op.
+	# This project has no template/instance split -- a placed NPC's own
+	# `cell` is already the live source of truth within one play session,
+	# so the position "sticks" with zero code. The real gap (save/reload
+	# persistence) is a general M27L save-completeness question, not
+	# something to solve one-off here. --
+	var vm_cxy := ScriptVM.new(_src({
+		"A": [_op("copyobjectxytoperm", ["LOCALID_PALLET_SIGN_LADY"]), _op("end")],
+	}), FlagStore.new())
+	vm_cxy.start("A")
+	_run(vm_cxy)
+	_chk("M.08c copyobjectxytoperm is a no-op, not a halt",
+			vm_cxy.pause_reason == ScriptVM.Pause.DONE)
 
 	# -- bufferboxname: a real halt, matching _begin_nickname's own PC branch --
 	var vm_box := ScriptVM.new(_src({

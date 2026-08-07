@@ -72,6 +72,14 @@ var name: String = ""
 var gender: int = Gender.BOY
 var rival_name: String = ""
 
+## [Summary-screen INFO-page OT ID] Source generates this once at new-game
+## creation and keeps it for the life of a save (`gSaveBlock2Ptr`'s own
+## trainer-ID field). This project has no such generation moment wired into
+## the new-game flow yet -- lazily generated on first read instead
+## (`ensure_trainer_id()`), then held for the life of this identity object.
+## 0 is the untouched sentinel, never a real ID.
+var trainer_id: int = 0
+
 
 ## True once a new game has actually named the player. Everything that reads a
 ## name needs a sensible answer BEFORE that — a debug boot straight into the
@@ -97,6 +105,14 @@ func set_name(raw: String) -> void:
 
 func set_rival_name(raw: String) -> void:
 	rival_name = sanitize(raw)
+
+
+## Real (non-zero) trainer ID, generating one on first call. Kept for the
+## life of this identity object rather than regenerated per read.
+func ensure_trainer_id() -> int:
+	if trainer_id == 0:
+		trainer_id = randi() % 100000
+	return trainer_id
 
 
 ## The preset list for the CURRENT gender — source keys the list on the answer
@@ -129,7 +145,7 @@ func back_pic_stem() -> String:
 
 ## [M27L L1] Who the player is, for a save slot.
 func to_save() -> Dictionary:
-	return {"name": name, "gender": gender, "rival": rival_name}
+	return {"name": name, "gender": gender, "rival": rival_name, "trainer_id": trainer_id}
 
 
 ## ⚠️ Goes through `set_name`/`set_rival_name` rather than assigning, so a
@@ -140,3 +156,4 @@ func from_save(data: Dictionary) -> void:
 	set_rival_name(str(data.get("rival", "")))
 	gender = Gender.GIRL if int(data.get("gender", Gender.BOY)) == Gender.GIRL \
 			else Gender.BOY
+	trainer_id = int(data.get("trainer_id", 0))

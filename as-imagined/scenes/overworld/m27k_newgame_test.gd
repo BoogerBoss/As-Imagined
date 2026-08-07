@@ -13,7 +13,7 @@ extends Node
 ##   * `{PLAYER}` now reads the chosen name, retiring a hardcode that lived in
 ##     three places agreeing by luck.
 
-const EXPECTED_TOTAL := 58
+const EXPECTED_TOTAL := 65
 
 ## Comfortably past the cap, so the refusal is what stops it and not the loop.
 const NAME_OVERFILL := 20
@@ -44,6 +44,7 @@ func _ready() -> void:
 	_test_placeholders()
 	await _test_oak_speech_overlay()
 	await _test_ball_release()
+	await _test_name_confirm_and_lets_go_portrait()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -319,3 +320,136 @@ func _test_ball_release() -> void:
 			overlay._released.texture != null)
 
 	overlay.queue_free()
+
+
+## --- H. [2026-08-06] the name-confirm/retry loop, and the "Let's go!" ---
+## --- portrait fix, both driven through the REAL `run_new_game()` ---
+##
+## ⚠️ **DRIVEN END TO END ON PURPOSE, NOT RE-ASSERTED IN ISOLATION.** A test
+## that simply called `overlay.show_solo("red" if boy else "leaf")` directly
+## and checked the result would never touch `run_new_game()`'s own line —
+## reverting the real fix would leave such a test green. The only genuine
+## regression guard is driving the actual coroutine to the point where the
+## fix lives, the same discipline this project's own CLAUDE.md calls "a
+## guard whose injection you had to hand-pick is a guard you have not
+## tested."
+
+## Polls `cond` once per frame until it returns true, or gives up after
+## `max_seconds` of real (wall-clock) time — NOT a frame count. Headless
+## Godot runs uncapped, well past 60fps, so a frame-count budget silently
+## represents far less real time than it looks like; `Time.get_ticks_msec()`
+## is what makes this actually cover `fade_in`/`fade_out` (0.6s each) and
+## the ball-release beat's own ~2.4s real sequence regardless of how fast
+## the engine happens to be stepping frames.
+func _wait_until(cond: Callable, max_seconds: float = 6.0) -> void:
+	var deadline := Time.get_ticks_msec() + int(max_seconds * 1000)
+	while Time.get_ticks_msec() < deadline:
+		if cond.call():
+			return
+		await get_tree().process_frame
+
+
+## Drains a `MessageBox` fully. `advance()` first skips typing (still open),
+## then pages forward, finally closing on the last page — looping until it
+## reports closed is robust to any page count.
+func _advance_box(box: MessageBox) -> void:
+	while box.advance():
+		await get_tree().process_frame
+
+
+func _test_name_confirm_and_lets_go_portrait() -> void:
+	OverworldSession.reset()
+	OverworldSession.pending_new_game = true
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+
+	_chk("H.01 the rival-confirm text is source's own, verbatim, and a placeholder",
+			str(ow.OAK_CONFIRM_RIVAL_NAME).contains("{RIVAL}")
+			and str(ow.OAK_CONFIRM_RIVAL_NAME).contains("was it"))
+
+	# Let `_ready()`/`run_new_game.call_deferred()` fire, then work through
+	# fade_in and the opening WELCOME/THIS_WORLD pages.
+	await _wait_until(func(): return ow._box != null and ow._box.is_open)
+	await _advance_box(ow._box)
+
+	# The ball-release beat (~2s real, no `_box` interaction) — just wait for
+	# the next box to open, same idiom Section G already uses for a real
+	# multi-second sequence run to completion rather than skipped.
+	await _wait_until(func(): return ow._box.is_open)
+	await _advance_box(ow._box)  # INHABITED / I_STUDY / ABOUT_YOURSELF
+
+	await _wait_until(func(): return ow._box.is_open)
+	await _advance_box(ow._box)  # ASK_GENDER
+
+	# Gender pick — GIRL this time (mirrors F.05's own polarity: pressing
+	# Leaf resolves to GIRL, i.e. `boy == false`).
+	await _wait_until(func(): return ow._oak_overlay._girl_button.visible)
+	ow._oak_overlay._on_girl_pressed.call_deferred()
+
+	await _wait_until(func(): return ow._box.is_open)  # YOUR_NAME
+	await _advance_box(ow._box)
+
+	# --- player name: first attempt, answer NO ---
+	await _wait_until(func(): return ow._naming.is_open)
+	ow._naming.move(1)
+	ow._naming.confirm()
+	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
+	_chk("H.02 the confirmation opens with the box AND the yes/no both up",
+			ow._box.is_open and ow._yes_no.is_open)
+	await _wait_until(func(): return ow._yes_no.accepts_input)
+	var first_name: String = OverworldSession.identity.name
+	ow._yes_no.cancel()
+
+	await _wait_until(func(): return ow._naming.is_open)
+	_chk("H.03 saying NO reopens naming — the loop actually retries",
+			ow._naming.is_open)
+
+	# --- second attempt, a DIFFERENT preset, answer YES ---
+	ow._naming.move(2)
+	ow._naming.confirm()
+	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
+	await _wait_until(func(): return ow._yes_no.accepts_input)
+	ow._yes_no.confirm()
+
+	await _wait_until(func(): return not ow._yes_no.is_open and not ow._naming.is_open)
+	var second_name: String = OverworldSession.identity.name
+	_chk("H.04 saying YES commits the SECOND name, proving retry re-did naming",
+			second_name != "" and second_name != first_name
+			and second_name == OverworldSession.identity.name)
+
+	# --- rival name: same shape, one round trip proves the same primitive ---
+	await _wait_until(func(): return ow._box.is_open)  # RIVAL_INTRO / RIVAL_NAME
+	await _advance_box(ow._box)
+
+	await _wait_until(func(): return ow._naming.is_open)
+	ow._naming.move(1)
+	ow._naming.confirm()
+	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
+	await _wait_until(func(): return ow._yes_no.accepts_input)
+	var first_rival: String = OverworldSession.identity.rival_name
+	ow._yes_no.cancel()
+
+	await _wait_until(func(): return ow._naming.is_open)
+	_chk("H.05 the rival question retries the same way", ow._naming.is_open)
+
+	ow._naming.move(2)
+	ow._naming.confirm()
+	await _wait_until(func(): return ow._yes_no != null and ow._yes_no.is_open)
+	await _wait_until(func(): return ow._yes_no.accepts_input)
+	ow._yes_no.confirm()
+
+	await _wait_until(func(): return not ow._yes_no.is_open and not ow._naming.is_open)
+	var second_rival: String = OverworldSession.identity.rival_name
+	_chk("H.06 and commits the second rival name too",
+			second_rival != "" and second_rival != first_rival)
+
+	await _wait_until(func(): return ow._box.is_open)  # REMEMBER_RIVAL
+	await _advance_box(ow._box)
+
+	# --- the Let's Go line: THE ACTUAL FIX-1 REGRESSION GUARD ---
+	await _wait_until(func(): return ow._box.is_open)  # LETS_GO
+	_chk("H.07 the closing line shows the PLAYER's own portrait, not Oak's",
+			ow._oak_overlay._solo.texture.resource_path.ends_with("leaf.png"))
+
+	await _advance_box(ow._box)
+	ow.queue_free()

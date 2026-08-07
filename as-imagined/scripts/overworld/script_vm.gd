@@ -151,6 +151,25 @@ var pending_battle_intro: String = ""
 var pending_battle_defeat_text: String = ""
 var pending_battle_script: String = ""
 
+## [trainerbattle_earlyrival] `trainerbattle_no_intro`/`trainerbattle_earlyrival`
+## both compile to the SAME shared handler, `EventScript_DoNoIntroTrainerBattle`
+## (`battle_setup.c`'s `BattleSetup_ConfigureTrainerBattle`/`_ConfigureEarlyRivalBattle`
+## dispatch both `TRAINER_BATTLE_SINGLE_NO_INTRO_TEXT` and `TRAINER_BATTLE_EARLY_RIVAL`
+## to it) -- and that handler is `dotrainerbattle` / `gotopostbattlescript` with NO
+## branch on outcome at all. `gotopostbattlescript` is `BattleSetup_GetScriptAddrAfterBattle`,
+## which always resolves to the address right after the calling command -- i.e. an
+## ALREADY-BEATEN or a WON battle both fall through to the next opcode in the calling
+## script, unconditionally. Only a LOSS stops it (whiteout).
+##
+## This is a DIFFERENT shape from `trainerbattle_single`/`_double`/`_rematch*`, whose
+## shared handler (`EventScript_TryDoNormalTrainerBattle`) genuinely branches:
+## already-beaten falls through via `gotopostbattlescript`, but a WIN goes through
+## `gotobeatenscript` -- a different resolution (the event_script ARGUMENT, or a
+## fallback that ends the script if none was given). `resume_after_battle`'s existing
+## "no continuation script means the win ends the script" rule is correct for THAT
+## family and wrong for this one, so this flag lets one function serve both.
+var pending_battle_always_continues: bool = false
+
 ## [M27F Stage 3] Movements the script has ASKED for but which the scene has not
 ## started yet. `applymovement` is asynchronous in source — it kicks a movement
 ## off and the script keeps running; `waitmovement` is the half that blocks. So
@@ -271,6 +290,7 @@ func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	pending_battle_intro = ""
 	pending_battle_defeat_text = ""
 	pending_battle_script = ""
+	pending_battle_always_continues = false
 	# ⚠️ .clear(), not `= []` — assigning an untyped array to a typed one
 	# fails SILENTLY in GDScript, a gotcha this project has paid for before.
 	pending_movements.clear()
@@ -454,13 +474,33 @@ func step() -> bool:
 		# M36-S. A fanfare is a real beat in the starter scene (Oak hands you
 		# the Pokemon to a jingle) and it is genuinely silent here; listed so
 		# that stays a known no-op rather than an UNKNOWN_OP halt.
-		"playfanfare", "waitfanfare", "playse", "playbgm", "fadedefaultbgm":
+		#
+		# [Corridor op-code scope] `fadeoutbgm` joins the same group — its one
+		# corridor use is the Pokémon Center Jigglypuff easter egg fading the
+		# lobby music out before its own jingle plays. Same absence, same
+		# reasoning; nothing about this opcode is different from its siblings.
+		"playfanfare", "waitfanfare", "playse", "playbgm", "fadedefaultbgm", \
+		"fadeoutbgm":
 			return true
 
 		# [M27K K-a] The mon picture Oak shows while offering the starter. This
 		# project has no picture layer in the field at all — the front sprites
 		# are pulled and battle-only. A no-op loses the flourish, not the scene.
 		"showmonpic", "hidemonpic":
+			return true
+
+		# [Corridor op-code scope] `copyobjectxytoperm localId` — source bakes
+		# an object event's LIVE position into its own permanent template, so
+		# a moved NPC (Pallet Town's Sign Lady, stepping out of the doorway
+		# once) doesn't reset to its spawn point on map reload. This project
+		# has no template/instance split to begin with — a placed `NPC`
+		# node's own `cell` IS the live, sole source of truth, so within one
+		# play session the move already sticks with zero code. The real gap
+		# this leaves is SAVE persistence (does a reloaded save remember she
+		# moved?), which `[M27L]`'s save payload has no concept of for ANY
+		# NPC yet — a general save-completeness question, not something to
+		# solve one-off for a single sign lady. No-op until that's revisited.
+		"copyobjectxytoperm":
 			return true
 
 		# [M27K K-a] Remove an object event from the map — the Poke Ball you
@@ -514,6 +554,28 @@ func step() -> bool:
 			if args.size() > 1:
 				pending_object_ops.append({"op": "turn", "target": str(args[0]),
 						"dir": str(args[1])})
+			return true
+
+		# [Corridor op-code scope] `setmetatile x, y, metatileId, impassable`
+		# (`ScrCmd_setmetatile`, `scrcmd.c:2741`) — replaces one cell's whole
+		# metatile at runtime. `x`/`y` are LOCAL to whichever map is running
+		# this script; the VM has no scene-tree access to resolve that to a
+		# global cell (the same reason `removeobject`/`addobject` above queue
+		# rather than act directly), so this queues into `pending_object_ops`
+		# for the caller to apply against `MapManager.set_metatile` once it
+		# resolves "the current map" the same way it already does for
+		# OnFrame/OnLoad dispatch. All four args go through `_resolve_number`
+		# — source reads every one of them via `VarGet`, and `metatileId` is
+		# a METATILE_* constant in every real corpus use, never a raw int.
+		"setmetatile":
+			if args.size() < 4:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "setmetatile needs 4 args, got %d" % args.size()
+				return false
+			pending_object_ops.append({"op": "setmetatile",
+					"x": _resolve_number(str(args[0])), "y": _resolve_number(str(args[1])),
+					"metatile_id": _resolve_number(str(args[2])),
+					"impassable": _resolve_number(str(args[3])) != 0})
 			return true
 
 		# [Map scripts] Door-tile open/close animation and its own wait.
@@ -931,12 +993,19 @@ func step() -> bool:
 		# the battle" (built for exactly this by `[M27F Stage 2]`'s own
 		# `_trainer_battle`, unused until now), so no separate no-intro
 		# branch was needed on the overworld side.
+		#
+		# ⚠️ SHARES `EventScript_DoNoIntroTrainerBattle` WITH `trainerbattle_
+		# earlyrival` BELOW — `dotrainerbattle` then an unconditional
+		# `gotopostbattlescript`, so a WIN falls through to the next opcode
+		# in the calling script exactly like the already-beaten skip does,
+		# never the `gotobeatenscript`-ends-the-script rule the single/
+		# double/rematch family uses. `always_continues=true` carries that.
 		"trainerbattle_no_intro":
 			if args.size() < 2:
 				pause_reason = Pause.UNKNOWN_OP
 				diagnostic = "trainerbattle_no_intro needs 2 args, got %d" % args.size()
 				return false
-			return _start_trainer_battle(str(args[0]), "", str(args[1]), "", false)
+			return _start_trainer_battle(str(args[0]), "", str(args[1]), "", false, true)
 
 		# [Map scripts] `trainerbattle_double trainer, intro, lose, not_enough
 		# [, event_script[, music]]`.
@@ -976,6 +1045,27 @@ func step() -> bool:
 				diagnostic = "trainerbattle_rematch_double needs 4 args, got %d" % args.size()
 				return false
 			return _start_trainer_battle(str(args[0]), str(args[1]), str(args[2]), "", true)
+
+		# [Map scripts] `trainerbattle_earlyrival trainer, flags, lose_text,
+		# victory_text` — the Pallet Town starter rival battle. Its underlying
+		# macro (`event.inc:831`) passes `intro_text_a=NULL` and
+		# `event_script_a=NULL` into the shared `trainerbattle` struct, and
+		# `BattleSetup_ConfigureTrainerBattle` dispatches `TRAINER_BATTLE_
+		# EARLY_RIVAL` to the exact same `EventScript_DoNoIntroTrainerBattle`
+		# handler `trainerbattle_no_intro` uses above — same no-intro-message
+		# shape, same unconditional-fallthrough-on-win shape.
+		#
+		# `flags` (RIVAL_BATTLE_TUTORIAL) and `victory_text` (the rival's own
+		# in-battle "won't lose" quote, `GetTrainerWonSpeech`) are both
+		# BATTLE-side presentation this project's overworld VM has no seam
+		# for and doesn't need one for — the field script's own control flow
+		# never branches on either.
+		"trainerbattle_earlyrival":
+			if args.size() < 3:
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "trainerbattle_earlyrival needs 3+ args, got %d" % args.size()
+				return false
+			return _start_trainer_battle(str(args[0]), "", str(args[2]), "", false, true)
 
 		# [Map scripts] `checkplayergender` — writes VAR_RESULT with the
 		# player's chosen gender (`ScrCmd_checkplayergender`, `scrcmd.c`).
@@ -1103,11 +1193,13 @@ func _trainer_battle(args: Array) -> bool:
 ## so this opcode does not need to re-derive that itself, and skipping its own
 ## internal check does not open a rematch that shouldn't be reachable.
 func _start_trainer_battle(trainer: String, intro_label: String, defeat_label: String,
-		continuation_label: String, skip_already_beaten_check: bool) -> bool:
+		continuation_label: String, skip_already_beaten_check: bool,
+		always_continues: bool = false) -> bool:
 	pending_trainer_key = trainer
 	pending_battle_intro = intro_label
 	pending_battle_defeat_text = defeat_label
 	pending_battle_script = continuation_label
+	pending_battle_always_continues = always_continues
 
 	# The already-beaten skip. Source checks `GetTrainerFlag` inside the shared
 	# script, one level below the command -- which is why Brock's own script has
@@ -1153,6 +1245,15 @@ func resume_after_battle(won: bool) -> void:
 	pause_reason = Pause.NONE
 	if pending_battle_script != "":
 		_jump(pending_battle_script)
+		return
+	if pending_battle_always_continues:
+		# `trainerbattle_no_intro`/`trainerbattle_earlyrival`'s shared handler
+		# (`EventScript_DoNoIntroTrainerBattle`) is `dotrainerbattle` then an
+		# UNCONDITIONAL `gotopostbattlescript` -- a win falls through to the
+		# next opcode in the calling script exactly like the already-beaten
+		# skip above does, not a `gotobeatenscript` resolution. `pc` was
+		# already advanced past the trainerbattle op before it paused, so
+		# clearing the pause is the whole "continue" -- no jump needed.
 		return
 	# No post-battle script. Source reaches `EventScript_EndTrainerBattle`, whose
 	# `gotobeatenscript` resolves to a fallback rather than falling through, so
@@ -1763,6 +1864,12 @@ static func _literal(tok: String) -> int:
 	if tok.begins_with("SPECIES_"):
 		var dex := PokemonRegistry.species_id_of(tok)
 		return dex if dex > 0 else 0
+	# [Corridor op-code scope] `setmetatile`'s own metatileId argument is a
+	# METATILE_<Tileset>_<Name> constant, never a raw int in the corpus —
+	# same shape as SPECIES_ above, resolved through the generated
+	# `MetatileLabels` table rather than a hand-picked pair.
+	if tok.begins_with("METATILE_"):
+		return MetatileLabels.id_of(tok)
 	# [M27G G3a] Checked here, alongside SPECIES_ above — see
 	# `_INGAME_TRADE_IDS`'s own doc comment.
 	if _INGAME_TRADE_IDS.has(tok):

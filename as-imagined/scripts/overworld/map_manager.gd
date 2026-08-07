@@ -1044,18 +1044,128 @@ func sight_reaches_player(from: Vector2i, dir: int, sight_range: int,
 ## step, so the per-cell cost that made C4's skirt repaint expensive does not
 ## apply here.
 func entity_node_at(gcell: Vector2i) -> OverworldEntity:
+	var found := entities_at(gcell)
+	return found[0] if not found.is_empty() else null
+
+
+## Every entity standing on this GLOBAL cell, in scene-tree order.
+##
+## [Map scripts + coord_event trigger dispatch] Several idioms legitimately
+## stack more than one entity on one cell — most commonly gated triggers,
+## where two `Trigger` nodes share a cell and are gated on the same var at
+## different values so exactly one is ever armed. `entity_node_at` used to
+## answer with whichever entity `find_children` happened to return first,
+## with no regard for whether ITS OWN gate condition was satisfied — so a
+## trigger declared earlier in the scene permanently shadowed one declared
+## later on the same cell, even once the shadowed one's var condition became
+## true. Source's own `GetCoordEventScriptAtPosition` (`field_control_avatar.c`)
+## walks every coord_event at a position and returns the first one whose
+## condition actually passes; this is the seam that lets callers reproduce
+## that instead of trusting scene-tree order alone.
+func entities_at(gcell: Vector2i) -> Array[OverworldEntity]:
+	var out: Array[OverworldEntity] = []
 	var map_name := chunk_owning(gcell)
 	if map_name == "" or not _chunks.has(map_name):
-		return null
+		return out
 	var root: Node2D = _chunks[map_name]["root"]
 	if root == null or not is_instance_valid(root):
-		return null
+		return out
 	var local: Vector2i = gcell - Vector2i(_chunks[map_name]["origin"])
 	for n in root.find_children("*", "OverworldEntity", true, false):
 		var e := n as OverworldEntity
 		if e != null and e.cell == local:
-			return e
-	return null
+			out.append(e)
+	return out
+
+
+## Where the corridor op-code scope's per-pair layer-type tables live,
+## alongside `map_baker.gd`'s own `ATLAS_DIR` for the atlas PNGs they were
+## generated from.
+const ATLAS_JSON_DIR := "res://assets/map_atlases/"
+
+## Cache of `<pair>_layer_types.json`, keyed by pair name (`MapData.atlas`,
+## the same string `preload_tilesets()` uses to key its own TileSet cache).
+## Loaded lazily rather than up front: only `set_metatile` ever needs one,
+## and today that is a single tileset pair across the whole corridor.
+static var _layer_types: Dictionary = {}
+
+
+## The layer_type (0 NORMAL / 1 COVERED / 2 SPLIT) of `metatile_id` within
+## `pair`'s own atlas, or -1 if the pair's table hasn't been generated (an
+## unregenerated checkout) or the id is out of range.
+static func _layer_type_for(pair: String, metatile_id: int) -> int:
+	if not _layer_types.has(pair):
+		var arr: Array = []
+		var f := FileAccess.open(ATLAS_JSON_DIR + pair + "_layer_types.json", FileAccess.READ)
+		if f != null:
+			var parsed = JSON.parse_string(f.get_as_text())
+			if parsed is Array:
+				arr = parsed
+		_layer_types[pair] = arr
+	var table: Array = _layer_types[pair]
+	if metatile_id < 0 or metatile_id >= table.size():
+		return -1
+	return int(table[metatile_id])
+
+
+## [Corridor op-code scope] `setmetatile x, y, metatileId, impassable`
+## (`ScrCmd_setmetatile`, `scrcmd.c:2741-2757`) — replaces one cell's whole
+## metatile at runtime, source's own mechanism for a prop that toggles once
+## (Viridian Mart's counter, hiding the questionnaire once
+## `FLAG_SYS_POKEDEX_GET` is set). `x`/`y` are LOCAL to whichever map the
+## calling script is running on, matching source's own
+## `MapGridSetMetatileIdAt(x + MAP_OFFSET, y + MAP_OFFSET, ...)` — `gcell`
+## here is already the resolved GLOBAL cell, converted by the caller the
+## same way every other local-to-global op in this project is.
+##
+## Repaints all three planes from the SAME per-pair layer-type table
+## `[M27C]`'s border skirt already reads via `ROUTING` — a metatile replace
+## is exactly the border-skirt paint operation done once instead of every
+## frame, and getting the routing wrong here is the identical "painted a
+## NORMAL metatile into Ground alone, half the block never renders" trap
+## `[M27C C3]`/`[M27M]` already paid for twice. Confirmed non-trivial on the
+## corridor's own two real uses: `METATILE_Mart_CounterMid_Top` (id 703) is
+## NORMAL (objects+overhangs) while `_Bottom` (id 704) is COVERED
+## (ground+objects) — the two halves of one prop route differently.
+##
+## Collision has no "the metatile's own default" to fall back to when
+## `impassable` is false — source's own `MapGridSetMetatileIdAt` either ORs
+## in `MAPGRID_IMPASSABLE` or doesn't, and the fresh grid value it
+## constructs otherwise carries zero collision bits regardless of what the
+## new metatile "naturally" is. So `impassable` is a flat force-solid /
+## force-walkable, not a per-metatile lookup — there is nothing to look up.
+func set_metatile(gcell: Vector2i, metatile_id: int, impassable: bool) -> bool:
+	var map_name := chunk_owning(gcell)
+	if map_name == "" or not _chunks.has(map_name):
+		return false
+	var c: Dictionary = _chunks[map_name]
+	var d: MapData = c["data"]
+	var root: Node2D = c["root"]
+	if d == null or root == null or not is_instance_valid(root):
+		return false
+	var local: Vector2i = gcell - Vector2i(c["origin"])
+	var idx := local.y * d.width + local.x
+	if local.x < 0 or local.y < 0 or local.x >= d.width or local.y >= d.height \
+			or idx < 0 or idx >= d.collision.size():
+		return false
+
+	d.collision[idx] = 1 if impassable else 0
+
+	var lt := _layer_type_for(d.atlas, metatile_id)
+	var routed: Array = ROUTING.get(lt, [])
+	var coords := Vector2i(metatile_id % ATLAS_COLS, int(metatile_id / ATLAS_COLS))
+	var planes := [root.get_node_or_null("Ground") as TileMapLayer,
+			root.get_node_or_null("Objects") as TileMapLayer,
+			root.get_node_or_null("Overhangs") as TileMapLayer]
+	for plane in range(planes.size()):
+		var layer: TileMapLayer = planes[plane]
+		if layer == null:
+			continue
+		if plane in routed:
+			layer.set_cell(local, plane, coords)
+		else:
+			layer.set_cell(local)  # not routed to this plane -- erase, don't leave stale art
+	return true
 
 
 ## Advance every live NPC's own movement by one frame.

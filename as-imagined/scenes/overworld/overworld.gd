@@ -1148,9 +1148,17 @@ const OAK_I_STUDY := "For some people, POKéMON are pets.\nOthers use them for b
 const OAK_ABOUT_YOURSELF := "But first, tell me a little about\nyourself."
 const OAK_ASK_GENDER := "Now tell me. Are you a boy?\nOr are you a girl?"
 const OAK_YOUR_NAME := "Let's begin with your name.\nWhat is it?"
+## ⚠️ Repurposed from "said afterward" to "asked as a confirmation" — source's
+## own `gOakSpeech_Text_SoYourNameIsPlayer` IS the confirmation prompt
+## (`Task_OakSpeech_ConfirmName`), not a trailing statement. See the
+## confirm/retry loop in `run_new_game()`.
 const OAK_SO_YOUR_NAME := "Right…\nSo your name is {PLAYER}."
 const OAK_RIVAL_INTRO := "This is my grandson.\nHe's been your rival since you both were babies."
 const OAK_RIVAL_NAME := "…Erm, what was his name now?"
+## Source's real `gOakSpeech_Text_ConfirmRivalName`
+## (`data/text/new_game_intro_frlg.inc:231-232`), verbatim — the rival-name
+## equivalent of `OAK_SO_YOUR_NAME`'s own confirmation-prompt role.
+const OAK_CONFIRM_RIVAL_NAME := "…Er, was it {RIVAL}?"
 const OAK_REMEMBER_RIVAL := "That's right! I remember now!\nHis name is {RIVAL}!"
 const OAK_LETS_GO := "{PLAYER}!\nYour very own POKéMON legend is about to unfold!\nA world of dreams and adventures with POKéMON awaits! Let's go!"
 
@@ -1169,12 +1177,13 @@ const ITEM_MSG_BECAME_HEALTHY := "{STR_VAR_1} became healthy."
 ## and most of them are theatre this project has no layer for. The BEATS,
 ## their ORDER and the TEXT are source's.
 ##
-## **[M27K K-b visuals] Portraits + ball release added 2026-08-05** — see
-## `OakSpeechOverlay` and `docs/m27k_oak_speech_visuals_recon.md`. Still
-## deliberately absent: the ground platform/background scene and source's
-## own BG-affine shrink exit (a plain fade stands in — recon confirmed no
-## exotic technique is actually load-bearing for that beat, only the
-## mechanism differs).
+## **[M27K K-b visuals] Portraits + ball release + background + platform**
+## — see `OakSpeechOverlay` and `docs/m27k_oak_speech_visuals_recon.md`.
+## Still deliberately absent: source's own BG-affine shrink exit (a plain
+## fade stands in — recon confirmed no exotic technique is actually
+## load-bearing for that beat, only the mechanism differs), fade-in/
+## cross-fade/slide transitions between portraits, and the real
+## recall-into-ball motion (a plain fade stands in there too).
 ##
 ## ⚠️ **THE BALL RELEASES A RANDOM ROSTER SPECIES, NOT SOURCE'S FIXED
 ## NIDORAN♀ — Rob's own call, fully random across all 386, legendaries
@@ -1200,6 +1209,10 @@ func run_new_game() -> void:
 	var id := OverworldSession.identity
 
 	_oak_overlay.show_solo("oak")
+	# ⚠️ Source's real scene boot fades IN from black
+	# (`Task_OakSpeech_Init`'s `BeginNormalPaletteFade`) — this project's own
+	# hard cut-to-visible was the one piece of boot presentation missing.
+	await _oak_overlay.fade_in()
 	await _say([OAK_WELCOME, OAK_THIS_WORLD])
 	# ⚠️ Source pairs the ball-release beat with THIS line
 	# (`Task_OakSpeech_IsInhabitedFarAndWide` plays it, per
@@ -1215,16 +1228,38 @@ func run_new_game() -> void:
 
 	_oak_overlay.show_solo("red" if boy else "leaf")
 	await _say([OAK_YOUR_NAME])
-	id.set_name(await _ask_name("Your name?", id.name_choices()))
-	await _say([OAK_SO_YOUR_NAME])
+	# ⚠️ SOURCE LETS THE PLAYER SAY NO AND RETYPE — `Task_OakSpeech_
+	# HandleConfirmNameInput`'s NO branch loops back into naming with no
+	# extra text; reproduced here as a plain retry loop. `_box` stays OPEN
+	# under the prompt (not `_say`, which would force an extra dismiss press
+	# before the choice could even be answered) — the same shape the SAVE
+	# confirmation (`_on_start_menu_save`) already uses.
+	while true:
+		id.set_name(await _ask_name("Your name?", id.name_choices()))
+		_box.open(PackedStringArray([TextBuffers.new().expand(OAK_SO_YOUR_NAME)]))
+		_yes_no.open()
+		var name_yes: bool = await _yes_no.chosen
+		_box.close()
+		if name_yes:
+			break
 
 	_oak_overlay.show_solo("rival")
 	await _say([OAK_RIVAL_INTRO, OAK_RIVAL_NAME])
-	id.set_rival_name(await _ask_name("Your rival's name?",
-			PlayerIdentity.RIVAL_NAMES))
+	while true:
+		id.set_rival_name(await _ask_name("Your rival's name?",
+				PlayerIdentity.RIVAL_NAMES))
+		_box.open(PackedStringArray([TextBuffers.new().expand(OAK_CONFIRM_RIVAL_NAME)]))
+		_yes_no.open()
+		var rival_yes: bool = await _yes_no.chosen
+		_box.close()
+		if rival_yes:
+			break
 	await _say([OAK_REMEMBER_RIVAL])
 
-	_oak_overlay.show_solo("oak")
+	# ⚠️ Source's `Task_OakSpeech_ReshowPlayersPic` shows the PLAYER's own
+	# portrait for this line, not Oak's — it's addressed directly to
+	# `{PLAYER}`. `show_solo("oak")` here was a real bug, not a divergence.
+	_oak_overlay.show_solo("red" if boy else "leaf")
 	await _say([OAK_LETS_GO])
 	await _oak_overlay.fade_out()
 
@@ -1477,13 +1512,30 @@ func _poison_step() -> void:
 ## source's real per-frame poll and cannot re-trigger while the player
 ## stands still (the script it runs is what changes the var, exactly the
 ## same self-disarming shape `Trigger`'s own doc comment already describes).
+##
+## [Stacked-trigger fix] Several idioms (gated triggers chief among them)
+## legitimately place more than one `Trigger` on the same cell, each gated
+## on the same var at a different value. `manager.entity_node_at` answers
+## with only the first scene-tree match regardless of its own gate, which
+## permanently shadowed every later-declared trigger on a shared cell even
+## once ITS condition became true. Scanning every `Trigger` at the cell and
+## taking the first one whose OWN gate is armed reproduces source's real
+## `GetCoordEventScriptAtPosition`, which walks every coord_event at a
+## position and returns the first one whose condition actually passes.
 func check_step_trigger() -> bool:
 	if _vm != null or _in_battle or _warping or _in_approach:
 		return false
-	var t := manager.entity_node_at(_cell) as Trigger
-	if t == null or t.script_label == "" or t.script_label == "0x0":
-		return false
-	if not flags.trigger_armed(t):
+	var t: Trigger = null
+	for n in manager.entities_at(_cell):
+		var candidate := n as Trigger
+		if candidate == null:
+			continue
+		if candidate.script_label == "" or candidate.script_label == "0x0":
+			continue
+		if flags.trigger_armed(candidate):
+			t = candidate
+			break
+	if t == null:
 		return false
 	return run_script(t.script_label, t)
 
@@ -2241,6 +2293,21 @@ func _apply_pending_object_ops() -> void:
 				var e5 := _resolve_movement_entity(target)
 				if e5 != null and e5.visibility_flag != "":
 					flags.flag_set(e5.visibility_flag)
+			"setmetatile":
+				# `x`/`y` are LOCAL to whichever map the running script belongs
+				# to. Every corridor caller of a map script is scoped to the
+				# player's own CURRENT map by construction (OnLoad/OnTransition
+				# fire for the map just entered; a trigger/NPC script runs from
+				# the tile the player is standing on) — the same assumption
+				# `_map_script_prefix` dispatch already relies on, applied here
+				# rather than threading a map name through the VM itself.
+				var here := manager.chunk_owning(_cell)
+				if here == "":
+					continue
+				var gcell := manager.origin_of(here) \
+						+ Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
+				manager.set_metatile(gcell, int(op.get("metatile_id", 0)),
+						bool(op.get("impassable", false)))
 
 
 static func _is_player_target(target: String) -> bool:
@@ -2574,6 +2641,23 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 	_cell = gcell
 	_elev = manager.elevation_at(_cell)
 	_reparent_for_elevation()
+	# [Bugfix, live-reported: player stays invisible after a door-entry warp]
+	# `set_invisible`/`set_visible` (MovementRunner's own instantaneous
+	# actions) write straight to `_player.visible`, and a real door-entry
+	# cutscene (`PalletTown_Movement_PlayerEnterLab`, ending in
+	# `set_invisible` right before the warp — a real, correct match for
+	# source's own "vanish into the doorway" beat) leaves it false. `_player`
+	# is the SAME node across a warp (`_teardown_and_load`'s own doc comment:
+	# reparented, never freed, "the difference between a relocation and
+	# deleting the player"), so nothing else ever undoes it — there is no
+	# fresh node defaulting back to visible the way an NPC on the new map
+	# gets. Unconditional here rather than only after a scripted warp,
+	# because a plain door `Warp` node reaches this exact function too and a
+	# future authored door-entry movement on THAT path would hit the
+	# identical bug. Arriving anywhere is always the right moment to be
+	# shown again — there is no real scenario where the player should still
+	# be invisible once standing on a freshly-loaded map.
+	_player.visible = true
 	_player.position = manager.local_pixel_of(_cell)
 	_snap_camera_to_player()
 	if _camera != null:

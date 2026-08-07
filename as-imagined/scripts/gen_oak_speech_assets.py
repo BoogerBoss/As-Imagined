@@ -17,9 +17,22 @@ Confirmed before writing this script (not assumed): all four are already
 64x96 indexed-palette ("P" mode) PNGs with their own embedded palette --
 the identical convention gen_trainer_portraits.py already confirmed for the
 in-battle front-pic pull -- so a plain copy is correct; no GBA tile/palette
-decode step is needed. Unlike the front pics, none carries a transparency
-chunk (they are opaque background-blit portraits in source, not sprites
-with transparent corners), which does not affect how Godot loads them.
+decode step is needed.
+
+CORRECTION, 2026-08-06 -- the original text here claimed these carry no
+transparency chunk because they are "opaque background-blit portraits in
+source, not sprites with transparent corners", and that a plain copy was
+therefore fine. That was WRONG in a way that only became visible once the
+real `oak_speech_bg.png` background (above) actually existed behind them --
+before that, the portraits' own solid index-0 fill (a teal ~(115,197,164)
+square, confirmed identical across all 4 files though the exact RGB is not
+a constant -- see gen_object_event_sprites.py's own identical finding) was
+invisible against nothing. With a real background in place it renders as an
+opaque colored card floating over the scene. Fixed the same way every other
+sprite pull in this project already handles a tRNS-less indexed PNG --
+`tag_index0_transparent()`, ported directly from
+`gen_object_event_sprites.py`'s own helper of the same name -- rather than
+inventing a second technique for what is the same defect class.
 
 `platform.png` (the 3-frame ground-platform sheet) is ALSO pulled, added
 2026-08-05 -- confirmed 32x96 indexed "P"-mode PNG with a transparency
@@ -55,6 +68,8 @@ import os
 import shutil
 import sys
 
+from PIL import Image
+
 from ref_path import REF
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -77,6 +92,20 @@ BG_TILEMAP_REL = "graphics/oak_speech/oak_speech_bg.bin"
 BG_PALETTE_REL = "graphics/oak_speech/bg_tiles.png"
 
 
+def tag_index0_transparent(src, dst):
+    """Copy a palette PNG, marking palette index 0 transparent.
+
+    Ported from `gen_object_event_sprites.py`'s own helper of the same name
+    -- the identical fix for the identical defect class (a tRNS-less
+    indexed PNG whose index 0 is really its background/transparency key,
+    not a real opaque fill color).
+    """
+    im = Image.open(src)
+    assert im.mode == "P", "%s is %s, expected indexed" % (src, im.mode)
+    im.info["transparency"] = 0
+    im.save(dst)
+
+
 def _decode_background():
     canvas, _bank_pal, error = composite(
         BG_TILES_REL, BG_TILEMAP_REL, BG_PALETTE_REL, "oak_speech_bg")
@@ -97,7 +126,7 @@ def main():
         if not os.path.exists(src_path):
             print(f"  UNRESOLVED {dest_name!r} — missing {src_path}")
             continue
-        shutil.copyfile(src_path, os.path.join(OUT_DIR, dest_name))
+        tag_index0_transparent(src_path, os.path.join(OUT_DIR, dest_name))
         copied += 1
 
     platform_src = os.path.join(SRC_DIR, "platform.png")

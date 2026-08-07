@@ -387,6 +387,20 @@ func fade_out(duration: float = 0.6) -> void:
 	root.modulate.a = 1.0
 
 
+## Fade the whole overlay IN — the inverse of `fade_out()`, same shape.
+## Stands in for source's real palette fade-in at scene boot
+## (`Task_OakSpeech_Init`'s own `BeginNormalPaletteFade(PALETTES_ALL, 5, 16,
+## 0, RGB_BLACK)`). Call this AFTER whatever should be visible during the
+## fade is already shown (e.g. `show_solo("oak")`) — this only animates
+## `modulate:a`, it doesn't show/hide anything itself.
+func fade_in(duration: float = 0.6) -> void:
+	var root: Control = get_child(0)
+	root.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(root, "modulate:a", 1.0, duration)
+	await tw.finished
+
+
 ## [M27K K-b visuals] The ball-release beat: a random roster species pops
 ## out of a Poké Ball. Stands in for `Task_OakSpeech_ReleaseNidoranFFrom
 ## PokeBall` — see the file-level doc comment for what's deliberately
