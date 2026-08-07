@@ -130,10 +130,42 @@ implementing, or ask Rob to confirm before making something up.
   farming/action-RPG hybrid — a completely separate, unrelated project, see
   "What this project is"), plus standard edition keeps Web export available
   if ever wanted.
-- **Data format:** Godot `Resource` (`.tres`), one file per entry — **decided
-  at M1** (`docs/decisions.md`, `[M1] Data format`) and locked since. All
-  `PokemonSpecies`/`MoveData`/`AbilityData`/`ItemData` live under
-  `data/<kind>/`. Don't mix formats.
+- **Data format: TWO LAYERS, deliberately — corrected 2026-08-07.** The old
+  wording here said `.tres`, one file per entry, *"don't mix formats"*, and
+  cited `[M1] Data format`. **Every clause of that had become false**, and a
+  session reading it would either "fix" a working design or conclude the
+  project had drifted. What the codebase actually does, measured:
+
+  | | JSON | `.tres` |
+  |---|---|---|
+  | Holds | the **full reference dataset** | the **implemented subset** |
+  | Read by | `PokemonRegistry` — bulk lookups, names, dex data, learnsets | the **battle engine** — loaded by id as live typed objects |
+  | Shape | parsed once at boot into dictionaries | `load("res://data/moves/move_%04d.tres")` on demand |
+
+  **The counts are the proof, not the suggestion.** `moves.json` holds 935
+  entries and `data/moves/` holds **717** `.tres` — which is exactly M19's
+  *"717 implemented, 217 excluded"* (717 + 217 + 1 = 935). Items are the same
+  shape: all 816 in `items.json`, only the ones with real held-item behaviour
+  as `.tres`. ⚠️ **This is why `ScriptVM._resolve_trade_held_item` tests
+  `ResourceLoader.exists(".../item_%04d.tres")` before loading — that check is
+  not defensive, it is asking "do we implement this item?", and the file's
+  existence IS the answer.** Consolidating the two formats would destroy that
+  property.
+
+  `gen_moves.py` emits both from one source in one run, so the two views
+  cannot drift.
+
+  ⚠️ **SPECIES ARE JSON-ONLY. There is no `data/pokemon/` directory.**
+  `PokemonSpecies` resources are BUILT AT RUNTIME from `pokemon.json` by
+  `PokemonFactory.build_species()`, which also normalises real data quirks on
+  the way through (mono-typed species are stored as the same type twice, e.g.
+  Pikachu `[14, 14]`, not `[type, TYPE_NONE]`). Anything hand-editing species
+  edits the JSON, not a resource.
+
+  **The rule, restated:** full dataset in JSON, implemented behaviour in
+  `.tres`, one generator emitting both where both exist. Adding a `.tres` for
+  something the engine does not implement is the mistake to avoid — not the
+  mixing.
 - **External plugins/addons: research, recommend, Rob decides — not a blanket
   ban.** `pokeemerald_expansion` is where implementation *starts*, not a
   ceiling. When something doesn't exist there, or exists but doesn't translate
