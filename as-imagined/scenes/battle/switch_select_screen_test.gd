@@ -45,6 +45,7 @@ func _ready() -> void:
 	_test_escape_is_a_no_op_during_forced_replacement()
 	_test_message_reverts_after_display_duration()
 	_test_build_switch_buttons_opens_a_real_wired_overlay()
+	_test_build_switch_buttons_hides_the_stale_status_label()
 	_test_build_switch_buttons_is_idempotent_while_overlay_open()
 	_test_field_slot_propagates_correctly_to_bound_handlers()
 	_test_mon_chosen_reaches_real_queue_switch_for_end_to_end()
@@ -642,6 +643,30 @@ func _test_build_switch_buttons_opens_a_real_wired_overlay() -> void:
 			bs._switch_select_overlay != null and bs._switch_select_overlay is SwitchSelectScreen)
 	_chk("the overlay is a genuine child of the battle screen (not floating/detached)",
 			bs._switch_select_overlay.get_parent() == bs)
+
+
+# ── H2. [Bugfix] The stale "Choose a Pokémon to switch in." status prompt
+# no longer bleeds through on top of this full-screen overlay ──────────────
+# SharedChrome's own root node carries z_index=5 (see battle_screen_shared
+# .gd's _effect_layer doc comment), which sorts globally ahead of tree
+# order -- so _status_label, left visible by _refresh_ui()'s own default
+# layout, was drawing OVER this overlay despite being added earlier in the
+# tree. Reported directly by Rob: "the 'what should pokemon do' text box
+# shows on the pokemon switch screen."
+
+func _test_build_switch_buttons_hides_the_stale_status_label() -> void:
+	var active := _make_mon("Active6b")
+	var bench1 := _make_mon("Bench8b")
+	var bs := _make_battle_screen_with_font()
+	bs._player_party = _singles_party_with_bench(active, [bench1])
+	bs._status_label = Label.new()
+	bs._status_label.visible = true
+	bs._status_label.text = "Choose a Pokémon to switch in."
+
+	bs._build_switch_buttons(false, 0)
+
+	_chk("the underlying status prompt is hidden once the overlay is open",
+			not bs._status_label.visible)
 
 
 # ── I. A second _build_switch_buttons call while the overlay is still open

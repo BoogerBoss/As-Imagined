@@ -34,6 +34,7 @@ func _ready() -> void:
 	_test_cancel_button_press_emits_cancelled()
 	_test_escape_key_also_cancels()
 	_test_build_item_buttons_opens_a_real_wired_overlay()
+	_test_build_item_buttons_hides_the_stale_status_label()
 	_test_build_item_buttons_is_idempotent_while_overlay_open()
 	_test_field_slot_propagates_correctly_to_bound_handlers()
 	_test_item_chosen_reaches_real_queue_item_for_end_to_end()
@@ -355,6 +356,30 @@ func _test_build_item_buttons_opens_a_real_wired_overlay() -> void:
 			bs._item_select_overlay != null and bs._item_select_overlay is ItemSelectScreen)
 	_chk("the overlay is a genuine child of the battle screen (not floating/detached)",
 			bs._item_select_overlay.get_parent() == bs)
+
+
+# ── I2. [Bugfix] The stale "Choose an item." status prompt no longer bleeds
+# through on top of this full-screen overlay -- same z_index=5 root cause as
+# switch_select_screen_test.gd's own identical regression test; see that
+# file's own doc comment for the full citation. Reported directly by Rob:
+# "the 'what should pokemon do' text box shows on the pokemon switch
+# screen" -- the Item screen shares the exact same _build_*_buttons shape
+# and was silently affected too.
+
+func _test_build_item_buttons_hides_the_stale_status_label() -> void:
+	OverworldSession.reset()
+	var mon := _make_mon("SoloStatus")
+	var bs := _make_battle_screen_with_font()
+	bs.is_overworld_battle = false
+	bs._player_party = _singles_party(mon)
+	bs._status_label = Label.new()
+	bs._status_label.visible = true
+	bs._status_label.text = "Choose an item."
+
+	bs._build_item_buttons(0)
+
+	_chk("the underlying status prompt is hidden once the overlay is open",
+			not bs._status_label.visible)
 
 
 # ── J. A second _build_item_buttons call while the overlay is still open

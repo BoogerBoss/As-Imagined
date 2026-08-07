@@ -1445,6 +1445,15 @@ const _CURSOR_GLYPH := "▶"
 const _CURSOR_PREFIX := _CURSOR_GLYPH + " "
 const _CURSOR_BLANK := "  "
 
+# [M26C8] Keyboard-driven cursor state -- mirrors whichever button group
+# `_wire_cursor_group` most recently wired (TOP/FIGHT's own persistent
+# pool, or an Item/Switch/Summary overlay's own list, all of which call
+# this same helper on this instance). See _wire_cursor_group's own doc
+# comment for `_cursor_columns`.
+var _cursor_buttons: Array[Button] = []
+var _cursor_index: int = 0
+var _cursor_columns: int = 1
+
 # One shared StyleBoxEmpty instance -- StyleBoxEmpty carries no per-instance
 # state, so every stripped button safely reuses the same Resource rather
 # than each allocating its own no-op box.
@@ -1515,14 +1524,28 @@ static func _ensure_child(parent: Node, child: Node) -> void:
 		parent.add_child(child)
 
 
-func _wire_cursor_group(buttons: Array[Button]) -> void:
+# [M26C8] `columns` reproduces source's own bit-math cursor shape
+# (ActionSelectionCreateCursorAt/MoveSelectionCreateCursorAt,
+# battle_controller_player.c) for the TOP/FIGHT 2x2 grids -- left/right
+# toggle the column, up/down toggle the row. Every vertical-list caller
+# (Item/Switch/Summary/the Switch action submenu) leaves this at its
+# default of 1, which _move_cursor below treats as "up/down move by one,
+# left/right are no-ops" -- deliberately, so ItemSelectScreen's own
+# existing raw-keycode Left/Right (pocket cycling) stays the sole owner of
+# those keys there instead of colliding with a meaningless single-column
+# grid interpretation.
+func _wire_cursor_group(buttons: Array[Button], columns: int = 1) -> void:
 	for i in range(buttons.size()):
 		var btn: Button = buttons[i]
 		btn.set_meta("cursor_base_text", btn.text)
 		_disconnect_all(btn.mouse_entered)
 		btn.mouse_entered.connect(_set_cursor_selected.bind(buttons, i))
+	_cursor_columns = columns
 	if buttons.size() > 0:
 		_set_cursor_selected(buttons, 0)
+	else:
+		_cursor_buttons = buttons
+		_cursor_index = 0
 
 
 func _set_cursor_selected(buttons: Array[Button], selected_index: int) -> void:
@@ -1530,6 +1553,73 @@ func _set_cursor_selected(buttons: Array[Button], selected_index: int) -> void:
 		var btn: Button = buttons[i]
 		var base_text: String = btn.get_meta("cursor_base_text")
 		btn.text = (_CURSOR_PREFIX + base_text) if i == selected_index else (_CURSOR_BLANK + base_text)
+	# [M26C8] Keeps the keyboard-driven cursor index in sync with whatever a
+	# mouse hover (the pre-existing caller of this function) or a keyboard
+	# move (_move_cursor below) most recently selected -- both paths funnel
+	# through here, so they can never disagree about "what's currently
+	# selected". `buttons` is always the exact same Array reference
+	# `_wire_cursor_group` was last called with, since every mouse_entered
+	# listener closes over it via `.bind(buttons, i)`.
+	_cursor_buttons = buttons
+	_cursor_index = selected_index
+
+
+# [M26C8] Grid-aware keyboard cursor movement, shared by every menu that
+# goes through _wire_cursor_group. `_cursor_columns == 1` (every list menu)
+# degrades the column math to a no-op, so this one function covers both the
+# TOP/FIGHT 2x2 grid and every plain vertical list with no branching at the
+# call site. CLAMPED at the grid edge, not wrapped -- matches source's own
+# bit-math cursor exactly (see _wire_cursor_group's own doc comment).
+func _move_cursor(delta_row: int, delta_col: int) -> void:
+	var count := _cursor_buttons.size()
+	if count == 0:
+		return
+	var cols := maxi(_cursor_columns, 1)
+	var col := _cursor_index % cols
+	var row := _cursor_index / cols
+	var new_col := col + delta_col
+	if new_col < 0 or new_col >= cols:
+		new_col = col
+	var max_row := (count - 1) / cols
+	var new_row := row + delta_row
+	if new_row < 0 or new_row > max_row:
+		new_row = row
+	var new_index := new_row * cols + new_col
+	if new_index >= count:
+		# A trailing grid row can be short (e.g. a 3-move Pokémon's bottom
+		# row has only one real cell) -- clamp back to the last real button
+		# rather than landing past the end of the array, matching source's
+		# own `gNumberOfMovesToChoose` clamp.
+		new_index = count - 1
+	if new_index == _cursor_index:
+		return
+	_set_cursor_selected(_cursor_buttons, new_index)
+
+
+# [M26C8] Keyboard Confirm -- fires the exact same `pressed` signal a mouse
+# click on the currently-selected button already does, so every existing
+# click handler (move dispatch, Item/Switch row selection, Cancel, the
+# Switch action submenu, Summary's nav bar) needs no keyboard-specific
+# counterpart. Gated to MOVE_SELECTION/SWITCH_PROMPT -- the only two phases
+# any of these menus are ever shown in -- because the buttons themselves
+# don't hide until _refresh_ui() actually runs at the END of a turn's paced
+# visual replay (_run_message_pacing), by which point the real battle state
+# has already resolved synchronously (see _refresh_ui's own doc comment);
+# without this gate, mashing Confirm during that replay could re-fire
+# whatever button was selected before the turn was submitted.
+func _confirm_cursor_selection() -> void:
+	if _bm == null:
+		return
+	var phase := _bm.get_phase()
+	if phase != BattleManager.BattlePhase.MOVE_SELECTION \
+			and phase != BattleManager.BattlePhase.SWITCH_PROMPT:
+		return
+	if _cursor_index < 0 or _cursor_index >= _cursor_buttons.size():
+		return
+	var btn: Button = _cursor_buttons[_cursor_index]
+	if btn.disabled or not btn.visible:
+		return
+	btn.pressed.emit()
 
 
 # Which sub-menu the MOVE_SELECTION main-action screen is currently showing.
@@ -1623,6 +1713,20 @@ var _target_select_wired: Array[Dictionary] = []
 var _target_focus_mon: BattlePokemon = null
 var _target_focus_health_tween: Tween = null
 var _target_focus_sprite_tween: Tween = null
+
+# [M26C8] Keyboard cycling among TARGET_SELECT's own candidates -- these
+# are health-box/sprite hover ZONES (_target_select_wired above), not
+# Buttons, so they don't go through _wire_cursor_group/_cursor_buttons at
+# all; see _build_target_select_buttons' own doc comment for why. Source's
+# own real targeting cue is D-pad Left/Right/Up/Down cycling the candidate
+# whose health box is bounced (HandleInputChooseTarget,
+# battle_controller_player.c) -- reproduced here as a plain wrap-around
+# cycle through `_target_select_candidates` (2 entries in the common
+# doubles case), any direction moving to the next one, rather than a real
+# 4-position spatial map this project has no equivalent layout for.
+var _target_select_candidates: Array[BattlePokemon] = []
+var _target_select_field_slot: int = -1
+var _target_select_cursor: int = 0
 
 
 func _ready() -> void:
@@ -4149,6 +4253,50 @@ func _unhandled_input(event: InputEvent) -> void:
 			and event.keycode == KEY_ESCAPE and _menu == Menu.FIGHT:
 		_menu = Menu.TOP
 		_refresh_ui()
+
+	# [M26C8] Keyboard menu navigation -- ui_up/down/left/right/accept/cancel,
+	# declared explicitly in project.godot's own [input] section (reusing the
+	# SAME action names the overworld already dispatches on, rather than a
+	# second parallel convention -- see project.godot's own [input] section
+	# header). Gated to a single is_action_pressed check per direction so a
+	# held key doesn't repeat every physical frame (is_action_pressed only
+	# fires once per press, unlike is_action_just_pressed's own echo
+	# handling -- matches this file's existing `not event.echo` guards
+	# above in spirit). TARGET_SELECT is routed separately since its
+	# candidates are health-box hover zones, not Buttons (see
+	# _build_target_select_buttons' own doc comment) -- everything else
+	# (TOP/FIGHT/ITEM/SWITCH/the Switch action submenu/Summary's nav bar)
+	# shares one path because they all wire through the same
+	# `_wire_cursor_group`/`_cursor_buttons` state.
+	if _menu == Menu.TARGET_SELECT:
+		if event.is_action_pressed("ui_up") or event.is_action_pressed("ui_left"):
+			_move_target_select_cursor(-1)
+		elif event.is_action_pressed("ui_down") or event.is_action_pressed("ui_right"):
+			_move_target_select_cursor(1)
+		elif event.is_action_pressed("ui_accept"):
+			_confirm_target_select_cursor()
+		elif event.is_action_pressed("ui_cancel"):
+			_menu = Menu.FIGHT
+			_pending_move_index = -1
+			_refresh_ui()
+	else:
+		if event.is_action_pressed("ui_up"):
+			_move_cursor(-1, 0)
+		elif event.is_action_pressed("ui_down"):
+			_move_cursor(1, 0)
+		elif event.is_action_pressed("ui_left"):
+			_move_cursor(0, -1)
+		elif event.is_action_pressed("ui_right"):
+			_move_cursor(0, 1)
+		elif event.is_action_pressed("ui_accept"):
+			_confirm_cursor_selection()
+		# [M26C8] ui_cancel deliberately NOT handled here for ITEM/SWITCH --
+		# ItemSelectScreen/SwitchSelectScreen each already own a real, more
+		# nuanced Escape handler of their own (pocket-cycling, the forced-
+		# replacement no-cancel rule, the action-submenu-closes-first rule,
+		# the Summary-owns-Escape-while-open guard) that this project has no
+		# reason to duplicate or race against. FIGHT's own ui_cancel-
+		# equivalent is the raw-keycode Escape branch immediately above.
 
 
 # [M26B3-6b, Rob's review] The one-shot entry animation a Pokemon plays as
@@ -7526,7 +7674,9 @@ func _build_top_menu(field_slot: int) -> void:
 	# matches the .tscn's own real reading order (top-left, top-right,
 	# bottom-left, bottom-right).
 	var top_buttons: Array[Button] = [_top_fight_btn, _top_item_btn, _top_switch_btn, _top_run_btn]
-	_wire_cursor_group(top_buttons)
+	# [M26C8] columns=2 -- real 2x2 grid, see _wire_cursor_group's own doc
+	# comment for the bit-math source citation.
+	_wire_cursor_group(top_buttons, 2)
 
 
 # [M25b, regridded M26c-3] The move list — content unchanged from the old
@@ -7613,7 +7763,11 @@ func _build_fight_menu(field_slot: int) -> void:
 	# comment on why Back was never a literal source-accurate control).
 
 	# [M25h-1.3] Real ▶ cursor, defaulting to the first move.
-	_wire_cursor_group(fight_buttons)
+	# [M26C8] columns=2 -- real 2x2 grid, matching TOP's own (see
+	# _wire_cursor_group's own doc comment); a Pokémon with fewer than 4
+	# moves just leaves a short trailing row, which _move_cursor's own
+	# clamp already accounts for.
+	_wire_cursor_group(fight_buttons, 2)
 	# [M26c-3 real-proportion fix] Matches _wire_cursor_group's own
 	# default-to-the-first-button behavior — the info panel needs an
 	# initial value too, not just updates on a later real hover.
@@ -7746,6 +7900,25 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		_refresh_ui()
 		return
 
+	# [Bugfix] SharedChrome's own root node carries z_index=5 (see
+	# _effect_layer's own doc comment for why), which z_index sorts GLOBALLY
+	# ahead of tree order -- so _status_label, a SharedChrome descendant left
+	# visible by _layout_action_menu_for(false, false)'s own default, was
+	# drawing on TOP of this overlay despite being added earlier in the tree.
+	# This overlay is a genuine full-screen replacement (matching source's
+	# own CloseMainBattleScreen architecture, see this screen's own class-
+	# level doc comment) with nothing left in the action panel behind it to
+	# show (SWITCH's own button areas are empty since M25h-1.5 moved this to
+	# a real overlay) -- hidden here rather than given a matching z_index,
+	# since a bare hide can't accidentally draw anything else in SharedChrome
+	# (the debug/matchup overlays, hit effects) over this screen instead.
+	# Guarded -- like _style_menu_button's own established convention --
+	# since this project's bare-instance test convention calls this function
+	# directly on a fresh BattleScreenShared.new() with no @onready fields
+	# resolved (no full _ready() pass).
+	if _status_label != null:
+		_status_label.visible = false
+
 	var overlay_scene: PackedScene = load("res://scenes/battle/switch_select_screen.tscn")
 	var overlay: SwitchSelectScreen = overlay_scene.instantiate()
 	add_child(overlay)
@@ -7784,6 +7957,11 @@ func _close_switch_select_overlay() -> void:
 func _build_item_buttons(field_slot: int) -> void:
 	if _item_select_overlay != null and is_instance_valid(_item_select_overlay):
 		return
+	# [Bugfix] Same fix as _build_switch_buttons' own -- see that function's
+	# own doc comment for the full z_index root cause. Guarded the same way
+	# for the same bare-instance-test reason.
+	if _status_label != null:
+		_status_label.visible = false
 	var overlay_scene: PackedScene = load("res://scenes/battle/item_select_screen.tscn")
 	var overlay: ItemSelectScreen = overlay_scene.instantiate()
 	add_child(overlay)
@@ -8008,6 +8186,15 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
 	var move: MoveData = mon.moves[move_index]
 	var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
+	# [M26C8] Tracked for keyboard cycling -- see _target_select_cursor's
+	# own doc comment. Defaults to the first candidate, matching every
+	# other menu's own "some option is always selected the instant it
+	# opens" convention (_wire_cursor_group's own default-to-index-0).
+	_target_select_candidates = candidates
+	_target_select_field_slot = field_slot
+	_target_select_cursor = 0
+	if not candidates.is_empty():
+		_on_target_hover_entered(candidates[0])
 	for target_mon: BattlePokemon in candidates:
 		var target_idx: int = _bm.get_combatant_index(target_mon)
 		var enter_cb: Callable = _on_target_hover_entered.bind(target_mon)
@@ -8046,6 +8233,31 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	# either the real prefix or the blank one" assumption (relied on by
 	# every existing test's own text-comparison helper) stays true.
 	_wire_cursor_group([back_btn])
+
+
+# [M26C8] Keyboard cycling among TARGET_SELECT's own candidates -- see
+# _target_select_cursor's own doc comment for why these are tracked
+# separately from _cursor_buttons. Wraps (unlike _move_cursor's own
+# grid clamp) since this is a small cyclic set (2 candidates in the common
+# doubles case) rather than a fixed-shape grid with real "off the edge"
+# positions.
+func _move_target_select_cursor(delta: int) -> void:
+	if _target_select_candidates.is_empty():
+		return
+	var new_index := wrapi(_target_select_cursor + delta, 0, _target_select_candidates.size())
+	if new_index == _target_select_cursor:
+		return
+	_stop_target_focus()
+	_target_select_cursor = new_index
+	_on_target_hover_entered(_target_select_candidates[new_index])
+
+
+func _confirm_target_select_cursor() -> void:
+	if _target_select_candidates.is_empty() or _target_select_field_slot < 0:
+		return
+	var mon: BattlePokemon = _target_select_candidates[_target_select_cursor]
+	var target_idx: int = _bm.get_combatant_index(mon)
+	_on_target_selected(_target_select_field_slot, _pending_move_index, target_idx)
 
 
 # ── Input handlers — the M23.0a external contract in action ────────────────

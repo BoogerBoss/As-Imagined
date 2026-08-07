@@ -266,8 +266,14 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	bs._opp_party = opp_party
 	bs._opp_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
 	bs._ply_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
-	bs._opp_sprites = [Control.new(), Control.new()]
-	bs._ply_sprites = [Control.new(), Control.new()]
+	# [M26C8] TextureRect, not a plain Control -- _build_target_select_buttons
+	# now defaults the keyboard cursor to the first candidate on open, which
+	# reaches _start_target_focus()'s opponent-side idle-bob branch and its
+	# real _apply_bottom_anchored_front_sprite(rect: TextureRect, ...) call.
+	bs._opp_sprites = [TextureRect.new(), TextureRect.new()]
+	bs._ply_sprites = [TextureRect.new(), TextureRect.new()]
+	bs._opp_sprite_base_top = [0.0, 0.0]
+	bs._opp_sprite_base_bottom = [0.0, 0.0]
 
 	bs._build_target_select_buttons(0, 0)
 
