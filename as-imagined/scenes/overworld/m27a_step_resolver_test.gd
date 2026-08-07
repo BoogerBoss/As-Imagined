@@ -53,7 +53,10 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 513
+## [border-skirt removal] 513 -> 499. Section AB (the border-skirt arithmetic,
+## AB.01-AB.13) and AC.22 (skirt layers share their plane's z) went with the
+## renderer they tested: 14 assertions, measured from a real run, not grepped.
+const EXPECTED_TOTAL := 499
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -207,7 +210,6 @@ func _ready() -> void:
 	_test_entity_at()
 	_test_stacks_and_counts()
 	_test_map_manager()
-	_test_border_skirt()
 	_test_neighbour_placement()
 	_test_connections_and_border()
 	_test_warp_resolution()
@@ -1615,7 +1617,7 @@ func _test_map_manager() -> void:
 			and mm.elevation_at(Vector2i(11, 6)) == 4)
 
 	# Unowned cells fail SAFE in both directions: a step into nowhere is
-	# refused, and nothing falls through the world before C3's skirt exists.
+	# refused, and nothing falls through the world.
 	_chk("AA.10 an unowned cell reports solid, not walkable",
 			mm.collision_at(Vector2i(50, 50)) == 1)
 	_chk("AA.11 and is out of bounds", not mm.in_bounds(Vector2i(50, 50)))
@@ -1767,8 +1769,7 @@ func _test_neighbour_placement() -> void:
 	# ground while still overlapping it. Found crossing Route 1 back into Pallet
 	# Town; only in that direction, because Pallet Town happened to load first.
 	var zroot := Node2D.new()
-	for nm in ["Ground", "Objects", "Entities_P2", "Overhangs", "Entities_P1",
-			"BorderSkirt_Ground", "BorderSkirt_Objects", "BorderSkirt_Overhangs"]:
+	for nm in ["Ground", "Objects", "Entities_P2", "Overhangs", "Entities_P1"]:
 		var n := Node2D.new()
 		n.name = nm
 		zroot.add_child(n)
@@ -1789,86 +1790,8 @@ func _test_neighbour_placement() -> void:
 	_chk("AC.21 but still passes under overhangs, keeping the two strata apart",
 			z.call("Entities_P2") < z.call("Overhangs")
 			and z.call("Entities_P1") > z.call("Overhangs"))
-	_chk("AC.22 skirt layers share their plane's z rather than sitting below all",
-			z.call("BorderSkirt_Ground") == z.call("Ground")
-			and z.call("BorderSkirt_Objects") == z.call("Objects")
-			and z.call("BorderSkirt_Overhangs") == z.call("Overhangs"))
 	zroot.free()
 
-	mm.free()
-	ra.free()
-	rb.free()
-
-
-## Section AB — [M27C C3] the border skirt.
-##
-## Two things are worth testing here and they are both arithmetic, so this is
-## ungated like AA.
-##
-## The FIRST is the negative modulo. Source's `GetBorderBlockAt` biases by
-## `8 * borderWidth` before taking `%` purely because C keeps the sign of the
-## dividend — and GDScript does exactly the same, so a direct transliteration
-## without that guard reads a negative index. Every cell the skirt paints is
-## outside the map, which means roughly half of them have a negative local
-## coordinate on at least one axis: this is the common case, not an edge case.
-##
-## The SECOND is that the skirt keys on OWNERSHIP, not on connections. An edge
-## whose connection points at an unbaked map needs a skirt exactly like an edge
-## with no connection at all, and the corridor has 3 of the former.
-func _test_border_skirt() -> void:
-	# A 2x2 border with four distinct ids, so any wrong index is visible rather
-	# than coincidentally right — the same reason AA's two chunks differ.
-	var d := _synth(4, 4, [], [], [])
-	d.border = PackedInt32Array([10, 11, 12, 13])
-	d.border_width = 2
-	d.border_height = 2
-
-	_chk("AB.01 local (0,0) reads the block's first entry",
-			MapManager.border_metatile_at(d, Vector2i(0, 0)) == 10)
-	_chk("AB.02 and (1,1) its last",
-			MapManager.border_metatile_at(d, Vector2i(1, 1)) == 13)
-	_chk("AB.03 the pattern repeats forward",
-			MapManager.border_metatile_at(d, Vector2i(2, 2)) == 10)
-
-	# The whole point. A sign-preserving `%` gives -1 here and reads out of the
-	# array; the correct answer continues the parity leftward.
-	_chk("AB.04 a negative x wraps to the far column, not a negative index",
-			MapManager.border_metatile_at(d, Vector2i(-1, 0)) == 11)
-	_chk("AB.05 a negative y likewise",
-			MapManager.border_metatile_at(d, Vector2i(0, -1)) == 12)
-	_chk("AB.06 both negative",
-			MapManager.border_metatile_at(d, Vector2i(-1, -1)) == 13)
-	_chk("AB.07 and it stays periodic a long way out",
-			MapManager.border_metatile_at(d, Vector2i(-16, -16)) == 10)
-
-	# 3x2 is real — 7 layouts declare it and Viridian Forest is one of them, so
-	# a 2x2 assumption would mis-tile a map already in the corridor.
-	var d3 := _synth(4, 4, [], [], [])
-	d3.border = PackedInt32Array([1, 2, 3, 4, 5, 6])
-	d3.border_width = 3
-	d3.border_height = 2
-	_chk("AB.08 a 3x2 block indexes by its own width",
-			MapManager.border_metatile_at(d3, Vector2i(2, 1)) == 6)
-	_chk("AB.09 and wraps on 3, not 2",
-			MapManager.border_metatile_at(d3, Vector2i(3, 0)) == 1
-			and MapManager.border_metatile_at(d3, Vector2i(-1, 0)) == 3)
-
-	_chk("AB.10 a map with no border block yields no tile rather than crashing",
-			MapManager.border_metatile_at(_synth(2, 2, [], [], []), Vector2i(0, 0)) == -1)
-
-	# --- the ownership rule, which is what makes C4 need no new edge logic ---
-	var mm := MapManager.new()
-	var ra := Node2D.new()
-	var rb := Node2D.new()
-	mm.register_chunk("A", d, ra, Vector2i.ZERO)
-	_chk("AB.11 a cell just outside a lone chunk is unowned, so it gets skirt",
-			mm.chunk_owning(Vector2i(-1, 0)) == "")
-	# Put a second chunk exactly where the first one's skirt would have gone.
-	mm.register_chunk("B", d, rb, Vector2i(-4, 0))
-	_chk("AB.12 once a neighbour owns that cell the skirt must yield to it",
-			mm.chunk_owning(Vector2i(-1, 0)) == "B")
-	_chk("AB.13 while a cell beyond BOTH stays unowned",
-			mm.chunk_owning(Vector2i(-5, 0)) == "")
 	mm.free()
 	ra.free()
 	rb.free()
@@ -1950,7 +1873,7 @@ func _test_connections_and_border() -> void:
 	_chk("Y.12 a map with no connections has none to load",
 			f.connections.is_empty() and f.loadable_connections().is_empty())
 	# Pallet Town's south neighbour (Route 21 North) is real in source but not
-	# baked — exactly the dangling-stem case the border skirt has to cover.
+	# baked — a dangling connection, real in source but with nothing to load.
 	_chk("Y.13 an unbaked destination is excluded from the loadable set",
 			p.loadable_connections().size() == 1
 			and str(p.loadable_connections()[0]["map"]) == "MAP_ROUTE1")

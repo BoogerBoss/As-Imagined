@@ -29,46 +29,9 @@ const CELL := 16
 ## Where map_baker writes the shared per-pair TileSets (M27M2).
 const TILESET_DIR := "res://assets/map_tilesets/"
 
-## Atlas geometry, matching map_baker.gd — the skirt paints from the same
-## atlas the chunk's own Ground layer uses, so a border metatile id converts
-## to atlas coords exactly as a map cell does.
+## Atlas geometry, matching map_baker.gd — a metatile id converts to atlas
+## coords the same way here as it does at bake time (`set_metatile`).
 const ATLAS_COLS := 32
-
-## How far past a chunk's own bounds the skirt reaches, PER AXIS.
-##
-## Measured: the canvas is 1024x768 (M26A1) at camera zoom 3, so the visible
-## region is 21.3 x 16.0 cells and the half-extent from an edge cell is
-## 10.7 x 8.0. Plus one cell for the camera's smoothing lag, measured at 11px
-## (~0.7 cells) crossing a seam.
-##
-## PER AXIS because the screen is wider than it is tall in cells, and a single
-## depth sized for the wider one over-covers the vertical by 100%. At a flat 16
-## a 24x20 map carried 2432 skirt cells around 480 real ones; 12 x 9 makes that
-## 1344, a 45% cut in what is the dominant cost of loading a chunk.
-##
-## An earlier version of this comment justified 16 partly as headroom for
-## "non-native window sizes". That was wrong: stretch mode is `canvas_items`
-## with aspect `keep`, so the visible WORLD area is fixed and letterboxing
-## preserves it rather than revealing more.
-const SKIRT_DEPTH_X := 12
-const SKIRT_DEPTH_Y := 9
-
-## The layers MapManager paints the skirt into, one per draw plane.
-##
-## Created at load time and NEVER baked. The baked scene is a reproducible
-## artifact (map_baker's own guard depends on that), and which edges need a
-## skirt is not a property of the map anyway — it changes at runtime as C4
-## loads and unloads neighbours.
-##
-## THREE of them, not one, and that is not symmetry for its own sake: a
-## metatile routes to one or two of the three planes by §1.6, so a skirt
-## painted into the ground plane alone renders half of each block. Pallet
-## Town's own border is the worked example — ids 28/29 are COVERED
-## (ground+objects) but 20/21 are NORMAL (objects+overhangs, nothing on ground
-## at all), so a ground-only skirt left every other row blank. The cell COUNT
-## was already correct; only a screenshot could see it.
-const SKIRT_LAYERS := ["BorderSkirt_Ground", "BorderSkirt_Objects",
-		"BorderSkirt_Overhangs"]
 
 ## §1.6 routing, matching map_baker.gd's own table: layer_type -> the planes a
 ## metatile paints into. Both halves use the same atlas coords; the per-plane
@@ -98,10 +61,10 @@ const ROUTING := {
 ## point of the two strata: elevation-4 entities draw above the overhang plane
 ## and everything else below it.
 const PLANE_Z := {
-	"BorderSkirt_Ground": 0, "Ground": 0,
-	"BorderSkirt_Objects": 1, "Objects": 1,
+	"Ground": 0,
+	"Objects": 1,
 	"Entities_P2": 2,
-	"BorderSkirt_Overhangs": 3, "Overhangs": 3,
+	"Overhangs": 3,
 	"Entities_P1": 4,
 }
 
@@ -110,9 +73,9 @@ const PLANE_Z := {
 ## chunk's terrain planes (never Entities_P1/P2 — the player/NPC layer is
 ## excluded from grading by construction, not by a special case). Owned by
 ## WeatherManager; MapManager only holds a reference so it can (re)apply it
-## at the same two moments `apply_plane_z` already runs (a chunk registering,
-## and a chunk's border skirt growing new layers) — MapManager never reaches
-## into WeatherManager itself, keeping the two decoupled.
+## at the same moment `apply_plane_z` already runs (a chunk registering) —
+## MapManager never reaches into WeatherManager itself, keeping the two
+## decoupled.
 var _weather_material: ShaderMaterial = null
 
 
@@ -150,46 +113,11 @@ var _chunks: Dictionary = {}
 ## that part moves off-thread and only instantiate/place/repaint stays.
 var _pending: Dictionary = {}
 
-## Skirt repaints owed, one popped per frame.
-##
-## [M27C C4] Instantiating a chunk and painting its skirt in the same frame
-## measured 14.6 ms for a 48x40 map — a single frame right at the 60fps budget.
-## They are independent, and a freshly loaded neighbour is a whole map away
-## from the player, so its skirt can wait a frame. The SYNC path still paints
-## immediately: startup and the tests want a chunk fully formed on return.
-## Chunk NAMES waiting for a skirt repaint, at most one paid per frame.
-##
-## [M27D perf] Was a queue of RECTS, and one rect could repaint several chunks
-## in a single call — measured at 4.8 ms for one, and a chunk's skirt is 4-7k
-## `set_cell` calls (2256 cells x 3 planes for Viridian City). Splitting per
-## chunk turns one spike into several cheap frames.
-var _skirt_queue: Array[String] = []
-
-## map_name -> a signature of everything that chunk's painted skirt depends on.
-##
-## ⚠️ **[Map-edge hitch] A REPAINT THAT WRITES IDENTICAL CELLS IS NOT FREE — IT
-## COSTS AS MUCH AS THE FIRST ONE.** Measured with the real renderer: the frame
-## after any `_paint_skirt` runs costs 18.8-22.3 ms against a 7.0 ms baseline,
-## and passes 2 and 3 over unchanged chunks cost the SAME as pass 1. So this is
-## a recurring cost, not a warm-up — the old `clear()`-then-repaint destroyed
-## and rebuilt every skirt canvas item on every call, and Godot charges that on
-## the following frame where no GDScript timing around the call can see it.
-##
-## Two crossings' worth of that landed back to back on the exact step into Route
-## 1 (the two costliest frames of an entire 23-step walk), which at 60 Hz is two
-## dropped frames mid-tween — the "hitch and the player jumps" report.
-##
-## The signature is the fix's first half: skip the call entirely when the result
-## cannot have changed. `_paint_skirt`'s output depends only on the chunk's own
-## border data (fixed at bake), its origin, and the rects of other chunks that
-## reach its skirt region — nothing else, so nothing else belongs here.
-var _skirt_sig: Dictionary = {}
-
 ## map_name -> { local Vector2i : true } for every cell an entity blocks.
 ##
 ## [M27D D2] A set rather than a per-step scan of the scene tree: a step already
-## costs a resolve, and walking every entity of every live chunk per step is the
-## same per-cell cost that made C4's skirt repaint 4000 dictionary walks. Built
+## costs a resolve, and walking every entity of every live chunk per step is a
+## real per-cell cost worth paying once rather than every step. Built
 ## once at install, and rebuildable — which is the shape D3 needs when NPCs
 ## start moving.
 var _occupancy: Dictionary = {}
@@ -228,7 +156,7 @@ func load_chunk(map_name: String, origin: Vector2i = Vector2i.ZERO) -> bool:
 ## the threaded path can share it, and deliberately small — this is all that
 ## still blocks once resource parsing happens off-thread.
 func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
-		origin: Vector2i, defer_skirt: bool = false) -> bool:
+		origin: Vector2i) -> bool:
 	if data == null or packed == null:
 		return false
 	var root: Node2D = packed.instantiate() as Node2D
@@ -243,28 +171,6 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	# the save and is layered back on load. Same shape as `entity_visible`
 	# reading a FLAG rather than the scene knowing it is hidden.
 	_apply_object_event_overrides(map_name, root)
-	# Not just this chunk's skirt: a newly loaded neighbour takes ownership of
-	# cells an existing chunk was skirting over, so the seam only closes if the
-	# OTHER side repaints too. Scoped to chunks that reach these cells.
-	#
-	# ⚠️ **PAINTING THE NEW CHUNK'S SKIRT BEFORE `add_child` WAS TRIED AND
-	# BACKED OUT — DO NOT "OPTIMISE" IT BACK.** The reasoning was sound (a
-	# TileMapLayer outside the tree only marks itself dirty and builds once on
-	# entry, so the skirt would ride along with the map layers' own build) and
-	# it does merge the two builds — but measured on the real crossing it did
-	# not make them cheaper, it only concentrated them: two frames of 11.5 and
-	# 12.5 ms became one of 16.4. The skirt layers are separate nodes that build
-	# exactly once either way, so there was never a duplicate build to save, and
-	# at 60 Hz two frames inside the budget beat one that blows it.
-	if defer_skirt:
-		# The new chunk first: its own tiles are the ones a neighbour's stale
-		# skirt is currently painted over, so repainting it first is what
-		# shortens the visible seam rather than merely spreading the cost.
-		_enqueue_skirt(map_name)
-		for other in _chunks_reaching(chunk_rect(map_name)):
-			_enqueue_skirt(other)
-	else:
-		refresh_skirts_near(chunk_rect(map_name))
 	return true
 
 
@@ -307,10 +213,6 @@ func _entities_under(root: Node2D) -> Array[OverworldEntity]:
 func register_chunk(map_name: String, data: MapData, root: Node2D,
 		origin: Vector2i = Vector2i.ZERO) -> void:
 	_chunks[map_name] = {"data": data, "root": root, "origin": origin}
-	# A re-register can move a chunk or hand it a different root, and both
-	# change what its skirt should hold — drop the cached signature so the next
-	# paint is not skipped as "unchanged".
-	_skirt_sig.erase(map_name)
 	if root != null:
 		root.position = Vector2(origin) * CELL
 		apply_plane_z(root)
@@ -318,56 +220,7 @@ func register_chunk(map_name: String, data: MapData, root: Node2D,
 	rebuild_occupancy(map_name)
 
 
-## Which border metatile falls at a given LOCAL cell, including negative ones.
-##
-## Ported from `GetBorderBlockAt` (src/fieldmap.c:53-70): the block tiles by
-## modulo on the map's own local coordinates, so the pattern's parity runs
-## continuously outward rather than restarting at the map edge.
-##
-## Source biases by `8 * borderWidth` before taking the modulo, because C's `%`
-## keeps the sign of the dividend and a negative index would read out of the
-## array. GDScript's `%` has exactly the same behaviour, so the guard is
-## needed here too — written as a general positive modulo rather than a copied
-## magic bias, which also drops source's implicit assumption that no
-## coordinate is more than 8 blocks outside the map.
-static func border_metatile_at(d: MapData, local: Vector2i) -> int:
-	if d == null or d.border.is_empty():
-		return -1
-	var bw: int = maxi(1, d.border_width)
-	var bh: int = maxi(1, d.border_height)
-	var xp := ((local.x % bw) + bw) % bw
-	var yp := ((local.y % bh) + bh) % bh
-	var i := xp + yp * bw
-	return d.border[i] if i < d.border.size() else -1
-
-
-## The layer type of the border metatile at a local cell, tiled identically to
-## `border_metatile_at` so the two never disagree about which entry they mean.
-static func border_layer_type_at(d: MapData, local: Vector2i) -> int:
-	if d == null or d.border_layer_type.is_empty():
-		return -1
-	var bw: int = maxi(1, d.border_width)
-	var bh: int = maxi(1, d.border_height)
-	var xp := ((local.x % bw) + bw) % bw
-	var yp := ((local.y % bh) + bh) % bh
-	var i := xp + yp * bw
-	return d.border_layer_type[i] if i < d.border_layer_type.size() else -1
-
-
-## Paint every chunk's skirt over ground nobody owns.
-##
-## Deliberately "wherever no chunk owns the cell" rather than "on edges with no
-## connection". The two differ in ways that matter: the corridor has 3 dangling
-## connections whose neighbours are real in source but unbaked, and those edges
-## need a skirt exactly like an edge with no connection at all. It also means
-## C4 needs no new edge logic — when a neighbour loads, its cells acquire an
-## owner and re-running this clears the skirt that covered them.
-func refresh_skirts() -> void:
-	for map_name in _chunks:
-		_paint_skirt(map_name)
-
-
-## The cells a chunk covers, and the wider box its skirt can reach into.
+## The cells a chunk covers, in global coordinates.
 func chunk_rect(map_name: String) -> Rect2i:
 	if not _chunks.has(map_name):
 		return Rect2i()
@@ -377,161 +230,8 @@ func chunk_rect(map_name: String) -> Rect2i:
 	return Rect2i(_chunks[map_name]["origin"], Vector2i(d.width, d.height))
 
 
-## Repaint only the chunks a change at `rect` could actually have altered.
-##
-## [M27C C4] The full sweep is O(chunks) per load and became the dominant cost
-## once shared TileSets removed the resource-load stall — 23.8 ms to repaint
-## four chunks when only one or two could possibly have changed. A chunk's
-## skirt only differs if its own skirt REGION — its bounds grown by the skirt
-## depth — reaches into the cells that changed hands.
-func refresh_skirts_near(rect: Rect2i) -> void:
-	for map_name in _chunks_reaching(rect):
-		_paint_skirt(map_name)
-
-
-## Which live chunks' skirt regions reach into `rect`.
-func _chunks_reaching(rect: Rect2i) -> Array[String]:
-	var grow := Vector2i(SKIRT_DEPTH_X, SKIRT_DEPTH_Y)
-	var out: Array[String] = []
-	for map_name in _chunks:
-		var r := chunk_rect(map_name)
-		if r.size == Vector2i.ZERO:
-			continue
-		if Rect2i(r.position - grow, r.size + grow * 2).intersects(rect):
-			out.append(map_name)
-	return out
-
-
-## Queue a chunk's skirt for a later frame, without queuing it twice.
-func _enqueue_skirt(map_name: String) -> void:
-	if not _skirt_queue.has(map_name):
-		_skirt_queue.append(map_name)
-
-
-func _paint_skirt(map_name: String) -> void:
-	var c: Dictionary = _chunks[map_name]
-	var d: MapData = c["data"]
-	var root: Node2D = c["root"]
-	if d == null or root == null or not is_instance_valid(root) or d.border.is_empty():
-		return
-	var ground: TileMapLayer = root.get_node_or_null("Ground") as TileMapLayer
-	if ground == null:
-		return
-
-	var origin: Vector2i = c["origin"]
-	var has_types := d.border_layer_type.size() == d.border.size()
-
-	# Ownership as RECTS in this chunk's own local space, resolved once.
-	#
-	# [M27C C4] This inner loop runs ~4000 times per repaint, and calling
-	# chunk_owning() per cell meant a Dictionary walk, a Vector2i allocation and
-	# a String return every time — measured at ~13 ms for one 48x40 chunk, which
-	# was the whole remaining hitch after resource loading went off-thread.
-	# Rect2i.has_point against a two-entry array is the same answer without any
-	# of that.
-	var own := Rect2i(Vector2i.ZERO, Vector2i(d.width, d.height))
-	# Only a chunk reaching this one's own skirt REGION can change a painted
-	# cell. Filtering here is what lets the signature below be stable: a chunk
-	# loading on the far side of the region must not read as a change.
-	var region := Rect2i(-Vector2i(SKIRT_DEPTH_X, SKIRT_DEPTH_Y),
-			Vector2i(d.width + SKIRT_DEPTH_X * 2, d.height + SKIRT_DEPTH_Y * 2))
-	var others: Array[Rect2i] = []
-	var sig_parts: Array[String] = []
-	for other_name in _chunks:
-		if other_name == map_name:
-			continue
-		var r := chunk_rect(other_name)
-		if r.size == Vector2i.ZERO:
-			continue
-		var local_r := Rect2i(r.position - origin, r.size)
-		if not region.intersects(local_r):
-			continue
-		others.append(local_r)
-		sig_parts.append(str(local_r))
-
-	# [Map-edge hitch] Sorted so dictionary insertion order cannot make an
-	# unchanged ownership set look changed. See `_skirt_sig`'s own comment for
-	# why skipping matters this much.
-	sig_parts.sort()
-	var sig := str(origin) + "|" + "|".join(sig_parts)
-	var have_layers := root.get_node_or_null(SKIRT_LAYERS[0]) != null
-	if have_layers and _skirt_sig.get(map_name, "") == sig:
-		return
-
-	# One layer per plane. All three share the chunk's single TileSet — the
-	# baker gives every baked layer the same one, with the three atlases as
-	# sources 0/1/2 — so the plane index doubles as the source id, exactly as
-	# in map_baker's own set_cell call.
-	var skirts: Array[TileMapLayer] = []
-	for plane in range(SKIRT_LAYERS.size()):
-		var nm: String = SKIRT_LAYERS[plane]
-		var layer: TileMapLayer = root.get_node_or_null(nm) as TileMapLayer
-		if layer == null:
-			layer = TileMapLayer.new()
-			layer.name = nm
-			layer.tile_set = ground.tile_set
-			root.add_child(layer)
-			# Below every baked layer, in plane order among themselves. Skirt
-			# cells never overlap map cells, so skirt-vs-map order is free;
-			# skirt-vs-skirt order is not, or an overhang would draw under its
-			# own ground. add_child appends, so each has to be moved.
-			root.move_child(layer, plane)
-		skirts.append(layer)
-	apply_plane_z(root)
-	_apply_weather_material(root)
-
-	# What the skirt SHOULD hold, computed before anything is written.
-	var want: Array[Dictionary] = [{}, {}, {}]
-	for y in range(-SKIRT_DEPTH_Y, d.height + SKIRT_DEPTH_Y):
-		for x in range(-SKIRT_DEPTH_X, d.width + SKIRT_DEPTH_X):
-			var local := Vector2i(x, y)
-			# Skip anything a chunk owns — this chunk's own cells, and a
-			# neighbour's, which is what makes a seam close up.
-			if own.has_point(local):
-				continue
-			var taken := false
-			for r in others:
-				if r.has_point(local):
-					taken = true
-					break
-			if taken:
-				continue
-			var mid := border_metatile_at(d, local)
-			if mid < 0:
-				continue
-			var coords := Vector2i(mid % ATLAS_COLS, int(mid / ATLAS_COLS))
-			# A map imported before border_layer_type existed has none; fall
-			# back to the ground plane rather than painting nothing, so an old
-			# artifact degrades to the previous behaviour instead of a void.
-			var lt: int = border_layer_type_at(d, local) if has_types else 1
-			for plane in ROUTING.get(lt, [0]):
-				want[plane][local] = coords
-
-	# ⚠️ **RECONCILE, NEVER `clear()`.** `clear()` drops every cell, which makes
-	# Godot destroy and rebuild the layer's whole canvas-item set — the 12-15 ms
-	# next-frame cost measured above, paid in full even when the repaint would
-	# write back exactly what it just erased. Writing only the differences
-	# dirties only the cells that genuinely changed hands, which for the usual
-	# case (a neighbour appears and takes over one edge band) is a couple of
-	# hundred cells instead of a couple of thousand.
-	for plane in range(SKIRT_LAYERS.size()):
-		var layer: TileMapLayer = skirts[plane]
-		var wanted: Dictionary = want[plane]
-		for cell in layer.get_used_cells():
-			if not wanted.has(cell):
-				layer.erase_cell(cell)
-		for cell in wanted:
-			var coords: Vector2i = wanted[cell]
-			if layer.get_cell_source_id(cell) != plane \
-					or layer.get_cell_atlas_coords(cell) != coords:
-				layer.set_cell(cell, plane, coords)
-
-	_skirt_sig[map_name] = sig
-
-
 ## Give a chunk's layers their plane z. Idempotent, and silent about children
-## it does not recognise — a synthetic chunk in a test has none of these, and a
-## baked one gains its skirt layers later.
+## it does not recognise — a synthetic chunk in a test has none of these.
 static func apply_plane_z(root: Node2D) -> void:
 	if root == null or not is_instance_valid(root):
 		return
@@ -547,17 +247,7 @@ func unload_chunk(map_name: String) -> void:
 	var root: Node2D = _chunks[map_name]["root"]
 	if root != null and is_instance_valid(root):
 		root.queue_free()
-	# Captured BEFORE the erase: the rect is what the repaint scopes to, and it
-	# stops existing the moment the chunk does.
-	var vacated := chunk_rect(map_name)
 	_chunks.erase(map_name)
-	_skirt_sig.erase(map_name)
-	# [M27C C4] Repaint what is left. Cells this chunk owned are now unowned, so
-	# whichever neighbour was skirting up to that seam has to extend over them
-	# again — otherwise unloading leaves a hole exactly where the map used to be.
-	# Flagged as debt when the skirt landed in C3, unreachable until now because
-	# only one chunk was ever live.
-	refresh_skirts_near(vacated)
 
 
 func loaded_chunks() -> Array:
@@ -603,9 +293,8 @@ func weather_of(map_name: String) -> int:
 
 
 ## Which chunk's bounds contain this global cell, or "" for the gap between and
-## around them. That gap is real and expected: it is where the border skirt
-## goes (C3), and a caller must treat it as impassable rather than assuming
-## every coordinate belongs to somebody.
+## around them. That gap is real and expected, and a caller must treat it as
+## impassable rather than assuming every coordinate belongs to somebody.
 func chunk_owning(gcell: Vector2i) -> String:
 	for map_name in _chunks:
 		var c: Dictionary = _chunks[map_name]
@@ -656,7 +345,7 @@ func data_at(gcell: Vector2i) -> MapData:
 ##
 ## Unowned cells report as solid ground at elevation 0. That is the
 ## conservative answer in both directions: a step into nowhere is refused, and
-## nothing falls through the world while C3's skirt does not exist yet.
+## nothing falls through the world.
 func collision_at(gcell: Vector2i) -> int:
 	var d := data_at(gcell)
 	if d == null:
@@ -773,8 +462,8 @@ static func neighbour_origin(host_origin: Vector2i, host: MapData,
 ## Load every baked neighbour of an already-loaded chunk.
 ##
 ## Returns the names loaded. Uses `loadable_connections()`, so DIVE/EMERGE and
-## unbaked destinations are excluded by the same rule the skirt keys on: an
-## edge that yields nothing here is an edge that stays skirted.
+## unbaked destinations are excluded: an edge that yields nothing here is an
+## edge with no neighbour to walk onto.
 ## Start background loads for a chunk's baked neighbours. Non-blocking.
 ##
 ## Returns how many requests were started. The origin cannot be computed yet —
@@ -806,11 +495,6 @@ func request_neighbours(map_name: String) -> int:
 
 
 func _process(_delta: float) -> void:
-	# Skirts first, and only when nothing installed this frame — the two are the
-	# frame's two expensive jobs and doing both at once is what this avoids.
-	if not _skirt_queue.is_empty():
-		_paint_skirt(_skirt_queue.pop_front())
-		return
 	_poll_pending()
 
 
@@ -835,7 +519,7 @@ func _poll_pending() -> void:
 		var packed: PackedScene = ResourceLoader.load_threaded_get(p["scene"]) as PackedScene
 		if data != null and packed != null:
 			_install_chunk(nb, data, packed,
-					neighbour_origin(p["host_origin"], p["host"], p["conn"], data), true)
+					neighbour_origin(p["host_origin"], p["host"], p["conn"], data))
 		return
 
 
@@ -1081,8 +765,7 @@ func sight_reaches_player(from: Vector2i, dir: int, sight_range: int,
 ## widened one: conflating them would make a sign solid.
 ##
 ## Scans rather than indexes. Interaction happens on a button press, not per
-## step, so the per-cell cost that made C4's skirt repaint expensive does not
-## apply here.
+## step, so a per-cell cost that would matter in a hot loop does not apply here.
 func entity_node_at(gcell: Vector2i) -> OverworldEntity:
 	var found := entities_at(gcell)
 	return found[0] if not found.is_empty() else null
@@ -1158,10 +841,9 @@ static func _layer_type_for(pair: String, metatile_id: int) -> int:
 ## here is already the resolved GLOBAL cell, converted by the caller the
 ## same way every other local-to-global op in this project is.
 ##
-## Repaints all three planes from the SAME per-pair layer-type table
-## `[M27C]`'s border skirt already reads via `ROUTING` — a metatile replace
-## is exactly the border-skirt paint operation done once instead of every
-## frame, and getting the routing wrong here is the identical "painted a
+## Repaints all three planes from the per-pair layer-type table via `ROUTING`,
+## exactly as `map_baker` does at bake time — and getting the routing wrong
+## here is the identical "painted a
 ## NORMAL metatile into Ground alone, half the block never renders" trap
 ## `[M27C C3]`/`[M27M]` already paid for twice. Confirmed non-trivial on the
 ## corridor's own two real uses: `METATILE_Mart_CounterMid_Top` (id 703) is
@@ -1410,8 +1092,7 @@ func is_entity_moving(e: OverworldEntity) -> bool:
 ## Move a placed entity to a new LOCAL cell, keeping occupancy true.
 ##
 ## Incremental rather than a rebuild: `rebuild_occupancy` walks every entity of
-## the chunk, and doing that per NPC per step is the per-cell cost C4 already
-## paid for once with the skirt repaint.
+## the chunk, and doing that per NPC per step is a cost worth avoiding.
 func move_entity(map_name: String, e: OverworldEntity, to: Vector2i) -> void:
 	if not _chunks.has(map_name):
 		return

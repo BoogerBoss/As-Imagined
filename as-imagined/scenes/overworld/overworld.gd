@@ -2333,7 +2333,6 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 		_weather.request_weather(manager.weather_of(dest))
 	# An interior has none; an outdoor destination needs its own back.
 	manager.load_neighbours(dest)
-	manager.refresh_skirts()
 
 
 ## [Map scripts] `RunOnTransitionMapScript` + `TryRunOnWarpIntoMapScript`

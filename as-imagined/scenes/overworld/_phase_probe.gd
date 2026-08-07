@@ -109,10 +109,6 @@ func _probe(map_name: String) -> void:
 	mm.register_chunk(map_name, data, root, Vector2i.ZERO)
 	var ms_reg := (Time.get_ticks_usec() - t0) / 1000.0
 
-	t0 = Time.get_ticks_usec()
-	mm.refresh_skirts_near(mm.chunk_rect(map_name))
-	var ms_skirt := (Time.get_ticks_usec() - t0) / 1000.0
-
 	# Let a frame actually DRAW, then time it — this is where TileMapLayer
 	# builds quadrants, and it is what the headless probe could not see.
 	var t_draw := Time.get_ticks_usec()
@@ -122,7 +118,7 @@ func _probe(map_name: String) -> void:
 
 	var ents := root.find_children("*", "OverworldEntity", true, false).size()
 	var ms_total := (Time.get_ticks_usec() - t_all) / 1000.0
-	var accounted := ms_data + ms_scene + ms_inst + ms_add + ms_reg + ms_skirt + ms_draw
+	var accounted := ms_data + ms_scene + ms_inst + ms_add + ms_reg + ms_draw
 
 	_out("%s  cells=%d entities=%d  tileset_cached=%s held=%s"
 			% [map_name, data.width * data.height, ents, ts_cached, held])
@@ -132,10 +128,9 @@ func _probe(map_name: String) -> void:
 	_out("   4 add_child TOTAL   %8.2f ms" % ms_add)
 	_out("     4a tilemap layers %8.2f ms   <- 3 TileMapLayers entering tree" % ms_add_layers)
 	_out("     4b entity _ready  %8.2f ms   <- %d entities: sprites + nodes" % [ms_add_ents, ents])
-	_out("   5 skirt paint       %8.2f ms" % ms_skirt)
-	_out("   6 register/occup    %8.2f ms" % ms_reg)
+	_out("   5 register/occup    %8.2f ms" % ms_reg)
 	_out("   4c first 2 frames  %8.2f ms   <- first DRAW of those layers" % ms_draw)
-	_out("   7 unaccounted       %8.2f ms" % (ms_total - accounted))
+	_out("   6 unaccounted       %8.2f ms" % (ms_total - accounted))
 	_out("   = TOTAL             %8.2f ms" % ms_total)
 
 	mm.free()

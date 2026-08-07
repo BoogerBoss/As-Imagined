@@ -101,9 +101,15 @@ enum Connection { NONE, SOUTH, NORTH, WEST, EAST, DIVE, EMERGE }
 ## load-bearing: 104 of 266 connections in the reference carry a nonzero one.
 @export var connections: Array[Dictionary] = []
 
-## The block painted outside the map on any edge with NO loadable neighbour,
-## row-major over `border_width` x `border_height`. Metatile ids only — a skirt
-## cell's impassability is a rule the loader applies, not a value read here.
+## The reference's own out-of-bounds block, row-major over `border_width` x
+## `border_height`. Metatile ids only.
+##
+## ⚠️ **NOTHING READS THIS AT RUNTIME.** The border-skirt renderer that
+## consumed it was removed — borders are hand-drawn into the maps themselves
+## now. The fields stay because the importer still emits them and every baked
+## `_data.tres` carries them, so dropping them would mean an importer change
+## and a full re-bake for no gain. Treat them as imported data waiting for a
+## consumer, not as a live mechanism.
 ##
 ## Defaults are 2x2 because that is the reference's own: 441 of 785 layouts
 ## omit the dimensions entirely and every one of those ships a 4-entry
@@ -111,9 +117,8 @@ enum Connection { NONE, SOUTH, NORTH, WEST, EAST, DIVE, EMERGE }
 ## constants.
 @export var border: PackedInt32Array = PackedInt32Array()
 
-## Per-border-metatile layer type, parallel to `border`. Needed because a
-## metatile routes to one or two of the three draw planes (§1.6) and a skirt
-## painted into the ground plane alone shows half of each block.
+## Per-border-metatile layer type, parallel to `border`. Same standing as
+## `border` itself — imported, currently unread.
 @export var border_layer_type: PackedInt32Array = PackedInt32Array()
 @export var border_width: int = 2
 @export var border_height: int = 2
@@ -125,7 +130,7 @@ enum Connection { NONE, SOUTH, NORTH, WEST, EAST, DIVE, EMERGE }
 ## does not resolve to a baked scene. Deliberately one place rather than each
 ## caller re-deriving it: the corridor has 15 connections of which 3 dangle,
 ## so "has a connection" and "has a neighbour to load" are genuinely different
-## questions, and an edge that fails this test is one that needs a border skirt.
+## questions.
 func loadable_connections() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for c in connections:

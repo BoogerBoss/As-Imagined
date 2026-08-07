@@ -57,8 +57,8 @@ func _test_metatile_labels() -> void:
 ## A minimal chunk: a MapData plus a real Node2D root carrying Ground/
 ## Objects/Overhangs TileMapLayers, each sharing one small TileSet whose
 ## source_id equals its own plane index -- exactly production's convention
-## (`_paint_skirt`'s own doc comment: "the plane index doubles as the source
-## id").
+## (map_baker gives every baked layer the same TileSet, with the three atlases
+## as sources 0/1/2, so the plane index doubles as the source id).
 func _make_chunk(atlas_name: String) -> Dictionary:
 	var d := MapData.new()
 	d.width = 4
