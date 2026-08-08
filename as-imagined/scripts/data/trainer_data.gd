@@ -53,3 +53,25 @@ extends Resource
 # Static source data only (see exclusion note above re: no mutable rematch state).
 @export var rematch_group_id: int = -1  # -1 = this trainer has no rematch group
 @export var rematch_tier: int = 0
+
+
+## [M27Q Q2] Render `ai_flags` as real checkboxes in the Inspector.
+##
+## ⚠️ **THE HINT IS BUILT AT RUNTIME FROM `TrainerAI.FLAG_TABLE`, NOT WRITTEN
+## OUT AS `@export_flags`.** That annotation takes literal strings at parse
+## time, so it would be a second hand-maintained copy of the flag list that has
+## to agree with the first — the identical two-lists-must-agree shape that hid
+## a missing CHECK_VIABILITY from 80 trainers until 2026-08-08. Deriving it
+## means adding a flag is one edit, in one place, and the checkbox follows.
+##
+## Godot's explicit-value form (`"Name:value"`) is what makes a sparse set
+## expressible: the flags run 1/2/4/8/16 and then jump to 16384, and the
+## default positional form would need fifteen entries to reach that bit.
+##
+## Nothing else about the property changes — it stays a plain `int` on disk, so
+## every existing `.tres`, the importer, and `TrainerAI.from_trainer_data` are
+## all untouched.
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "ai_flags":
+		property.hint = PROPERTY_HINT_FLAGS
+		property.hint_string = TrainerAI.flags_hint_string()

@@ -56,7 +56,12 @@ const MAP_DATA_ASSERTIONS := 8
 ## [border-skirt removal] 513 -> 499. Section AB (the border-skirt arithmetic,
 ## AB.01-AB.13) and AC.22 (skirt layers share their plane's z) went with the
 ## renderer they tested: 14 assertions, measured from a real run, not grepped.
-const EXPECTED_TOTAL := 499
+##
+## [M27Q Q2] 499 -> 507 -> 510. Section AS: first the movement_type dropdown
+## and the script_label resolution warning (8), then the Open-trainer-resource
+## button (3). Both figures read off a real run — `507 + 0 gated == 499` and
+## then `510 + 0 gated == 507` — never counted from `_chk(` call sites.
+const EXPECTED_TOTAL := 510
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -228,6 +233,7 @@ func _ready() -> void:
 	_test_flag_store()
 	_test_trainer_sight_runtime()
 	_test_bake_guard()
+	_test_inspector_affordances()
 	_test_gesture_lifecycle()
 	_test_clip_math()
 	_test_write_half()
@@ -3655,3 +3661,84 @@ func _test_player_occupies_its_cell() -> void:
 	_chk("AO.04 and claims the new one with no explicit notification",
 			man.entity_at(was + Vector2i(2, 2)))
 	ow.queue_free()
+
+
+## Section AS — [M27Q Q2] the two Inspector affordances on placed entities.
+##
+## Both exist to make a SILENT typo impossible or loud. `movement_type` had a
+## warning but a free-text field; `script_label` had neither, and was the one
+## field that decides whether an NPC says anything at all.
+func _test_inspector_affordances() -> void:
+	var n := NPC.new()
+
+	# --- movement_type is a real dropdown, built from the GENERATED table so
+	# it cannot drift from source's own 89 constants.
+	var hint := ""
+	var hint_kind := -1
+	for p in n.get_property_list():
+		if p.name == "movement_type":
+			hint = p.hint_string
+			hint_kind = p.hint
+	_chk("AS.01 movement_type is offered as an enum, not free text",
+			hint_kind == PROPERTY_HINT_ENUM)
+	_chk("AS.02 the dropdown carries all 89 generated movement types",
+			hint.split(",").size() == MovementTypes.ALL.size()
+			and MovementTypes.ALL.size() == 89)
+	# ⚠️ The property must still STORE the constant name. An index would be a
+	# second encoding of a value map_baker writes and FIXED_FACING keys on,
+	# and would reinterpret every baked scene if the generated order changed.
+	_chk("AS.03 the stored value is still the constant name, not an index",
+			hint.begins_with("MOVEMENT_TYPE_NONE"))
+
+	# --- script_label now resolves or says so.
+	n.script_label = "PalletTown_EventScript_SignLady"
+	_chk("AS.04 a real IMPORTED label produces no warning",
+			not _joined(n._get_configuration_warnings()).contains("script_label"))
+	n.script_label = "PalletTown_Authored_SeaBreeze"
+	_chk("AS.05 a real AUTHORED label produces no warning either (EventRegistry is "
+			+ "runtime-populated, so the editor has to fill it itself)",
+			not _joined(n._get_configuration_warnings()).contains("script_label"))
+	n.script_label = "Totally_Made_Up_Label"
+	_chk("AS.06 an unresolvable label DOES warn, and names itself",
+			_joined(n._get_configuration_warnings()).contains("Totally_Made_Up_Label"))
+	n.script_label = ""
+	_chk("AS.07 an empty label is a real state (most entities) and never warns",
+			not _joined(n._get_configuration_warnings()).contains("script_label"))
+
+	# ⚠️ NOT vacuous: proves the index is really populated rather than the
+	# check silently failing open on an empty corpus, which is the one way
+	# AS.04-AS.05 could pass for the wrong reason.
+	_chk("AS.08 the label index actually loaded the corpus (17k+ labels)",
+			OverworldEntity._script_labels().size() > 17000)
+	n.free()
+
+	# --- [M27Q Q2] the Open-trainer-resource button on TrainerNPC.
+	var t := TrainerNPC.new()
+	var btn_hint := -1
+	var btn_stores := true
+	var btn_found := false
+	for p in t.get_property_list():
+		if p.name == "_open_trainer":
+			btn_found = true
+			btn_hint = p.hint
+			btn_stores = bool(p.usage & PROPERTY_USAGE_STORAGE)
+	_chk("AS.09 TrainerNPC offers an Open-trainer-resource button",
+			btn_found and btn_hint == PROPERTY_HINT_TOOL_BUTTON)
+	# ⚠️ THE ASSERTION THAT PROTECTS THE BAKED SCENES. A tool button that
+	# serialised would add a line to all 32 baked maps and make every one of
+	# them read as hand-edited to check_bake_diff.
+	_chk("AS.10 the button is NOT storage, so it never reaches a baked scene",
+			btn_found and not btn_stores)
+	# The handler must be inert outside the editor rather than reaching for
+	# EditorInterface, which does not exist in an exported build.
+	t.trainer_key = ""
+	t._edit_trainer_resource()
+	t.trainer_key = "TRAINER_LASS_ROBIN_FRLG"
+	t._edit_trainer_resource()
+	_chk("AS.11 the handler is a safe no-op outside the editor, keyed or not",
+			t.has_registry_entry())
+	t.free()
+
+
+func _joined(a: PackedStringArray) -> String:
+	return " | ".join(a)

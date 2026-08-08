@@ -163,6 +163,30 @@ func _facing_from_movement_type() -> int:
 	return StepResolver.Dir.SOUTH
 
 
+## [M27Q Q2] Make `movement_type` a DROPDOWN instead of a text field.
+##
+## ⚠️ **THIS MAKES THE TYPO THE WARNING BELOW CATCHES UNREPRESENTABLE.** The
+## warning stays — it still fires for a value typed before this landed, or set
+## from code, or arriving from an older baked scene — but the Inspector can no
+## longer produce one.
+##
+## The hint is built from `MovementTypes.ALL`, which is GENERATED from
+## `include/constants/event_object_movement.h` (89 types), so the list cannot
+## drift from source: regenerating the constants regenerates the dropdown. Same
+## single-table discipline as `TrainerAI.FLAG_TABLE`.
+##
+## ⚠️ The property stays a `String` and stores the constant NAME, not an index.
+## An index would be a second encoding of a value the whole project passes
+## around as text (`MovementTypes.FIXED_FACING` is keyed by it, `map_baker`
+## writes it, `begins_with("MOVEMENT_TYPE_WANDER")` reads it), and it would
+## silently reinterpret every baked scene the moment the generated order
+## changed.
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "movement_type":
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = ",".join(MovementTypes.ALL)
+
+
 ## `movement_type` is a free-text String, and retyping it in the inspector is
 ## the fastest way to turn a rotating trainer into a fixed-facing one. That
 ## makes a typo cheap to introduce and, without this, invisible: MapOverlay's

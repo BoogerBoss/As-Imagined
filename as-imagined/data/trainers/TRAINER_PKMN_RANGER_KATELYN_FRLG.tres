@@ -17,5 +17,5 @@ trainer_name = "KATELYN"
 trainer_class_id = 111
 pic_stem = "pokemon_ranger_f_frlg"
 gender = 0
-ai_flags = 3
+ai_flags = 7
 party = Array[Resource]([SubResource("PartyMon_0")])

@@ -25,5 +25,5 @@ trainer_class_id = 102
 pic_stem = "cool_couple_frlg"
 gender = 0
 is_doubles = true
-ai_flags = 3
+ai_flags = 7
 party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

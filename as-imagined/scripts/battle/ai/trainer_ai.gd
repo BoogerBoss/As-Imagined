@@ -83,6 +83,55 @@ const AI_FLAG_BASIC_TRAINER: int = AI_FLAG_CHECK_BAD_MOVE | AI_FLAG_TRY_TO_FAINT
 # in the game and to none of the ones source says should have it.
 const AI_FLAG_SMART_SWITCHING: int = 1 << 14
 
+## [M27Q Q2] The ONE ordered list of atomic flags — label and value together.
+##
+## ⚠️ **THIS EXISTS SO THE INSPECTOR CHECKBOXES CANNOT DRIFT FROM THE FLAGS.**
+## The obvious way to give `TrainerData.ai_flags` checkboxes is
+## `@export_flags("Check Bad Move", ...)`, but that annotation takes LITERAL
+## strings at parse time: adding a flag constant would give you the constant
+## and no checkbox, and the omission would be silent. That is the same shape as
+## the bug that cost 80 trainers their CHECK_VIABILITY — two hand-maintained
+## lists that had to agree and quietly didn't — so it is not a shape worth
+## repeating one file over.
+##
+## `TrainerData._validate_property` builds its `PROPERTY_HINT_FLAGS` hint from
+## this at runtime, and `m24c_test` section G asserts every `AI_FLAG_*`
+## constant appears here exactly once (enumerated via
+## `get_script_constant_map()`, so the guard cannot go stale either). Add a
+## flag: add its constant, add its row, or the suite fails.
+##
+## ⚠️ Deliberately EXCLUDES `AI_FLAG_BASIC_TRAINER` — that is a composite alias
+## for bits 0-2, not an atomic flag, and offering it as a fourth checkbox
+## alongside its own three members would let one click contradict another.
+##
+## ⚠️ SMART SWITCHING IS LABELLED AS UNUSED, NOT HIDDEN. Zero of the 1,477
+## converted trainers set it and source never gives it to a Kanto trainer, so
+## ticking it authors a trainer that departs from the reference. It stays
+## visible because Q1 made it genuinely functional (it derives `tier`), and the
+## label is what makes the departure a choice rather than an accident — the
+## same "offer the default, mark it visibly" discipline M27B chose for
+## defaulted collision and elevation.
+const FLAG_TABLE := [
+	["Check Bad Move", AI_FLAG_CHECK_BAD_MOVE],
+	["Try To Faint", AI_FLAG_TRY_TO_FAINT],
+	["Check Viability", AI_FLAG_CHECK_VIABILITY],
+	["Force Setup First Turn", AI_FLAG_FORCE_SETUP_FIRST_TURN],
+	["Risky", AI_FLAG_RISKY],
+	["Smart Switching (no real trainer uses this)", AI_FLAG_SMART_SWITCHING],
+]
+
+
+## The `PROPERTY_HINT_FLAGS` hint string for `FLAG_TABLE`, in Godot's own
+## explicit-value form (`"Name:value"`), which is what lets a sparse set — five
+## contiguous low bits plus one at bit 14 — be expressed without listing the
+## fifteen positional entries the default form would need. Verified against
+## this engine build rather than assumed.
+static func flags_hint_string() -> String:
+	var parts := PackedStringArray()
+	for row in FLAG_TABLE:
+		parts.append("%s:%d" % [row[0], row[1]])
+	return ",".join(parts)
+
 # Score constants — source: include/battle_ai_main.h L21-41
 const AI_SCORE_DEFAULT: int  = 100  # constants/battle_ai.h L57
 const FAST_KILL: int         = 6    # AI faster and faints target

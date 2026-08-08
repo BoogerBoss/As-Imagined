@@ -31,6 +31,6 @@ trainer_name = "ERIKA"
 trainer_class_id = 93
 pic_stem = "leader_erika_frlg"
 gender = 0
-ai_flags = 3
+ai_flags = 7
 battle_items = Array[int]([48])
 party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

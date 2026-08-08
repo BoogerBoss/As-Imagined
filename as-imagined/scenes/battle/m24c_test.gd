@@ -28,6 +28,7 @@ func _ready() -> void:
 	_test_section_d_force_setup_first_turn()
 	_test_section_e_risky()
 	_test_section_f_factories()
+	_test_section_g_flag_table()
 
 	var total := _pass + _fail
 	print("m24c_test: %d/%d passed" % [_pass, total])
@@ -401,3 +402,62 @@ func _test_section_f_factories() -> void:
 	_chk("F.10 the two unimplemented high-level wild flags stay off at level 100",
 			TrainerAI.from_wild_level(100).ai_flags
 			== (TrainerAI.AI_FLAG_CHECK_BAD_MOVE | TrainerAI.AI_FLAG_CHECK_VIABILITY))
+
+
+# ── Section G: [M27Q Q2] FLAG_TABLE cannot drift from the flag constants ────
+#
+# ⚠️ **THE POINT IS THAT THIS GUARD CANNOT GO STALE.** It does not compare
+# FLAG_TABLE against a hand-written list of expected names — that would be a
+# third copy with the same drift problem. It enumerates the script's OWN
+# constants via get_script_constant_map(), so a flag added tomorrow is in the
+# expected set automatically and the suite fails until its row exists.
+#
+# This is the guard the CHECK_VIABILITY bug would have wanted: two lists that
+# had to agree, no mechanism forcing them to.
+func _test_section_g_flag_table() -> void:
+	var consts: Dictionary = TrainerAI.new().get_script().get_script_constant_map()
+	var atomic := {}   # name -> value, every AI_FLAG_* except the composite
+	for k in consts:
+		var name := str(k)
+		if name.begins_with("AI_FLAG_") and name != "AI_FLAG_BASIC_TRAINER":
+			atomic[name] = consts[k]
+
+	var tabled := {}   # value -> label, as FLAG_TABLE declares them
+	var dup := false
+	for row in TrainerAI.FLAG_TABLE:
+		if tabled.has(row[1]):
+			dup = true
+		tabled[row[1]] = row[0]
+
+	_chk("G.01 FLAG_TABLE has one row per atomic AI_FLAG_* constant",
+			tabled.size() == atomic.size())
+	var missing := PackedStringArray()
+	for name in atomic:
+		if not tabled.has(atomic[name]):
+			missing.append(name)
+	_chk("G.02 no atomic flag is absent from FLAG_TABLE (missing: %s)"
+			% ", ".join(missing), missing.is_empty())
+	_chk("G.03 no value appears twice in FLAG_TABLE", not dup)
+
+	# The composite is deliberately NOT offered as a checkbox: it is bits 0-2,
+	# so a fourth box could contradict the three beside it.
+	_chk("G.04 the BASIC_TRAINER composite is excluded from FLAG_TABLE",
+			not tabled.has(TrainerAI.AI_FLAG_BASIC_TRAINER)
+			and TrainerAI.AI_FLAG_BASIC_TRAINER == 7)
+
+	# --- the hint string TrainerData actually hands the Inspector
+	var hint := TrainerAI.flags_hint_string()
+	_chk("G.05 the hint uses Godot's explicit Name:value form, not positional",
+			hint.contains("Check Bad Move:1") and hint.contains(":16384"))
+	_chk("G.06 the hint has one entry per FLAG_TABLE row",
+			hint.split(",").size() == TrainerAI.FLAG_TABLE.size())
+
+	# ⚠️ Asserts the WIRING, not just the string: a correct hint that never
+	# reaches the property would look identical from here.
+	var td := TrainerData.new()
+	var found := false
+	for p in td.get_property_list():
+		if p.name == "ai_flags":
+			found = (p.hint == PROPERTY_HINT_FLAGS and p.hint_string == hint)
+	_chk("G.07 TrainerData.ai_flags actually carries that hint via _validate_property",
+			found)

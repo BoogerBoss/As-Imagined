@@ -101,6 +101,14 @@ AI_RISKY = 16
 AI_TOKEN_MAP = {
     "CHECKBADMOVE": AI_CHECK_BAD_MOVE,
     "TRYTOFAINT": AI_TRY_TO_FAINT,
+    # [M27Q Q1 follow-up] MISSING UNTIL 2026-08-08, AND THE BUG WAS INVISIBLE
+    # FOR EXACTLY ONE REASON: AI_CHECK_VIABILITY was already referenced by the
+    # BASICTRAINER composite below, so the constant existed, was used, and
+    # nothing read as absent. Only the standalone token had no key -- and 80
+    # source trainers spell it standalone ("Check Bad Move / Try To Faint /
+    # Check Viability"), including TRAINER_RIVAL_OAKS_LAB_* . Every one of
+    # them imported as ai_flags = 3 instead of 7.
+    "CHECKVIABILITY": AI_CHECK_VIABILITY,
     "FORCESETUPFIRSTTURN": AI_FORCE_SETUP_FIRST_TURN,
     "RISKY": AI_RISKY,
     # "Basic Trainer" is itself a composite alias in source
@@ -485,10 +493,36 @@ def parse_ivs_evs(value: str, default_val: int):
 
 
 def resolve_ai_flags(value: str) -> int:
+    """Parse an `AI:` line's slash-separated tokens into the bitmask.
+
+    [M27Q Q1 follow-up] KILLS THE BUG CLASS, NOT JUST THE BUG. This used to be
+    `AI_TOKEN_MAP.get(key, 0)`, so a token with no entry contributed ZERO with
+    no warning -- which is how a missing CHECKVIABILITY key silently stripped a
+    real flag from 80 trainers and produced a roster that looked entirely
+    plausible (every value was a legal combination; the arithmetic just landed
+    on 3 instead of 7). Same discipline as normalize()'s own collision guard
+    and canonical_key()'s disjointness assert: an unrecognised token is a
+    disagreement between this map and the reference, and it stops the build.
+
+    The deliberate exception is an EMPTY token -- `fields.get("AI", "")`
+    returns "" for the 15 trainers with no `AI:` line at all, which is a real
+    and correct source state meaning "no AI flags".
+    """
     flags = 0
     for token in value.split("/"):
         key = normalize(token)
-        flags |= AI_TOKEN_MAP.get(key, 0)
+        if not key:
+            continue
+        if key not in AI_TOKEN_MAP:
+            raise SystemExit(
+                "gen_trainer_data: unknown AI token %r (normalised %r).\n"
+                "  Every token in an `AI:` line must have an AI_TOKEN_MAP entry.\n"
+                "  Known: %s\n"
+                "  If the reference added a flag, add it to the map (and to\n"
+                "  TrainerAI's own constants) rather than letting it read as 0."
+                % (token.strip(), key, ", ".join(sorted(AI_TOKEN_MAP)))
+            )
+        flags |= AI_TOKEN_MAP[key]
     return flags
 
 

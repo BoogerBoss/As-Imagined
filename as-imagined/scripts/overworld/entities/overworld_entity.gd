@@ -36,8 +36,7 @@ const CELL := 16
 @export var visibility_flag: String = ""
 
 ## Label of the script this event runs, indexed out of the reference's own
-## data/**/*.inc tree at import time. Routing it is M27G's job; until then it is
-## a recorded pointer, not a live call.
+## data/**/*.inc tree at import time, or authored under `scripts/events/`.
 @export var script_label: String = ""
 
 
@@ -48,10 +47,62 @@ func priority() -> int:
 	return MetatileBehavior.ELEVATION_TO_PRIORITY[elevation]
 
 
+## [M27Q Q2] Every script label that exists, for the editor-side check below.
+##
+## ⚠️ **NOTHING VALIDATED `script_label` BEFORE THIS.** `elevation`,
+## `movement_type` and `trainer_key` each had a warning; the one field that
+## decides whether an NPC says anything at all had none. A typo was silent in
+## the editor, silent at boot, and first surfaced as the VM halting
+## `UNRESOLVED` when you walked up and pressed A.
+##
+## Built once and cached: `data/map_scripts.json` is 8.6 MB and measures
+## **28 ms to read + 198 ms to parse for 17,159 labels**, which is fine once per
+## editor session and would not be fine per validation call.
+static var _label_index: Dictionary = {}
+static var _label_index_built := false
+
+
+## ⚠️ **FAILS OPEN, DELIBERATELY.** Returns an EMPTY dictionary if the corpus
+## cannot be read, and the caller then warns about nothing. A validator that
+## cannot see the corpus would otherwise flag every entity on every map at
+## once — which is worse than no warning, because the real one would be
+## invisible in the noise and the whole check would get ignored.
+static func _script_labels() -> Dictionary:
+	if _label_index_built:
+		return _label_index
+	_label_index_built = true
+	var f := FileAccess.open("res://data/map_scripts.json", FileAccess.READ)
+	if f == null:
+		return _label_index
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (parsed is Dictionary):
+		return _label_index
+	for k in (parsed as Dictionary):
+		_label_index[str(k)] = true
+	# Authored scripts live in GDScript, not the corpus, and `EventRegistry` is
+	# populated at RUNTIME by `ScriptDriver.setup` — so in the editor it is
+	# empty unless something fills it. Filling it here is safe: `register_all`
+	# is static, builds plain op arrays, and `register` keeps the first
+	# registration rather than erroring on a repeat.
+	if EventRegistry.labels().is_empty():
+		AuthoredEvents.register_all()
+	for name in EventRegistry.labels():
+		_label_index[str(name)] = true
+	return _label_index
+
+
 func _get_configuration_warnings() -> PackedStringArray:
 	var out := PackedStringArray()
 	if elevation < 0 or elevation > 15:
 		out.append("elevation %d is outside the 0-15 range the source uses." % elevation)
+	if script_label != "":
+		var known := _script_labels()
+		if not known.is_empty() and not known.has(script_label):
+			out.append(("script_label '%s' resolves to no script — neither the "
+					+ "imported corpus nor scripts/events/ defines it. This "
+					+ "entity will halt with UNRESOLVED when interacted with.")
+					% script_label)
 	return out
 
 
