@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="TrainerData" format=3 uid="uid://8574ei5in3bg"]
 
-[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+[ext_resource type="Script" uid="uid://dpi8faibkthah" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" uid="uid://rfm1orees504" path="res://scripts/data/trainer_party_mon.gd" id="2"]
 
 [sub_resource type="Resource" id="PartyMon_0"]
 script = ExtResource("2")
@@ -24,5 +24,5 @@ trainer_name = "RICK"
 trainer_class_id = 67
 pic_stem = "bug_catcher_frlg"
 gender = 0
-ai_flags = 1
-party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])
+ai_flags = 3
+party = Array[ExtResource("2")]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

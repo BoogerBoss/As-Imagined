@@ -1,8 +1,8 @@
-[gd_resource type="TileSet" format=3]
+[gd_resource type="TileSet" format=3 uid="uid://dmu2kbj0abe02"]
 
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_ground.png" id="1_7g6iu"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_objects.png" id="2_4y5ot"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_overhangs.png" id="3_4phy1"]
+[ext_resource type="Texture2D" uid="uid://cl6ks8go38002" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_ground.png" id="1_7g6iu"]
+[ext_resource type="Texture2D" uid="uid://bqoogw7q3giw5" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_objects.png" id="2_4y5ot"]
+[ext_resource type="Texture2D" uid="uid://cimoalcikhplc" path="res://assets/map_atlases/general_frlg__viridian_city_frlg_overhangs.png" id="3_4phy1"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_l3vda"]
 texture = ExtResource("1_7g6iu")
