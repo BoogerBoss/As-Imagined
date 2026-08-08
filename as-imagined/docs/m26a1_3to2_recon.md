@@ -1,268 +1,210 @@
-# Returning to 3:2 — recon and scope
+# 4:3 → 3:2 — decision document
 
-**Recon only. Nothing implemented.** Written 2026-08-07, prompted by a real
-symptom: Blizzard's ported background "doesn't fill the whole screen."
+**Recon only, nothing implemented.** Written 2026-08-07; **rewritten the same
+day** because the first draft was a findings dump rather than a decision
+document — it buried the question under discoveries, overstated the blast
+radius, and closed with two contradictory recommendations.
 
-Revisits **`[M26A1]` Base resolution change**, which set the canvas to
-**1024×768 (4:3)**. That decision is recorded in
-`docs/status/m26-build-log.md` and is not being second-guessed on its own
-terms — the question is whether its premise still holds.
-
----
-
-## 0. TL;DR
-
-1. **The Blizzard symptom is real but is NOT the bug it looks like.** The
-   background does fill the screen; `MessageBackdrop` is drawn on top of its
-   bottom quarter. §1.
-2. ⚠️ **A much larger finding fell out of investigating it: every ported
-   animation is vertically compressed by 12.5%, systemically, and no test can
-   see it.** `AnimStage.pixel_scale()` derives ONE scale factor from WIDTH
-   only. At 4:3 the vertical relationship differs from the horizontal, so GBA
-   y-offsets land 12.5% short. At 3:2 the two are identical by construction and
-   the whole class of error disappears. §2. **This is the strongest argument
-   for 3:2 and it was not known when M26A1 was decided.**
-3. **M26A1's premise has eroded.** It chose 4:3 to integer-scale the Emerald
-   UI Pack's 512×384 screens. **Nine such assets are actually adopted**, used by
-   three screens; every other piece of adopted battle UI art is GBA-native. §3.
-4. **The overworld gets a clean win**: 960×640 at zoom 4 shows **exactly
-   15×10 tiles — the GBA's own viewport**. Today it shows 21.3×16. §4.
-5. **Recommendation: yes, but not yet, and not as one move.** §7.
+Revisits **`[M26A1]` Base resolution change** (canvas set to 1024×768, 4:3).
 
 ---
 
-## 1. The Blizzard symptom, resolved
+## The question
 
-Measured at runtime through `m36_screenshot_harness`, not inferred:
+The GBA is 240×160 — **3:2**. This project renders at 1024×768 — **4:3**.
+M26A1 chose that deliberately and recorded why. Is that choice still right?
 
-| Node | Index | Vertical extent |
-|---|---:|---|
-| `Background` (battle backdrop) | 0 | −96 … 672 (**−12% … 88%**) |
-| anim bg layer (`AnimBgLayer`) | 1 | full rect, 0 … 768 |
-| `MessageBackdrop` | 6 | 576 … 768 (**75% … 100%**) |
-| `EffectLayer` | 9 | 0 … 768 |
-
-`BattleStage` is `(0,0) 1024×768`. `anim_stage.gd` inserts the background with
-`move_child(node, 1)` — *"directly above the battle backdrop, below everything
-else."* `MessageBackdrop` is a sibling at index 6, so it paints over the bottom
-quarter opaquely.
-
-**On hardware this is faithful.** The text window is a BG layer above the
-animation layers; the animation genuinely does not show through it.
-
-⚠️ **What is NOT faithful is where the box ENDS.** `[M25h-1]` derived the real
-proportion from `sStandardBattleWindowTemplates[]`: `B_WIN_MSG` is
-`tilemapTop=15, height=4` → **y=120…152 of 160 = 75%…95%**. Ours runs
-**75%…100%**. Source leaves a 5% strip of battle scene *below* the box; we
-extend the backdrop to the screen bottom and lose it. That missing strip is
-what makes the box read as a wall terminating the scene rather than a window
-sitting in it.
-
-**This is a genuine, small, independent bug.** It is worth fixing whatever
-happens to the aspect ratio, and it is ~1 line. It is not caused by 4:3.
+**Short answer: probably not, but one cheap check decides it, and that check
+has not been done.** Everything below is arranged around that.
 
 ---
 
-## 2. ⚠️ The finding that actually matters: animations are 12.5% short vertically
+## 1. The core problem, stated once
 
-`scripts/battle/anim/anim_stage.gd`:
+4:3 forces an impossible choice on every GBA→canvas mapping, and **the codebase
+has already made it twice, differently:**
 
-```gdscript
-const GBA_SCREEN_WIDTH := 240.0
-
-func pixel_scale() -> float:
-    var l := layer()
-    if l == null or l.size.x <= 0.0:
-        return 1.0
-    return maxf(1.0, l.size.x / GBA_SCREEN_WIDTH)
-```
-
-**One scale factor, derived from width, applied to both axes.**
-
-```
-GBA 240×160 → 1024×768
-  horizontal: 1024 / 240 = 4.2667   ← what pixel_scale() returns
-  vertical:    768 / 160 = 4.8000   ← what the screen actually is
-  vertical is 12.5% larger than the scale animations use
-```
-
-Every ported y-offset — every arc, rise, fall, screen-edge exit, every
-`_linear_travel` destination — is multiplied by 4.2667 into a space that is
-4.8× tall. A GBA animation crossing its full screen height covers **89%** of
-ours.
-
-**Why no test caught it, and this is the important part:** M36's suites assert
-about *maths* — frame counts, travel direction, restoration. Those are all
-correct. The port faithfully reproduces GBA offsets; it is the mapping onto the
-canvas that is anisotropic. `docs/m26_f1_recon.md`'s own framing predicted
-exactly this blind spot: *"That proves the port is faithful to the reference;
-it does NOT prove a single pixel ever reaches the screen."*
-
-**At 3:2 the two factors are identical:**
-
-| Candidate | h scale | v scale | |
-|---|---|---|---|
-| 1024×768 (current) | 4.2667 | 4.8000 | **mismatch** |
-| 960×640 | 4.000 | 4.000 | uniform (4× GBA) |
-| 1200×800 | 5.000 | 5.000 | uniform (5× GBA) |
-| 720×480 | 3.000 | 3.000 | uniform (3× GBA) |
-
-⚠️ **NOT VERIFIED, and it matters:** I did not test whether animations
-currently *look* wrong, only that the maths is anisotropic. It is possible the
-port compensates somewhere I did not find, or that 12.5% is below the threshold
-anyone would notice on most moves. **Before committing to 3:2 on this argument,
-capture one long-travel vertical move** (Sky Attack, Bounce, Fly, Dig's
-re-emergence) **densely and compare against reference footage.** That is a
-one-hour check and it either confirms the strongest reason to move or removes
-it.
-
----
-
-## 3. M26A1's premise, re-measured
-
-The recorded reasoning:
-
-> Revised from an earlier **1200×800 (3:2, the true GBA hardware ratio)** once
-> the Emerald UI Pack investigation found that pack's entire screen set — Bag,
-> Party, Summary, Pokédex, Trainer Card — is uniformly **512×384 (4:3)**,
-> matching Essentials' own native canvas; **1024×768 is a clean 2× integer
-> multiple of that**, keeping pixel scaling crisp.
-
-That was correct at the time. What has changed:
-
-**148 assets in the tree are 512×384. Only 9 are adopted project art**; the
-rest sit in reference packs (`Essentials_v19.1/Graphics` 94,
-`Emerald UI Pack 1.2/Graphics` 36, `FRLG Summary Screen/Graphics` 6).
-
-The nine, and what uses them:
-
-| Asset | Screen |
-|---|---|
-| `bag/bag_bg_male.png` | `item_select_screen` |
-| `bag/bag_bg_female.png` | **0 references — unused** |
-| `party/party_bg_singles.png`, `party_bg_doubles.png` | `switch_select_screen` |
-| `summary/summary_frlg_frame_base.png` + 4 page backgrounds | `summary_screen` |
-
-**Three screens.** Everything else in `assets/sprites/battle_ui/` is GBA-native
-small art — 16×48 (28), 32×16 (25), 24×24 (21), 8×16 (20), 156×98, 288×48. The
-512×384 group is 9 of ~150 files in that tree.
-
-**So the 4:3 canvas is now protecting three full-screen backdrops**, not a
-screen set. That is a much smaller anchor than the decision was made against —
-and M26A1's own second half already anticipated the split: *"most of M26's
-actual screen art … doesn't need the outer canvas itself to be 3:2 to stay
-correct — they're sized to their own real ratio within the bigger 4:3 canvas."*
-The same argument runs in reverse: three 4:3 backdrops can be letterboxed
-inside a 3:2 canvas.
-
-⚠️ **NOT VERIFIED:** whether those three screens are intended to stay on pack
-art or eventually move to real FRLG art like the rest of the UI has. **That is
-the single question that decides this**, and it is Rob's, not mine. If they
-stay, 3:2 costs re-authoring or letterboxing them. If they were always going to
-be replaced, the 4:3 anchor is temporary and the move gets cheaper by waiting.
-
----
-
-## 4. The overworld — a clean win, and an authenticity one
-
-```
-current   1024×768 zoom 3  → 21.3 × 16.0 tiles visible
-3:2        960×640 zoom 3  → 20.0 × 13.3 tiles
-3:2        960×640 zoom 4  → 15.0 × 10.0 tiles
-GBA hardware                 15.0 × 10.0 tiles
-```
-
-**960×640 at zoom 4 reproduces the GBA's viewport exactly.** Today the player
-sees 42% more width and 60% more height than the real game — which changes
-encounter pacing, how much of a map reads at once, and how cutscenes frame.
-
-Knock-ons, all mechanical:
-- The camera zoom constant (`overworld.gd:613`, `Vector2(3, 3)`).
-- **The border skirt.** `[M27C C3]` sized its depth by measuring the visible
-  region at 1024×768 zoom 3 — *"21.3 × 16.0 cells … per-axis 12 × 9"* — and
-  that measurement is the only reason the value is what it is. ⚠️ **The skirt
-  system is not in `map_manager.gd` at HEAD** (see the note on commit
-  `8115a7f8`); whoever re-lands it should size it against the final canvas
-  rather than re-deriving 12×9.
-- `[M27C C4]`'s crossing-stutter work measured chunk load cost against the
-  current visible area; a smaller viewport loads less, so that gets easier.
-
----
-
-## 5. What else is coupled
-
-- **`BattleStage/Background` carries `offset_top = -96`** — a hand-tuned
-  compensation for a GBA-proportioned backdrop in a 4:3 window, sitting in the
-  scene file. At 3:2 it should be 0. Its presence is the clearest evidence that
-  4:3 is being paid for in constants.
-- **Battle backdrops are 256×128; anim backgrounds 256×112 and 256×256** — GBA
-  BG tilemap dimensions, never screen dimensions. They are stretched to fit
-  regardless, so they do not constrain the choice either way.
-- **`window/stretch/aspect` is not set in `project.godot`** — only
-  `mode="canvas_items"`. The project is running Godot's default. ⚠️ M26A1's own
-  text says it chose `aspect="keep"`; **that setting is absent from the file.**
-  Worth checking independently of this decision: the recorded intent and the
-  actual config disagree.
-- **224 test suites**, of which **16** reference layout, geometry or the
-  literals `1024`/`768`. That is the re-verification surface, and it is smaller
-  than the headline number suggests.
-- **Sprite placement** — M26A1 records that sprites are *"placed via a
-  fixed-pixel-size box anchored at a single fraction point"* and needed real
-  re-tuning, not just re-verification, when the canvas last changed. Expect the
-  same again. This is the largest single cost item and it is hand-work, not
-  arithmetic.
-
----
-
-## 6. Options
-
-| | Pros | Cons |
+| System | Mapping | Result at 1024×768 |
 |---|---|---|
-| **Stay 4:3** | Zero work. Three UI screens keep integer scaling. | The 12.5% anisotropy is permanent; every future animation inherits it. The `-96` class of compensation keeps accumulating. |
-| **960×640 (4× GBA)** | Uniform scale. Overworld = GBA viewport exactly at zoom 4. Smallest numbers, crispest integer maths. | Smallest window; 512×384 screens letterbox with ~107px side bars. A visible downgrade in window size from 1024×768. |
-| **1200×800 (5× GBA)** | Uniform scale. **The original M26A1 plan.** Larger than today, so no perceived downgrade. | 512×384 → 2.34× non-integer; those three screens need re-authoring or accept soft scaling. Overworld needs zoom 5 for a GBA-exact view. |
-| **720×480 (3× GBA)** | Uniform, smallest asset budget. | Too small for a modern window. |
+| **Weather** (`_weather_stage_scale`) | `Vector2(size.x/240, size.y/160)` — per-axis | `(4.267, 4.800)` → **fills the screen, distorts shape** |
+| **Move animations** (`AnimStage.pixel_scale`) | `float(size.x/240)` — width only | `4.267` both axes → **preserves shape, falls 12.5% short vertically** |
+
+Neither is wrong. **At 4:3 there is no right answer** — you either fill the
+canvas and stretch the art, or keep the art true and leave a band unused. Two
+subsystems reached opposite conclusions independently, and both are defensible.
+
+**At 3:2 the question dissolves.** At 1200×800 both expressions evaluate to
+exactly `(5.0, 5.0)`. One scale, no choice to make, no divergence to maintain.
+
+This is the whole case. Everything else is consequence or cost.
 
 ---
 
-## 7. Recommendation
+## 2. Benefits — what 3:2 actually buys
 
-**Yes to 3:2 in principle — 1200×800 — but do three things first, and do not
-treat it as one change.**
+**a. The two mappings converge.** No subsystem has to decide; no future one can
+decide differently. This is worth more than the 12.5% itself, because the
+inconsistency is invisible and self-propagating.
 
-**Why 1200×800 over 960×640:** it was the original plan, it is 5× GBA exactly,
-and it is *larger* than today so nothing reads as a downgrade. 960×640's only
-real edge is that zoom 4 gives a GBA-exact overworld view — but zoom 5 at
-1200×800 gives the same thing.
+**b. Animation fidelity becomes achievable.** M36's bar is *1× GBA
+frame-accurate*. Today it is met in time and violated in space, on every one of
+779 playable moves, and **no test can see it** — the suites assert frame counts
+and travel direction, which are correct. `m26_f1_recon.md` predicted this blind
+spot in its own words: *"proves the port is faithful… does NOT prove a single
+pixel ever reaches the screen."*
 
-**Before deciding anything:**
+**c. Compensating constants disappear.** `BattleStage/Background` carries
+`offset_top = -96` — a hand-tuned correction for a GBA-proportioned backdrop in
+a 4:3 window, living in a scene file. It should be `0`.
 
-1. **Verify the anisotropy is visible** (§2). One dense capture of a
-   long-vertical-travel move against reference footage. ~1 hour. If 12.5% turns
-   out to be invisible, the strongest argument evaporates and this drops to a
-   nice-to-have.
-2. **Answer the UI-art question** (§3). Do the Bag/Party/Summary screens stay on
-   512×384 pack art? That is a product decision and it sets the cost.
-3. **Fix the message-box proportion** (§1) regardless. ~1 line, independent, and
-   it is the actual symptom that started this.
+**d. The overworld matches hardware exactly.**
 
-**If it goes ahead**, sequence it as M26A1 itself was sequenced — canvas first,
-then re-tune everything measured against it:
+```
+now        1024×768 zoom 3  → 21.3 × 16.0 tiles
+1200×800   zoom 5           → 15.0 × 10.0 tiles
+GBA                          15.0 × 10.0 tiles
+```
 
-- **Phase 1** — canvas change, `aspect="keep"` made explicit, `pixel_scale`
-  verified uniform, the `-96` compensation removed.
-- **Phase 2** — battle sprite/health-box/message-region re-tuning. The largest
-  item, hand-work, and the one M26A1 warns needs real re-tuning.
-- **Phase 3** — the three 512×384 screens: letterbox or re-author.
-- **Phase 4** — overworld camera zoom, and size the border skirt against the
-  new canvas when it is re-landed.
-- **Phase 5** — re-verify the 16 geometry-touching suites; sweep the rest.
+Today the player sees **42% more width and 60% more height** than the real
+game. That changes how much of a map reads at once, how cutscenes frame, and
+how close an encounter feels.
 
-**Sizing: 2–4 sessions**, dominated by Phase 2. Not a one-session change, and
-not one that should be started mid-milestone.
+---
 
-⚠️ **The honest counter-argument**, stated because it is strong: nothing is
-broken today that a player would notice, the animations have shipped 92%
-complete at the current canvas, and 12.5% vertical compression is the kind of
-thing you only see once someone tells you it is there. If the answer to check 1
-is "no one can see it", **stay at 4:3** and fix the message-box strip instead.
+## 3. Costs — what it actually breaks
+
+⚠️ **Smaller than the first draft claimed, and the correction matters** —
+overstating this is what made the original recommendation unusable.
+
+**a. The battle UI is anchor-based, so most of it survives untouched.**
+`battle_screen_singles.tscn` carries **51 anchors against 38 offsets**; anchors
+are proportional and resolution-independent. `m25h1_bottom_region_test` — the
+only suite that genuinely asserts battle layout — checks
+`anchor_top == 0.75` / `anchor_bottom == 0.95`, both of which **survive any
+canvas change**.
+
+**b. The "16 geometry-touching test suites" figure was wrong.** Most are false
+positives: `damage_test`'s `1024`/`768` are fixed-point arithmetic
+(`uq4_12_multiply(2048, 2048)`), not layout; the `m19_*` hits are the same.
+**Real layout coverage is one suite.**
+
+**c. Sprite placement is the genuine cost.** M26A1 records that sprites are
+*"placed via a fixed-pixel-size box anchored at a single fraction point"* and
+that the last canvas change needed *"real re-tuning, not just
+re-verification."* Expect that again. This is hand-work, it is the bulk of the
+effort, and it cannot be automated.
+
+**d. Three screens use 512×384 art.** `item_select`, `switch_select`,
+`summary` — nine assets (one of them, `bag_bg_female.png`, referenced zero
+times). At 1200×800 those scale 2.34×, non-integer. Options: letterbox with
+side bars, accept soft scaling, or re-author.
+
+⚠️ **This is the one question I cannot answer and it changes the cost
+materially:** are those three screens staying on Emerald UI Pack art, or moving
+to real FRLG art like the rest of the UI already has? Everything else in
+`assets/sprites/battle_ui/` is GBA-native small art (16×48, 32×16, 24×24,
+8×16). If they were always going to be replaced, this cost is temporary.
+
+**e. Overworld camera + border skirt.** Zoom constant changes; the skirt depth
+was sized by measuring the visible region at the current canvas. ⚠️ The skirt
+system is **not in `map_manager.gd` at HEAD** — see the note on commit
+`8115a7f8`. Whoever re-lands it should size it against the final canvas.
+
+**f. Window size.** 1200×800 is larger than today, so nothing reads as a
+downgrade. 960×640 would.
+
+---
+
+## 4. Cost of doing nothing
+
+Not zero, and worth stating because "stay" is the default:
+
+- Every future move animation inherits the 12.5% compression.
+- The two-mapping divergence persists and will keep generating "why does this
+  look slightly off" investigations that cost a session each to trace. **This
+  document is one of them.**
+- Compensating constants keep accruing. `-96` is one; there is no mechanism
+  preventing the next.
+- M36's stated fidelity bar stays unmeetable in one axis, permanently.
+
+---
+
+## 5. What I verified, and what I did not
+
+**Verified by measurement:** the two scale expressions and their values; the
+node z-order producing the Blizzard symptom (`MessageBackdrop` at index 6 over
+the anim layer at index 1); anchor-vs-offset counts; the 512×384 asset census
+(148 in tree, 9 adopted, 1 unused); tile-visibility maths; that
+`m25h1_bottom_region_test` asserts anchors, not pixels.
+
+⚠️ **NOT verified — and the first draft asserted one of these as fact:**
+
+1. **Whether the 12.5% is visible.** I proved the maths is anisotropic. I did
+   **not** show that any animation looks wrong. This is the crux.
+2. **Whether the message box should end at 95% or 100%.** v1 claimed source
+   leaves a 5% strip below the box and that ours wrongly fills it. That was
+   inferred from `sStandardBattleWindowTemplates` (`B_WIN_MSG` =
+   `tilemapTop=15, height=4` → y=120…152 of 160), **not checked against how
+   FRLG actually renders**. `ActionRegion` correctly anchors 0.75/0.95;
+   `MessageBackdrop` is a separate full-bleed ColorRect to 100% and may well be
+   deliberate. **Do not act on v1's claim.**
+3. **`window/stretch/aspect` is absent from `project.godot`** though M26A1
+   records choosing `"keep"`. Intent and config disagree — worth resolving on
+   its own merits, independent of this decision.
+
+---
+
+## 6. Recommendation
+
+**Spend one hour before spending anything else.**
+
+**Step 1 — settle the crux (~1 hour).** Capture one long-vertical-travel move
+densely (`--gap=1`) — Sky Attack, Bounce, Fly, or Dig's re-emergence — and
+compare against reference footage. These are the moves where a 12.5% shortfall
+is largest in absolute terms.
+
+- **If it is visible → go to 3:2 at 1200×800.** The benefit is systemic and the
+  blast radius is one test suite plus sprite re-tuning.
+- **If it is not visible → stay at 4:3**, and instead make `pixel_scale` match
+  weather's per-axis form so the two subsystems at least agree. Cheap, removes
+  the divergence, keeps the canvas.
+
+**Why 1200×800** if it goes ahead: it was M26A1's own original plan; it is
+exactly 5× GBA; it is larger than today so nothing reads as a downgrade; and
+zoom 5 gives the GBA-exact overworld viewport that 960×640 only reaches at
+zoom 4.
+
+**Do independently of this decision, now:** resolve the `stretch/aspect`
+discrepancy (§5.3). It is a config bug either way.
+
+---
+
+## 7. If it goes ahead — phased plan
+
+Sequenced as M26A1 itself was: canvas first, then re-tune what was measured
+against it.
+
+| Phase | Work | Cost | Risk |
+|---|---|---|---|
+| **1** | Canvas → 1200×800; `aspect` explicit; verify `pixel_scale` uniform; remove `offset_top = -96` | ~0.5 session | Low — mechanical |
+| **2** | **Battle sprite / health-box / message-region re-tuning** | **~1.5 sessions** | **High — hand-work, no automation, M26A1 warns of exactly this** |
+| **3** | The three 512×384 screens: letterbox or re-author | 0.5–1.5 sessions | Depends entirely on §3.d |
+| **4** | Overworld camera zoom; size the skirt against the new canvas when re-landed | ~0.5 session | Medium — interacts with unlanded work |
+| **5** | Re-verify `m25h1_bottom_region_test`; sweep the rest | ~0.5 session | Low |
+
+**Total: 2.5–4.5 sessions**, dominated by Phase 2. **Do not start mid-milestone
+— Phase 1 leaves the project visibly wrong until Phase 2 completes.**
+
+---
+
+## 8. Bottom line
+
+The 4:3 canvas made the project choose between two wrong answers on every
+GBA→canvas mapping, and it has already chosen both. 3:2 removes the choice.
+
+**But the honest counter-argument stands:** nothing a player has complained
+about is broken, 779 animations shipped at this canvas, and 12.5% vertical
+compression may be genuinely imperceptible. **One hour of dense capture against
+reference footage decides it.** Everything in §7 is contingent on that hour,
+and spending it is the only recommendation this document makes without
+qualification.
