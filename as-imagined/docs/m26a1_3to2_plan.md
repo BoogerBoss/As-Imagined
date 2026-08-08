@@ -1,0 +1,185 @@
+# 3:2 conversion — action plan
+
+**Rob committed to 3:2 on 2026-08-07.** The reasoning, costs and alternatives
+are in `docs/m26a1_3to2_recon.md`; this is the plan, not the argument.
+
+**Target canvas: 1200×800** — exactly **5× the GBA's 240×160**, larger than
+today so nothing reads as a downgrade, and M26A1's own original choice before
+it was revised to 4:3.
+
+⚠️ **This supersedes `[M26A1]`'s canvas decision.** M26A1's *reasoning* stays
+valid and is not being called wrong — its premise (integer-scaling the Emerald
+UI Pack's 512×384 screens) has simply narrowed to three screens. See the recon
+§3.
+
+---
+
+## The one thing that makes this cheap
+
+**Source defines exact battler screen coordinates.** `sBattlerCoords`
+(`src/battle_anim_mons.c:37`):
+
+```c
+[BATTLE_COORDS_SINGLES] = {
+    [B_POSITION_PLAYER_LEFT]    = { 72, 80 },
+    [B_POSITION_OPPONENT_LEFT]  = { 176, 40 },
+    ...
+[BATTLE_COORDS_DOUBLES] = {
+    [B_POSITION_PLAYER_LEFT]    = { 32, 80 },
+    [B_POSITION_OPPONENT_LEFT]  = { 200, 40 },
+    [B_POSITION_PLAYER_RIGHT]   = { 90, 84 },
+    [B_POSITION_OPPONENT_RIGHT] = { 152, 32 },
+};
+```
+
+At uniform 5× these are **arithmetic, not judgement**: player (360, 400),
+opponent (880, 200). The recon costed Phase 2 as ~1.5 sessions of hand-tuning
+because M26A1 warned of exactly that. **With this table it becomes derivation
+plus screenshot verification.**
+
+⚠️ **But it exposes a real decision.** Current placement, measured live, is not
+where source puts things:
+
+| | current (frac) | source (frac) | delta |
+|---|---|---|---|
+| player | (0.186, 0.617) | (0.300, 0.500) | **x −0.114, y +0.117** |
+| opponent | (0.715, 0.201) | (0.733, 0.250) | x −0.018, y −0.049 |
+
+The **opponent is close**; the **player is substantially left and low** of
+source. That is not aspect drift — it is composition, tuned by eye across two
+prior canvas changes (16:9 → 4:3). See **Decision 1**.
+
+---
+
+## Open decisions — needed before Phase 2 and Phase 3
+
+**Decision 1 — battler placement: adopt `sBattlerCoords`, or preserve the
+current composition?**
+
+- **Adopt (recommended).** Cheaper (derived, not tuned), strictly more
+  faithful, and makes every future canvas change arithmetic. ⚠️ **The player
+  sprite moves visibly** — right and up. Sprites here are much larger relative
+  to the canvas than the GBA's 64×64, so source's coordinates may crowd the
+  message region; verify by screenshot before committing.
+- **Preserve.** Keeps the look you have. Costs the hand-tuning the recon
+  warned about, and re-tunes against nothing authoritative.
+
+**Decision 2 — the three 512×384 screens** (`item_select`, `switch_select`,
+`summary`): letterbox with side bars, accept 2.34× soft scaling, or re-author
+at 3:2? Cost of Phase 3 swings 0.5 → 1.5 sessions on this. If they are headed
+for real FRLG art anyway, letterbox now and re-author when that happens.
+
+---
+
+## Phase 0 — instrument first (~0.5 session)
+
+**Nothing changes visually. This is what makes every later phase verifiable.**
+
+| | |
+|---|---|
+| **Do** | Extend `m36_screenshot_harness` with a `--layout` mode that dumps every battler/panel/region rect as fractions of the canvas. Capture a **baseline set** at 1024×768: 6–8 moves plus an idle frame, singles and doubles. |
+| **Files** | `scenes/battle/m36_screenshot_harness.gd` |
+| **Done when** | A single command produces before/after fraction tables and a PNG set, so Phase 2 is diffable rather than eyeballed. |
+| **Do NOT** | Change any geometry yet. |
+
+⚠️ Without this, Phase 2's acceptance is "looks right to me," which is exactly
+how the current placement drifted from source in the first place.
+
+---
+
+## Phase 1 — the canvas (~0.5 session)
+
+| | |
+|---|---|
+| **Do** | `project.godot`: `viewport_width=1200`, `viewport_height=800`. Add `window/stretch/aspect="keep"` **explicitly** — it is absent today though M26A1 records choosing it (recon §5.3). Remove `BattleStage/Background`'s `offset_top = -96` / `offset_bottom = -96`. Assert `AnimStage.pixel_scale()` now equals `_weather_stage_scale()` on both axes. |
+| **Files** | `project.godot`, `battle_screen_singles.tscn`, `battle_screen_doubles.tscn` |
+| **Done when** | Project boots at 1200×800; `pixel_scale() == 5.0` and `_weather_stage_scale() == (5.0, 5.0)`; a new assertion pins them equal so they can never diverge again. |
+| **Do NOT** | Touch sprite placement, UI screens, or the overworld. |
+
+⚠️ **The project is visibly wrong at the end of this phase and stays wrong
+until Phase 2.** Do not start unless Phases 1–2 can land together.
+
+---
+
+## Phase 2 — battler geometry (~1 session with Decision 1 = adopt)
+
+| | |
+|---|---|
+| **Do** | Replace point-anchor + pixel-offset placement with positions derived from `sBattlerCoords × 5`. Generate the table rather than transcribing it — same discipline as `metatile_behavior.gd` and `movement_types.gd`. Re-derive health-box and message-region geometry from `sStandardBattleWindowTemplates`. |
+| **Files** | `battle_screen_singles.tscn`, `battle_screen_doubles.tscn`, `battle_screen_shared.gd` |
+| **Done when** | Every battler sits within 1px of `sBattlerCoords × 5`; `m25h1_bottom_region_test` green **unmodified** (it asserts anchors 0.75/0.95, which are resolution-independent); Phase 0's capture set reshot and compared. |
+| **Do NOT** | Re-tune by eye. If a derived position looks wrong, that is a finding to record, not a number to nudge. |
+
+⚠️ **Sprites are ~4.8× the GBA's 64×64 relative to the canvas.** Source's
+coordinates assume GBA-sized sprites; at this scale they may overlap the
+message region. If so, the honest fix is a documented, uniform inset applied
+to the whole table — not per-sprite fudging.
+
+---
+
+## Phase 3 — the 512×384 screens (0.5–1.5 sessions, per Decision 2)
+
+| | |
+|---|---|
+| **Do** | Whichever Decision 2 selects, for `item_select_screen`, `switch_select_screen`, `summary_screen`. Delete `bag_bg_female.png` — **zero references**, confirmed. |
+| **Done when** | All three render without stretching artefacts; their suites green. |
+| **Do NOT** | Non-uniformly stretch 4:3 art to fill 3:2. Letterboxing is honest; distortion is not. |
+
+---
+
+## Phase 4 — overworld (~0.5 session)
+
+| | |
+|---|---|
+| **Do** | Camera zoom 3 → **5**, giving exactly **15×10 tiles — the GBA viewport** (today: 21.3×16). Re-measure border-skirt depth against the new visible region. |
+| **Files** | `scenes/overworld/overworld.gd:613`, `map_manager.gd` |
+| **Done when** | Visible region is 15×10; no void at map edges; the 23 overworld suites green. |
+| ⚠️ **Blocked on** | **The skirt system is not in `map_manager.gd` at HEAD** (see the note on `8115a7f8`). Either re-land it first or sequence Phase 4 after it. **Do not re-derive 12×9** — that value was measured against 1024×768 zoom 3 and is meaningless here. |
+
+⚠️ **Cutting the visible area by ~50% is a real gameplay change**, not just a
+render change. Encounter pacing, how much of a map reads at once, and cutscene
+framing all shift. That is the *point* — but play the corridor before signing
+it off.
+
+---
+
+## Phase 5 — verification (~0.5 session)
+
+| | |
+|---|---|
+| **Do** | Full sweep: 23 overworld + the battle suites. Re-run `m36_coverage_report`. Re-shoot Phase 0's capture set and diff. Play the Route 22 rival chain end to end (`m27g_integration_test` covers it headlessly). |
+| **Done when** | All suites green; capture diff shows only intended changes; one real playthrough of the corridor. |
+
+---
+
+## Total
+
+**2.5–4 sessions.** Phase 2 dropped from the recon's ~1.5 to ~1 because
+`sBattlerCoords` makes it derivation rather than hand-work — **provided
+Decision 1 is "adopt."** If it is "preserve," Phase 2 returns to ~1.5 sessions
+of tuning against no authority.
+
+---
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| **Phases 1–2 split across sessions leaves the game visibly broken** | Land them together or not at all. |
+| Source coordinates crowd the message region at this sprite scale | Phase 0's baseline makes it visible immediately; fix with a uniform documented inset, never per-sprite. |
+| Phase 4 blocked on unlanded skirt work | Sequence after it; do not reconstruct from the old 12×9. |
+| Something outside the 16 flagged suites depends on 1024/768 | Full sweep in Phase 5; **224 suites exist** and only the overworld 23 were swept during this session's work. |
+| Scope creep into "while we're here" retuning | Every phase has an explicit **Do NOT**. |
+
+---
+
+## Explicitly not in this plan
+
+- The message-box 75%/95%-vs-100% question. ⚠️ **Unverified** — the recon's
+  first draft asserted it as a bug and it was never checked against how FRLG
+  renders. Settle it separately, on evidence.
+- Any move-animation re-authoring. 3:2 fixes the *mapping*; whether a given
+  animation reads well is M36's own question.
+- The `AnimStage.pixel_scale()` per-axis rewrite — **it becomes unnecessary**,
+  since at 1200×800 the width-only float and the per-axis Vector2 agree. Phase
+  1's equality assertion is what guarantees that.
