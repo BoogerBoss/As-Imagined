@@ -41,3 +41,38 @@ extends Resource
                                          # plain string, not resolved to an ItemData id; this
                                          # project has no Poké Ball catching/item mechanic to
                                          # attach a real numeric id to yet
+
+
+## [M27Q Q2 follow-up] Show names instead of raw ids where the id names
+## something small enough to pick from a list.
+##
+## ⚠️ **`species_dex` (386) AND `move_ids` (717) ARE DELIBERATELY LEFT AS
+## INTS**, and so is `ability_id` (319) — Rob's call, 2026-08-08. Godot's enum
+## control is a plain OptionButton with no typeahead, and a several-hundred-entry
+## scroll popup is worse to use than typing the number. The read-only roster
+## in the Inspector panel (`TrainerData.describe_party`) is what makes those
+## legible instead.
+##
+## ⚠️ **`ability_id` HAS A TRAP THAT MADE LEAVING IT ALONE THE EASY CALL.**
+## `0` here means "use the species' own default" (`battle_pokemon.gd:1171`
+## only applies an override when `ability_id > 0`) — but `ability_0000.tres`
+## is a real file whose `ability_name` is literally "None". A dropdown built
+## from the files would offer "None" at 0, and picking it would read as
+## "remove this Pokémon's ability" while actually meaning "give it the species
+## default". Two different things. If abilities ever do get a dropdown, entry 0
+## must be relabelled `(species default)`.
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "held_item_id":
+		# Shares `InspectorHints.item_hint()` with TrainerData.battle_items —
+		# one builder, so the two lists cannot drift. Here `0` genuinely does
+		# mean "no item": item ids start at 1 and there is no item_0000.tres.
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = InspectorHints.item_hint()
+	elif property.name == "nature":
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = InspectorHints.nature_hint()
+	elif property.name == "gender":
+		# ⚠️ The mon hint, not the trainer one: -1 means "roll from the
+		# species' gender_ratio" here and "unspecified" on TrainerData.
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = InspectorHints.mon_gender_hint()

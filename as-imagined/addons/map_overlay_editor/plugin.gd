@@ -96,6 +96,19 @@ func _enter_tree() -> void:
 	_overlay_button.toggled.connect(_on_overlay_toggled)
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
 
+	# ⚠️ **EVERY CACHE THIS ADDON READS IS SESSION-LIFETIME, AND WITHOUT THIS
+	# HOOK THEY GO STALE SILENTLY.** ScriptPreview holds the 8.6 MB script
+	# corpus and the 11,596 text rows; InspectorHints holds the class and item
+	# lists. All are cached because rebuilding per Inspector query is the shape
+	# that became a five-second stall once already — but that means authoring
+	# dialogue, re-running gen_map_texts.py, and looking at the panel would
+	# show the OLD text, and a newly authored script label would still warn
+	# that it does not resolve. That reads as "my authoring did not work".
+	# filesystem_changed fires whenever files change on disk, so the next query
+	# rebuilds lazily and the staleness window closes.
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(
+			_on_filesystem_changed)
+
 
 func _exit_tree() -> void:
 	if _save_button != null:
@@ -118,6 +131,15 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
 		_overlay_button.queue_free()
 		_overlay_button = null
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs.filesystem_changed.is_connected(_on_filesystem_changed):
+		fs.filesystem_changed.disconnect(_on_filesystem_changed)
+
+
+## Drop every cached corpus/name list. Cheap — each rebuilds lazily on next use.
+func _on_filesystem_changed() -> void:
+	ScriptPreview.reset_cache()
+	InspectorHints.clear_caches()
 
 
 ## Add or remove the scratch overlay on whatever map is open.

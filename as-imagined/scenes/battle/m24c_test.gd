@@ -31,6 +31,7 @@ func _ready() -> void:
 	_test_section_g_flag_table()
 	_test_section_h_name_hints()
 	_test_section_i_describe_party()
+	_test_section_j_more_hints()
 
 	var total := _pass + _fail
 	print("m24c_test: %d/%d passed" % [_pass, total])
@@ -583,3 +584,58 @@ func _test_section_i_describe_party() -> void:
 	m.held_item_id = 28  # Potion
 	_chk("I.08 a held item is shown by name",
 			blank.describe_party()[0].contains("@Potion"))
+
+
+# ── Section J: [M27Q Q2 follow-up] the remaining id->name hints ─────────────
+func _test_section_j_more_hints() -> void:
+	var t: TrainerData = ResourceLoader.load(
+			"res://data/trainers/TRAINER_LASS_ROBIN_FRLG.tres")
+	var h := {}
+	for p in t.get_property_list():
+		h[p.name] = p
+	for p in t.party[0].get_property_list():
+		h["mon_" + str(p.name)] = p
+
+	_chk("J.01 trainer gender is an enum, and -1 reads as Unspecified",
+			h["gender"].hint == PROPERTY_HINT_ENUM
+			and str(h["gender"].hint_string).contains("Unspecified:-1"))
+	# ⚠️ TWO gender hints on purpose: -1 means "roll from the species'
+	# gender_ratio" on a mon and "unspecified" on the trainer. One shared label
+	# would be wrong on one of them.
+	_chk("J.02 mon gender is a DIFFERENT enum, where -1 means roll from ratio",
+			str(h["mon_gender"].hint_string).contains("Roll from species ratio:-1")
+			and str(h["mon_gender"].hint_string) != str(h["gender"].hint_string))
+	_chk("J.03 nature is an enum driven by BattlePokemon.NATURE_NAMES",
+			h["mon_nature"].hint == PROPERTY_HINT_ENUM
+			and str(h["mon_nature"].hint_string).split(",").size()
+					== BattlePokemon.NATURE_NAMES.size())
+	# held_item_id shares ONE builder with battle_items so the two cannot drift.
+	_chk("J.04 held_item_id names items, and 0 really is 'no item' here",
+			h["mon_held_item_id"].hint == PROPERTY_HINT_ENUM
+			and str(h["mon_held_item_id"].hint_string).begins_with("None:0,"))
+	_chk("J.05 held_item_id and battle_items come from the same list",
+			str(h["battle_items"].hint_string).ends_with(
+					str(h["mon_held_item_id"].hint_string)))
+
+	# ⚠️ Rob's call: these stay raw ints. Asserted so a future "helpful" pass
+	# does not add a 717-entry OptionButton without revisiting the decision —
+	# and ability_id especially, where 0 means "species default" but
+	# ability_0000.tres is named "None", so a naive dropdown would mislead.
+	_chk("J.06 species_dex and ability_id remain plain ints",
+			h["mon_species_dex"].hint == PROPERTY_HINT_NONE
+			and h["mon_ability_id"].hint == PROPERTY_HINT_NONE)
+	# ⚠️ move_ids CANNOT be checked with PROPERTY_HINT_NONE, and an earlier
+	# draft of this assertion got that wrong. Godot gives EVERY typed array a
+	# PROPERTY_HINT_TYPE_STRING carrying its element type — a bare Array[int]
+	# reports hint 23 / "2:" with no help from anyone. The meaningful check is
+	# that the payload has no ENUM half: "2:" left alone versus "2/2:Name:value"
+	# once someone adds a dropdown.
+	_chk("J.07 move_ids keeps the bare typed-array hint, with no element enum",
+			str(h["mon_move_ids"].hint_string) == "%d:" % TYPE_INT)
+
+	# The cache must be clearable, or a class/item added mid-session never
+	# appears — that is what the plugin's filesystem_changed hook depends on.
+	var before := InspectorHints.item_hint()
+	InspectorHints.clear_caches()
+	_chk("J.08 clearing the hint caches rebuilds the same list, not an empty one",
+			InspectorHints.item_hint() == before and before.length() > 100)

@@ -78,98 +78,17 @@ func _validate_property(property: Dictionary) -> void:
 		property.hint_string = TrainerAI.flags_hint_string()
 	elif property.name == "trainer_class_id":
 		property.hint = PROPERTY_HINT_ENUM
-		property.hint_string = _class_hint()
+		property.hint_string = InspectorHints.class_hint()
+	elif property.name == "gender":
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = InspectorHints.trainer_gender_hint()
 	elif property.name == "battle_items":
 		# ⚠️ An ARRAY's elements are hinted through PROPERTY_HINT_TYPE_STRING
 		# with a packed "<type>/<hint>:<hint_string>" payload — setting
 		# PROPERTY_HINT_ENUM on the array itself would hint the array, not the
 		# ints inside it. Verified against this engine build.
 		property.hint = PROPERTY_HINT_TYPE_STRING
-		property.hint_string = "%d/%d:%s" % [TYPE_INT, PROPERTY_HINT_ENUM, _item_hint()]
-
-
-## [M27Q Q2 follow-up] `Name:value` hints so the Inspector shows names instead
-## of raw ints. Built once per session and cached — the Inspector re-queries a
-## property list often, and rebuilding a multi-kilobyte string each time is the
-## kind of per-call cost that turned into a 5-second stall once already.
-##
-## ⚠️ **THE VALUE AFTER THE COLON IS THE STORED INT, NOT A DROPDOWN INDEX.**
-## That is the whole reason this form is used: a positional enum would store
-## 0,1,2… and silently reinterpret every existing `.tres` the moment a class or
-## item was added in the middle. Same reasoning as `movement_type` keeping its
-## constant name rather than an index.
-##
-## ⚠️ **ONLY THE 117 CLASSES / 173 ITEMS THAT ACTUALLY EXIST ARE OFFERED.**
-## Listing everything the reference names would let the dropdown produce data
-## the engine cannot resolve — a picker that causes the invalid state it exists
-## to prevent. Deliberately NOT extended to `species_dex` (386) or `move_ids`
-## (717 implemented): Godot's enum control is a plain OptionButton with no
-## typeahead, and a 717-entry scroll list is worse than typing the number.
-static var _class_hint_cache := ""
-static var _item_hint_cache := ""
-
-
-## ⚠️ **EVERY CLASS IS LISTED, INCLUDING THE UNNAMED ONES, AND THAT IS NOT
-## TIDINESS — IT PREVENTS DATA LOSS.** Measured across all 1,477 trainers:
-## **11 of the 117 converted classes carry no `class_name_text` at all** (ids
-## 0, 1, 4, 50, 52, 65, 106, 107, 110, 111, 116 — the `.tres` holds only an
-## id), and **7 of those 11 are in real use**. A dropdown built from named
-## classes alone would offer no entry matching those trainers' current value,
-## so the control would render blank and the first click would overwrite a
-## real class id with an unrelated one. Listing them as `Class N (unnamed)`
-## keeps the value selectable and makes the gap visible instead of silent.
-##
-## ⚠️ The missing names are a DATA question, flagged not fixed: something in
-## `gen_trainer_data.py`'s class table has no entry for those ids. Out of scope
-## here — this only refuses to lose data because of it.
-static func _class_hint() -> String:
-	if _class_hint_cache != "":
-		return _class_hint_cache
-	var rows := {}
-	var dir := DirAccess.open("res://data/trainer_classes")
-	if dir != null:
-		for f in dir.get_files():
-			if not f.ends_with(".tres"):
-				continue
-			var c: TrainerClassData = ResourceLoader.load(
-					"res://data/trainer_classes/" + f)
-			if c == null:
-				continue
-			rows[c.trainer_class_id] = c.class_name_text if c.class_name_text != "" \
-					else "Class %d (unnamed)" % c.trainer_class_id
-	_class_hint_cache = _rows_to_hint(rows)
-	return _class_hint_cache
-
-
-static func _item_hint() -> String:
-	if _item_hint_cache != "":
-		return _item_hint_cache
-	# "None" first so an empty battle-item slot reads as deliberate rather than
-	# as item id 0, which is not a real item.
-	var rows := {0: "None"}
-	var dir := DirAccess.open("res://data/items")
-	if dir != null:
-		for f in dir.get_files():
-			if not f.ends_with(".tres"):
-				continue
-			var it: ItemData = ResourceLoader.load("res://data/items/" + f)
-			if it != null and it.item_name != "":
-				rows[f.trim_prefix("item_").trim_suffix(".tres").to_int()] = it.item_name
-	_item_hint_cache = _rows_to_hint(rows)
-	return _item_hint_cache
-
-
-## ⚠️ A comma or colon inside a name would split the hint and silently shift
-## every entry after it, so both are stripped rather than trusted. No current
-## name contains either; the guard is for the one that eventually does.
-static func _rows_to_hint(rows: Dictionary) -> String:
-	var ids := rows.keys()
-	ids.sort()
-	var parts := PackedStringArray()
-	for i in ids:
-		var nm := str(rows[i]).replace(",", " ").replace(":", " ")
-		parts.append("%s:%d" % [nm, i])
-	return ",".join(parts)
+		property.hint_string = "%d/%d:%s" % [TYPE_INT, PROPERTY_HINT_ENUM, InspectorHints.item_hint()]
 
 
 ## [M27Q Q3] One human-readable line per party member, for the Inspector panel.
