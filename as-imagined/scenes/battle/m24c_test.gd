@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_section_c_check_viability_gates_best_damage_move()
 	_test_section_d_force_setup_first_turn()
 	_test_section_e_risky()
+	_test_section_f_factories()
 
 	var total := _pass + _fail
 	print("m24c_test: %d/%d passed" % [_pass, total])
@@ -337,3 +338,66 @@ func _test_section_e_risky() -> void:
 	var risky_action: Dictionary = ai_pick_risky.choose_action(risky_attacker, tanky_defender, risky_party, risky_party)
 	_chk("E.06 RISKY prefers the crit-stage move over an otherwise-identical plain move (index 1)",
 			risky_action["index"] == 1)
+
+
+# ── Section F: [M27Q Q1] the two construction factories ─────────────────────
+#
+# ⚠️ **THIS SECTION EXISTS BECAUSE NOTHING ELSE COVERED THE FIX.** Q1 changed
+# how `battle_screen_shared` BUILDS its TrainerAI, and every suite in this
+# project constructs a `TrainerAI` by hand and assigns `ai_flags`/`tier`
+# directly — so the whole regression sweep stayed green while exercising none
+# of the new code. These assert the factories themselves, which is the half a
+# headless suite can reach; the call-site branching is covered only by a live
+# trainer battle (see this section's own closing note).
+func _test_section_f_factories() -> void:
+	# --- from_trainer_data: identity copy, matching GetTrainerAIFlagsFromId's
+	# own plain `->aiFlags` field read (include/data.h:353).
+	var d := TrainerData.new()
+	d.ai_flags = TrainerAI.AI_FLAG_CHECK_BAD_MOVE | TrainerAI.AI_FLAG_RISKY  # 17
+	var from_data := TrainerAI.from_trainer_data(d)
+	_chk("F.01 from_trainer_data copies ai_flags verbatim",
+			from_data.ai_flags == 17)
+
+	# ⚠️ The bug Q1 fixed: this used to be Tier.SMART for every trainer alive.
+	_chk("F.02 tier derives BASIC when SMART_SWITCHING is absent",
+			from_data.tier == TrainerAI.Tier.BASIC)
+
+	var d_smart := TrainerData.new()
+	d_smart.ai_flags = TrainerAI.AI_FLAG_BASIC_TRAINER | TrainerAI.AI_FLAG_SMART_SWITCHING
+	_chk("F.03 tier derives SMART when SMART_SWITCHING is present",
+			TrainerAI.from_trainer_data(d_smart).tier == TrainerAI.Tier.SMART)
+
+	# ⚠️ NOT vacuous, and this is the assertion that would catch a roster
+	# regression: zero of the 1,477 converted trainers set bit 14, so F.02 is
+	# the case every real battle takes and F.03 is reachable only from data
+	# that does not exist yet. Asserting the flag's VALUE keeps the derivation
+	# honest if AI_FLAG(14)'s encoding is ever mis-transcribed.
+	_chk("F.04 SMART_SWITCHING is AI_FLAG(14), matching constants/battle_ai.h:24",
+			TrainerAI.AI_FLAG_SMART_SWITCHING == 1 << 14)
+
+	var d_zero := TrainerData.new()
+	d_zero.ai_flags = 0
+	var from_zero := TrainerAI.from_trainer_data(d_zero)
+	_chk("F.05 ai_flags 0 survives the factory rather than falling back to the default",
+			from_zero.ai_flags == 0 and from_zero.tier == TrainerAI.Tier.BASIC)
+
+	# --- from_wild_level: GetWildAiFlags' two implementable thresholds
+	# (battle_ai_main.c:231-238).
+	_chk("F.06 wild below level 20 gets CHECK_BAD_MOVE alone",
+			TrainerAI.from_wild_level(19).ai_flags == TrainerAI.AI_FLAG_CHECK_BAD_MOVE)
+	_chk("F.07 wild at exactly level 20 gains CHECK_VIABILITY (>= , not >)",
+			TrainerAI.from_wild_level(20).ai_flags
+			== (TrainerAI.AI_FLAG_CHECK_BAD_MOVE | TrainerAI.AI_FLAG_CHECK_VIABILITY))
+	_chk("F.08 a level-0/absent party still yields the CHECK_BAD_MOVE floor",
+			TrainerAI.from_wild_level(0).ai_flags == TrainerAI.AI_FLAG_CHECK_BAD_MOVE)
+	# A wild Pokemon has no party to switch to; source never gives one
+	# SMART_SWITCHING.
+	_chk("F.09 wild AI is never SMART tier",
+			TrainerAI.from_wild_level(100).tier == TrainerAI.Tier.BASIC)
+	# ⚠️ TRY_TO_2HKO (bit 5, avg>=60) and HP_AWARE (bit 8, avg>=80) are real
+	# source thresholds this project does not implement. Asserted as ABSENT so
+	# the gap is a recorded fact rather than an oversight — when either flag
+	# lands, this assertion is what fails and points at `from_wild_level`.
+	_chk("F.10 the two unimplemented high-level wild flags stay off at level 100",
+			TrainerAI.from_wild_level(100).ai_flags
+			== (TrainerAI.AI_FLAG_CHECK_BAD_MOVE | TrainerAI.AI_FLAG_CHECK_VIABILITY))

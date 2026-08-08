@@ -1825,11 +1825,44 @@ func _ready() -> void:
 		opp_trainer_data = TrainerRegistry.get_trainer_by_key(opp_trainer_key)
 
 
-	var ai := TrainerAI.new()
-	ai.tier = TrainerAI.Tier.SMART
+	# [M27H H5 / M27Q Q1] Derived ONCE here and reused for `_bm.is_wild_battle`
+	# below, which used to re-derive the identical expression a few lines down.
+	# Q1 needs the answer earlier than that assignment sat, and two copies of a
+	# condition this load-bearing is how the original one rotted (see that
+	# assignment's own comment for the two bugs that cancelled into `false`).
+	var is_wild := opp_trainer_key == "" and is_overworld_battle
+
+	# [M27Q Q1] ⚠️ **THIS USED TO BE `TrainerAI.new()` WITH A HARDCODED
+	# `Tier.SMART`, AND IT IGNORED `opp_trainer_data` ENTIRELY** — which was
+	# resolved a few lines above and handed to `set_trainer_data()` for money,
+	# items and the intro banner, but never for AI. `TrainerAI.from_trainer_data`
+	# had existed since M24c with zero non-test callers, so every one of the
+	# 1,477 converted trainers fought with `AI_FLAG_BASIC_TRAINER` regardless of
+	# its real flags, and every one of them switched proactively when source
+	# says none of them should.
+	#
+	# Source: `GetAiFlags` (`battle_ai_main.c:253`) branches on exactly this —
+	# `trainerId == 0xFFFF` takes `GetWildAiFlags()`, anything else takes the
+	# trainer's own `aiFlags`.
+	#
+	# ⚠️ THE THIRD BRANCH IS THIS PROJECT'S OWN AND HAS NO SOURCE ANALOGUE.
+	# A simulator battle has no trainer AND is not wild — source has no such
+	# case, so there is nothing to be faithful to. It keeps the pre-Q1 behaviour
+	# deliberately rather than inheriting the wild scaling: the simulator exists
+	# to exercise the engine, and quietly weakening its opponents would be a
+	# regression dressed as a port. Revisit under M35, which owns simulator
+	# modes.
+	var ai: TrainerAI
+	if opp_trainer_data != null:
+		ai = TrainerAI.from_trainer_data(opp_trainer_data)
+	elif is_wild:
+		ai = TrainerAI.from_wild_level(_average_opp_level())
+	else:
+		ai = TrainerAI.new()
+		ai.tier = TrainerAI.Tier.SMART
 	# [M36 bench] Off unless the setup screen's checkbox asked for it. The tier
 	# is untouched — this bypasses move SCORING only, so switching and
-	# choice-lock still behave as SMART does. See TrainerAI.random_moves.
+	# choice-lock still behave as the tier says. See TrainerAI.random_moves.
 	ai.random_moves = BattleSetupContext.ai_random_moves
 	_bm.set_trainer_ai(1, ai)
 	_bm.set_human_controlled(0, true)
@@ -1861,7 +1894,9 @@ func _ready() -> void:
 	# while the other half was vacuously false. Two bugs cancelling into a
 	# constant `false`, which is why no battle was ever wild and why fixing only
 	# the second half changed nothing. Reads the CAPTURED locals now.
-	_bm.is_wild_battle = opp_trainer_key == "" and is_overworld_battle
+	#
+	# [M27Q Q1] Derived once, above, where the AI construction also needs it.
+	_bm.is_wild_battle = is_wild
 
 	# [M25c] Computed once, ahead of _wire_log_signals() below, since the very
 	# first log lines (switch-in/hazard/ability messages from start_battle_*
@@ -7257,6 +7292,25 @@ func _queue_text_beat(text: String) -> void:
 # cannot affect its still-live teammate's own fade/status/HP display, since
 # each slot is processed as a fully independent iteration reading only that
 # slot's own BattlePokemon instance.
+## [M27Q Q1] The opposing party's average level, for `TrainerAI.from_wild_level`.
+##
+## Source averages the two LEADS in a double battle and reads the single lead
+## otherwise (`GetWildAiFlags`, `battle_ai_main.c:225-230`) — it does NOT
+## average the whole party, which for a wild encounter is the same thing since
+## a wild party is one or two mons. Averaging `members` here matches on every
+## real wild encounter and stays defined if a longer party ever reaches it.
+##
+## Returns 0 for an empty/absent party, which yields `AI_FLAG_CHECK_BAD_MOVE`
+## alone — the same floor source applies below level 20.
+func _average_opp_level() -> int:
+	if _opp_party == null or _opp_party.members.is_empty():
+		return 0
+	var total := 0
+	for m in _opp_party.members:
+		total += m.level
+	return total / _opp_party.members.size()
+
+
 func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
 	var sprites: Array = _ply_sprites if is_player else _opp_sprites
 	var panels: Array = _ply_panels if is_player else _opp_panels

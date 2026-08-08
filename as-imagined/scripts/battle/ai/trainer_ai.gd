@@ -68,6 +68,21 @@ const AI_FLAG_FORCE_SETUP_FIRST_TURN: int = 8   # bit 3
 const AI_FLAG_RISKY: int                  = 16  # bit 4
 const AI_FLAG_BASIC_TRAINER: int = AI_FLAG_CHECK_BAD_MOVE | AI_FLAG_TRY_TO_FAINT | AI_FLAG_CHECK_VIABILITY  # = 7
 
+# [M27Q Q1] `AI_FLAG(14)`, `constants/battle_ai.h:24`. Declared even though this
+# project implements bits 0-4 only, because it is the SOURCE-SIDE MEANING OF
+# THIS FILE'S OWN `Tier` — see `Tier`'s header above. Source has no tier
+# concept at all; "SMART" here is exactly "the trainer has AI_FLAG_SMART_
+# SWITCHING", so deriving `tier` from this bit is what turns an invented axis
+# back into the real one.
+#
+# ⚠️ **MEASURED: ZERO OF THE 1,477 CONVERTED TRAINERS SET IT.** Every real
+# `ai_flags` value in `data/trainers/` is 0/1/3/7/11/15/23 — no bit above 4 is
+# used anywhere. So the derivation below yields `Tier.BASIC` for the entire
+# current roster, which is correct and is the point: `battle_screen_shared`
+# used to hardcode `Tier.SMART`, giving proactive switching to every trainer
+# in the game and to none of the ones source says should have it.
+const AI_FLAG_SMART_SWITCHING: int = 1 << 14
+
 # Score constants — source: include/battle_ai_main.h L21-41
 const AI_SCORE_DEFAULT: int  = 100  # constants/battle_ai.h L57
 const FAST_KILL: int         = 6    # AI faster and faints target
@@ -86,17 +101,61 @@ var tier: Tier = Tier.BASIC
 var ai_flags: int = AI_FLAG_BASIC_TRAINER
 
 
-# [M24c] Data → config factory — mirrors M24a's own "build the registry/data
-# plumbing ahead of its real consumer" precedent. NO live caller wires this
-# into an actual trainer battle yet: M26 (the overworld/encounter system
-# that would call set_trainer_ai() for a real trainer fight) doesn't exist
-# yet, confirmed via grep — this is data-ready infrastructure for that
-# future consumer, exactly like TrainerRegistry/TrainerPicRegistry were for
-# M24a's own portrait/data lookups before Phase 3 built a real consumer for
-# one of them.
+# [M24c] Data → config factory. **[M27Q Q1] IT HAS A LIVE CALLER NOW** —
+# `battle_screen_shared._start_battle` — and this comment used to say the
+# opposite ("NO live caller wires this into an actual trainer battle yet"),
+# which stayed true for long enough that the hookup was never noticed as
+# missing. Source: `GetAiFlags` (`battle_ai_main.c:253`) resolves a trainer's
+# flags through `GetTrainerAIFlagsFromId` (`include/data.h:353`), which is a
+# plain `->aiFlags` field read with no transformation — so this stays an
+# identity copy and is faithful for being one.
+#
+# ⚠️ `tier` IS DERIVED, NOT DEFAULTED. Source has no tier; it has
+# `AI_FLAG_SMART_SWITCHING`. Leaving `tier` alone here would silently keep
+# whatever the caller set, which is exactly how `Tier.SMART` came to apply to
+# every trainer in the game. Deriving it makes the axis data-driven, so a
+# future trainer that really does carry bit 14 gets proactive switching
+# without another call-site edit.
 static func from_trainer_data(data: TrainerData) -> TrainerAI:
 	var ai := TrainerAI.new()
 	ai.ai_flags = data.ai_flags
+	ai.tier = Tier.SMART if (data.ai_flags & AI_FLAG_SMART_SWITCHING) else Tier.BASIC
+	return ai
+
+
+## [M27Q Q1] A wild encounter's own AI, ported from `GetWildAiFlags`
+## (`battle_ai_main.c:223-243`).
+##
+## ⚠️ **WILD POKEMON GET REAL AI FLAGS IN SOURCE, AND THIS PROJECT WAS GIVING
+## THEM `Tier.SMART` + `AI_FLAG_BASIC_TRAINER`.** `battle_screen_shared` built
+## one `TrainerAI` for every battle regardless of whether a trainer was
+## attached, so a level-3 Rattata scored moves like a gym leader and switched
+## proactively — which a wild Pokemon cannot even do.
+##
+## Source scales by the opposing party's AVERAGE level (both leads in a double
+## battle, `:229`):
+##
+##     always      AI_FLAG_CHECK_BAD_MOVE
+##     avg >= 20   AI_FLAG_CHECK_VIABILITY
+##     avg >= 60   AI_FLAG_TRY_TO_2HKO      <- not implemented here
+##     avg >= 80   AI_FLAG_HP_AWARE         <- not implemented here
+##
+## ⚠️ **THE TWO HIGH-LEVEL FLAGS ARE DELIBERATELY ABSENT, NOT FORGOTTEN.**
+## `AI_FLAG_TRY_TO_2HKO` (bit 5) and `AI_FLAG_HP_AWARE` (bit 8) are outside the
+## bits 0-4 this project implements, so there is nothing to switch on. The
+## thresholds are written out above anyway so the gap is legible when those
+## flags land, and `B_VAR_WILD_AI_FLAGS` (`:239`, a runtime var override) is
+## excluded for the same reason `M35` owns the other alternate-mode flags.
+##
+## Tier is always BASIC: source never gives a wild Pokemon
+## `AI_FLAG_SMART_SWITCHING`, and a wild Pokemon has no party to switch to.
+static func from_wild_level(average_level: int) -> TrainerAI:
+	var ai := TrainerAI.new()
+	var flags := AI_FLAG_CHECK_BAD_MOVE
+	if average_level >= 20:
+		flags |= AI_FLAG_CHECK_VIABILITY
+	ai.ai_flags = flags
+	ai.tier = Tier.BASIC
 	return ai
 
 ## [M36 bench] Pick a random usable move instead of scoring one.
