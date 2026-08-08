@@ -68,6 +68,13 @@ static var opp_trainer_key: String = ""
 ## one moment they were being read.
 static var is_overworld_battle: bool = false
 
+## [M36 bench] Make the opponent pick moves at random rather than by score.
+## ⚠️ Set ONLY by the setup screen's own checkbox. An overworld trainer must
+## never get this — `set_pending`'s overworld caller does not touch it, and it
+## is reset alongside everything else so a bench battle cannot leak into the
+## next real one.
+static var ai_random_moves: bool = false
+
 
 static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty,
 		p_is_doubles: bool = false, p_background_id: String = "",
@@ -92,3 +99,4 @@ static func clear() -> void:
 	background_id = ""
 	opp_trainer_key = ""
 	is_overworld_battle = false
+	ai_random_moves = false

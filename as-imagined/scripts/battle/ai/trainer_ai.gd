@@ -99,6 +99,19 @@ static func from_trainer_data(data: TrainerData) -> TrainerAI:
 	ai.ai_flags = data.ai_flags
 	return ai
 
+## [M36 bench] Pick a random usable move instead of scoring one.
+##
+## ⚠️ **A BENCH SEAM, NOT A DIFFICULTY TIER.** It exists because the animation
+## test bench is worthless if the AI always throws its highest-scoring move:
+## you would see one animation per Pokémon no matter how wide the move pool is,
+## and the whole point of constraining the pool is coverage. Deliberately NOT a
+## `Tier` value — a tier is a claim about how source's AI behaves, and source
+## has no "random" tier. This is an instrument.
+##
+## ⚠️ It sits AFTER the choice-lock early return and after SMART's switch
+## evaluation, so both still behave normally. Only the scoring is bypassed.
+var random_moves: bool = false
+
 # Test determinism: override RNG for move tie-breaking.
 # Source: RandomUniform(RNG_AI_SCORE_TIE_SINGLES) in ChooseMoveOrAction_Singles L915.
 # -1 = real RNG; ≥0 = index into the tied-best array.
@@ -242,6 +255,23 @@ func choose_action_doubles(
 #   architecture pays off: the AI calls the real damage calc, not a separate estimate).
 # Returns {"type": "move", "index": int} or {"type": "switch", "slot": int}.
 
+## [M36 bench] A uniformly random move index with PP left, or -1 if there is
+## none. ⚠️ Respects PP rather than picking blind: a bench that kept selecting
+## an exhausted move would show the "no PP" path instead of the animation, which
+## is the opposite of what it is for.
+func _random_usable_move_index(attacker: BattlePokemon) -> int:
+	var usable: Array[int] = []
+	for i in range(attacker.moves.size()):
+		if attacker.moves[i] == null:
+			continue
+		if i < attacker.current_pp.size() and int(attacker.current_pp[i]) <= 0:
+			continue
+		usable.append(i)
+	if usable.is_empty():
+		return -1
+	return usable[randi() % usable.size()]
+
+
 func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		my_party: BattleParty, _opp_party: BattleParty,
 		weather: int = DamageCalculator.WEATHER_NONE,
@@ -265,6 +295,14 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		var locked_idx: int = attacker.moves.find(attacker.choice_locked_move)
 		if locked_idx >= 0:
 			return {"type": "move", "index": locked_idx}
+
+	# [M36 bench] See `random_moves`. Falls through to real scoring when the
+	# attacker has nothing usable, so the engine's own Struggle handling is
+	# reached exactly as it would be otherwise.
+	if random_moves:
+		var pick := _random_usable_move_index(attacker)
+		if pick >= 0:
+			return {"type": "move", "index": pick}
 
 	# Score each available move, pick best.
 	# Source: ChooseMoveOrAction_Singles runs each enabled AI_FLAG pass.

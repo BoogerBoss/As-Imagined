@@ -1827,6 +1827,10 @@ func _ready() -> void:
 
 	var ai := TrainerAI.new()
 	ai.tier = TrainerAI.Tier.SMART
+	# [M36 bench] Off unless the setup screen's checkbox asked for it. The tier
+	# is untouched — this bypasses move SCORING only, so switching and
+	# choice-lock still behave as SMART does. See TrainerAI.random_moves.
+	ai.random_moves = BattleSetupContext.ai_random_moves
 	_bm.set_trainer_ai(1, ai)
 	_bm.set_human_controlled(0, true)
 	_bm.battle_ended.connect(_on_battle_ended)

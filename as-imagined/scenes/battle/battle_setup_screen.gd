@@ -47,6 +47,7 @@ const _OPTION_FIXTURE := "__fixture__"
 @onready var _pool_from: SpinBox = $Scroll/VBox/MovePoolRow/FromSpin
 @onready var _pool_to: SpinBox = $Scroll/VBox/MovePoolRow/ToSpin
 @onready var _pool_force: CheckBox = $Scroll/VBox/MovePoolRow/ForceCheck
+@onready var _ai_random: CheckBox = $Scroll/VBox/MovePoolRow/AiRandomCheck
 @onready var _pool_label: Label = $Scroll/VBox/MovePoolLabel
 
 @onready var _refresh_button: Button = $Scroll/VBox/RefreshButton
@@ -66,6 +67,7 @@ func _ready() -> void:
 	_pool_from.value_changed.connect(func(_v: float): _apply_move_pool())
 	_pool_to.value_changed.connect(func(_v: float): _apply_move_pool())
 	_pool_force.toggled.connect(func(_on: bool): _apply_move_pool())
+	_ai_random.toggled.connect(func(_on: bool): _apply_move_pool())
 	_refresh_team_lists()
 	_populate_background_options()
 	_apply_move_pool()
@@ -295,6 +297,10 @@ func _on_launch_pressed() -> void:
 			_status_label.text = "The opponent's team needs at least 2 Pokémon for a Doubles battle — pick a different option or switch to Singles."
 			return
 
+	# [M36 bench] Set BEFORE set_pending so it is in place when the battle
+	# screen reads it. ⚠️ `set_pending`'s overworld caller never touches this,
+	# and `clear()` resets it, so a bench battle cannot leak into a real one.
+	BattleSetupContext.ai_random_moves = _ai_random.button_pressed
 	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES,
 			_selected_background_id())
 	# [Doubles-split roadmap, step 6] Launches the real split scene matching
