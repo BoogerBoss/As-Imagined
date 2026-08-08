@@ -429,17 +429,58 @@ func _test_trigger_wiring_and_guard() -> void:
 	# .tscn's node tree exists and crashes on null @onready refs otherwise.
 	add_child(layer)
 
-	bs._play_ability_popup(g_p0)  # fire-and-forget, panel exists synchronously
-	_chk("G.05 first trigger creates one live panel",
-			layer.get_child_count() == 1
-				and bs._active_ability_popups.get(g_p0) == layer.get_child(0))
+	# ⚠️ **THESE ASSERTIONS ASKED FOR SOMETHING THE DESIGN FORBIDS, AND THAT
+	# IS WHY THEY WERE RED — rewritten 2026-08-07 rather than "fixed".**
+	#
+	# The original G.05 called `_play_ability_popup` and asserted a panel had
+	# been CREATED. It never could be: `_play_ability_popup` gates creation on
+	# `_effect_layer != null or not is_inside_tree()`, and `is_inside_tree()`
+	# is asked of `bs` — which this test deliberately does NOT add to the tree
+	# (see the comment above: a bare `BattleScreenShared.new()` crashes in
+	# `_ready()` without the real `.tscn`). So creation returned early, the
+	# layer stayed empty, and the next line indexed `get_child(0)` on an empty
+	# node — a runtime error that ABORTED the whole function, taking G.05c,
+	# G.06 and G.06b down with it silently.
+	#
+	# The implementation says exactly this at the gate: panel creation "stays
+	# tree-gated and is covered by the capture pass", while the GUARD is
+	# deliberately reachable off-tree because rewriting a live panel's label
+	# needs no tree access. So that is what is tested here.
+	#
+	# ⚠️ **Creation-path coverage therefore lives in the capture pass, not
+	# here.** Stated plainly rather than left implied — a later session must
+	# not read this section as covering it.
+	bs._play_ability_popup(g_p0)
+	_chk("G.05 creation is tree-gated: an off-tree screen makes no panel and "
+			+ "registers no guard entry",
+			layer.get_child_count() == 0 and bs._active_ability_popups.is_empty())
+
+	# Seed the state creation would have produced, so the guard and teardown
+	# paths are exercised against a real panel shaped like the real one — the
+	# same `ability_popup_label` meta key `_set_ability_popup_ability` reads.
+	var panel := Control.new()
+	var seeded := Label.new()
+	seeded.text = "Intimidate"
+	panel.add_child(seeded)
+	panel.set_meta("ability_popup_label", seeded)
+	layer.add_child(panel)
+	panel.set_meta("_hit_effect_tween", panel.create_tween())
+	bs._active_ability_popups[g_p0] = panel
+	# ⚠️ **BOTH registries, because creation writes both.** A popup panel is
+	# tracked in `_active_hit_effect_nodes` as well as the per-battler guard,
+	# and `_clear_active_hit_effects` frees from the FORMER while only
+	# clearing the latter (see its own comment: "Popup panels live in
+	# _active_hit_effect_nodes too"). Seeding only the guard left the panel
+	# unfreed and G.06b red — a fixture that was not faithful to the state it
+	# stood in for.
+	bs._active_hit_effect_nodes.append(panel)
+
 	var ab2 := AbilityData.new()
 	ab2.ability_name = "Moxie"
 	g_p0.ability = ab2
 	bs._play_ability_popup(g_p0)
 	_chk("G.05b second trigger does NOT stack a second panel",
 			layer.get_child_count() == 1)
-	var panel: Control = layer.get_child(0)
 	var lbl: Label = panel.get_meta("ability_popup_label")
 	_chk("G.05c ...it rewrites the live panel's ability line (UpdateAbilityPopup)",
 			lbl != null and lbl.text == "Moxie")

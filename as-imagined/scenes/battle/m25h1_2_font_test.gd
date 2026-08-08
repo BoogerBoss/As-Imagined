@@ -150,8 +150,29 @@ func _test_style_menu_button_applies_menu_font_and_neutral_color() -> void:
 
 	_chk("Button has the real menu-context bitmap font applied",
 			btn.get_theme_font("font") == bs._font_menu)
-	_chk("Button font_size matches the font's own native pixel size (no soft rescaling)",
-			btn.get_theme_font_size("font_size") == BattleScreenShared._FONT_NORMAL_SIZE)
+	# ⚠️ **`_MENU_BUTTON_FONT_SIZE` (60), NOT `_FONT_NORMAL_SIZE` (15) — A
+	# DELIBERATE 4x, AND THIS ASSERTION WAS STALE AND RED UNTIL 2026-08-07.**
+	# `[M26 polish batch, item 4]` scaled every battle-menu button to 4x the
+	# GBA-native size, which is this project's own established convention for
+	# menu text; the assertion kept asserting the unscaled value.
+	#
+	# ⚠️ **THE ORIGINAL CLAIM STILL HOLDS AND IS WHY 4x SPECIFICALLY.** The
+	# point was never "15" — it was NO SOFT RESCALING, i.e. an INTEGER
+	# multiple of the bitmap font's native pixel size, so glyphs stay crisp.
+	# 60 = 15 x 4 satisfies that exactly; 45 or 50 would not. Asserting the
+	# multiple rather than the literal keeps the real invariant testable if
+	# the scale is ever retuned.
+	#
+	# Third stale battle-suite assertion found the same week (with
+	# `m25h1_bottom_region_test`'s ActionRegion anchor and `m26_b3_6c_test`'s
+	# party-row timing), all from the same cause: the battle suites are not in
+	# the routine overworld sweep, so a red one simply sits.
+	_chk("Button font_size is the 4x menu size, not the unscaled one",
+			btn.get_theme_font_size("font_size") == BattleScreenShared._MENU_BUTTON_FONT_SIZE)
+	_chk("the menu size is an exact INTEGER multiple of the font's native pixel "
+			+ "size, so glyphs are never soft-rescaled",
+			BattleScreenShared._MENU_BUTTON_FONT_SIZE \
+					% BattleScreenShared._FONT_NORMAL_SIZE == 0)
 	_chk("Button font_color is neutral white (the baked-in dark-grey/light-grey pixels show through unmodified)",
 			btn.get_theme_color("font_color").is_equal_approx(Color(1, 1, 1, 1)))
 	_chk("Button font_hover_color is also neutral",

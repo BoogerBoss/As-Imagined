@@ -1158,9 +1158,27 @@ func _test_ball_entry_delay_fans_per_side() -> void:
 	for i in range(6):
 		ply.append(BattleScreenShared._party_ball_entry_delay(i, true))
 		opp.append(BattleScreenShared._party_ball_entry_delay(i, false))
-	_chk("N.01 player delays match source's i*7+10", ply == [10, 17, 24, 31, 38, 45])
-	_chk("N.02 opponent delays match source's (6-i)*7+10",
-			opp == [52, 45, 38, 31, 24, 17])
+	# ⚠️ **HALVED FROM SOURCE ON PURPOSE — `(i*7+10)/2`, NOT `i*7+10`.**
+	# Rob's call, recorded at the constants themselves ("2x source ... halves
+	# entry time"). Source's own values are 10/17/24/31/38/45 and
+	# 52/45/38/31/24/17; the implementation runs the whole entry at double
+	# speed, so every delay is integer-halved.
+	#
+	# ⚠️ **THIS ASSERTION WAS STALE AND RED UNTIL 2026-08-07** — the retune
+	# landed and the test was not updated, so the suite sat at 164/168 with
+	# nobody looking. **Exactly the same shape as `m25h1_bottom_region_test`'s
+	# `ActionRegion` anchor**, found the same week and for the same reason:
+	# the battle suites are not in the routine overworld sweep.
+	#
+	# The MIRRORING is what actually matters here and is unaffected by the
+	# retune — each side still fans in from its own outer edge (N.03/N.04),
+	# which is why those two stayed green through it. A future session
+	# wanting source's literal timing back should change the CONSTANTS, not
+	# these numbers.
+	_chk("N.01 player delays are source's i*7+10, halved (Rob's 2x entry speed)",
+			ply == [5, 8, 12, 15, 19, 22])
+	_chk("N.02 opponent delays are source's (6-i)*7+10, halved",
+			opp == [26, 22, 19, 15, 12, 8])
 	_chk("N.03 the player fans left-to-right", ply[0] < ply[5])
 	_chk("N.04 the opponent fans right-to-left", opp[0] > opp[5])
 	# The stagger is the whole point -- a uniform delay would defeat it.
@@ -1174,12 +1192,15 @@ func _test_ball_entry_delay_fans_per_side() -> void:
 func _test_entry_constants_match_source() -> void:
 	_chk("N.06 bar entry offset is source's bar_pos2_X",
 			is_equal_approx(BattleScreenShared._PARTY_BAR_ENTRY_OFFSET, 100.0))
-	_chk("N.07 bar step is source's bar_data0",
-			is_equal_approx(BattleScreenShared._PARTY_BAR_ENTRY_STEP, 5.0))
+	# ⚠️ 10.0, not source's own bar_data0 of 5.0 — the same deliberate 2x
+	# entry speed as N.01/N.02, and stale here for the same reason.
+	_chk("N.07 bar step is source's bar_data0 doubled (Rob's 2x entry speed)",
+			is_equal_approx(BattleScreenShared._PARTY_BAR_ENTRY_STEP, 10.0))
 	_chk("N.08 ball entry offset is source's x2 = 120",
 			is_equal_approx(BattleScreenShared._PARTY_BALL_ENTRY_OFFSET, 120.0))
-	_chk("N.09 ball step is the accumulator's own 2px/frame",
-			is_equal_approx(BattleScreenShared._PARTY_BALL_ENTRY_STEP, 2.0))
+	# ⚠️ 4.0, not the accumulator's own 2px/frame — same 2x.
+	_chk("N.09 ball step is the accumulator's 2px/frame doubled",
+			is_equal_approx(BattleScreenShared._PARTY_BALL_ENTRY_STEP, 4.0))
 	# The bar reaches rest well before the last ball does -- it is the
 	# backdrop the balls land on, so it must not arrive last.
 	var bar_frames: float = BattleScreenShared._PARTY_BAR_ENTRY_OFFSET \

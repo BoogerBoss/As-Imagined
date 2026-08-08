@@ -252,8 +252,21 @@ func _test_outcome() -> void:
 ## --- E. wiring ---
 func _test_wiring() -> void:
 	# The ball must be throwable at all — without it the formula is unreachable.
+	# ⚠️ **`_ITEMS` WAS RENAMED TO `_DEBUG_STOCK` AND THIS SUITE STOPPED
+	# LOADING ENTIRELY — IT DID NOT FAIL, IT HUNG.** A GDScript parse error
+	# means the script never loads, so nothing reaches `quit()` and the scene
+	# sits until the harness timeout kills it. That is why this was recorded
+	# for days as "a pre-existing hang" rather than as a broken reference:
+	# the symptom of a stale name and the symptom of an infinite loop are
+	# identical from outside.
+	#
+	# ⚠️ Renamed by `02bc4926` ("Polished lower battle text field") — the SAME
+	# commit that left `m25h1_bottom_region_test`'s `ActionRegion` assertion
+	# stale. One commit, two silently-broken battle suites, both misattributed
+	# as pre-existing conditions. The common cause is that the battle suites
+	# are not in the routine overworld sweep.
 	var found := false
-	for entry in ItemSelectScreen._ITEMS:
+	for entry in ItemSelectScreen._DEBUG_STOCK:
 		if int(entry.get("id", 0)) == 1:
 			found = true
 	_chk("E.01 a Poké Ball is throwable in battle", found)
