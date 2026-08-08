@@ -3386,6 +3386,120 @@ conclusion the M27M plugin already reached the hard way.
 grows, and rule 1 — never fill `A` — is in force here as everywhere else.
 
 
+## M27R — Corridor completion, first custom map, and basic audio *(planned 2026-08-08)*
+
+**The goal in one line: the 32-map corridor playable end to end, one hand-made
+map in it, and enough sound that it does not play in silence.** Scoped from
+measurement, not from the roadmap's own wish list — the blockers below were
+found by walking the **666 script labels reachable from corridor placements**
+and checking every op against `ScriptVM`.
+
+### Phase 1 — close the corridor
+
+⚠️ **THE REAL GAP IS MUCH SMALLER THAN THE OPCODE-COVERAGE FIGURE SUGGESTS,
+AND MOSTLY IS NOT OPCODES AT ALL.** Of 130 distinct ops the corridor actually
+reaches, only these are unhandled:
+
+- **`pokemart` — 2 uses, the one real opcode gap.** Viridian and Pewter marts
+  do nothing. It needs a shop UI, so it is the largest single item in this
+  phase; **M27I** owns it.
+- **The movement-action tail — ~53 uses.** NOT event-script opcodes: these are
+  the separate movement sub-language `MovementRunner` executes. Dominated by
+  **speed variants of actions already implemented** —
+  `walk_in_place_faster_*` (40) and `walk_in_place_fast_*` (8) — plus
+  `face_player`, `face_original_direction`, `jump_2_down`,
+  `emote_exclamation_mark`, `nurse_joy_bow` (1 each). The runner already
+  carries per-speed frame tables, so most of this is table entries rather than
+  new mechanics. Cheap, and the payoff is visible: cutscenes stop stuttering.
+- **`trywondercardscript` — 1 use.** Mystery Gift. A documented no-op, matching
+  the existing named-no-op convention.
+
+⚠️ **~53 IS A FLOOR, NOT A CEILING.** It was derived by following `goto`/`call`
+chains from placed entities, which is how the game normally reaches a script —
+but a map's own `OnFrame`/`OnTransition` tables enter scripts by another route
+that this walk does not model. A real playthrough is what confirms the number.
+
+### Phase 2 — one custom map that PLAYS, not just paints
+
+⚠️ **ORDER IS LOAD-BEARING HERE.** Painting is already possible; making a
+painted tile MEAN anything is not, and building the brush first means painting
+the map twice.
+
+- **M27M1 — behaviour onto the tile at bake.** The `behavior` custom-data layer
+  is already declared on every baked TileSet and **never populated** (measured:
+  zero tiles carry a value). Everything below reads it, so it goes first.
+- **M27M4 — write painted ids back into `MapData`**, pulling behaviour off the
+  tile. ⚠️ **THIS IS THE ONE THAT TURNS PAINTED GRASS INTO GRASS.** Without it
+  a new map looks correct and plays inert: no encounters, no surfing, no
+  ledges, because `StepResolver` reads `MapData.behavior` and nothing writes
+  it. Collision and elevation reuse the existing guess-plus-review-flag path
+  the overlay plugin already has.
+- **M27M3 — the metatile brush, RESCOPED (Rob, 2026-08-08).** ⚠️ **It asks
+  "in front of the player or behind?", NOT "what layer type is this?"** Layer
+  type is a GBA hardware taxonomy for how source packed its BG layers, and it
+  is **not load-bearing at runtime** — grepped: nothing reads
+  `MapData.layer_type` to decide anything; draw order comes from `PLANE_Z`
+  alone. The brush writes all three planes at the cell, each with its own
+  source; the non-routed one is transparent (measured: all 10,494 non-routed
+  atlas cells are fully blank) so it costs nothing and needs no routing
+  lookup. `MapManager.set_metatile` already does this paint and is green at
+  20/20 — the work is exposing it, not inventing it.
+- **M27M5 — a blank new map**: `.tscn` + `_data.tres` straight to
+  `scenes/maps/`, no importer and no JSON.
+- **Connect it** — a `Warp` at each end, plus `connections` if it should stitch
+  rather than door.
+
+**Not needed for a FIRST custom map**: `M27M6` (behaviour picker) and `M27M7`
+(new art) only matter once you are authoring original tiles; Kanto's art
+covers this.
+
+### Phase 3 — basic audio *(scope and approach deliberately OPEN)*
+
+**What Rob asked for: a little audio — basic town/map music and battle music.
+Not the full sound engine.** How it is built and how far it goes are
+deliberately left undecided here; this section records only what is true today
+so the scoping session starts from facts.
+
+⚠️ **THE ASSET SITUATION IS LOPSIDED, AND IT INVERTS THE OBVIOUS PLAN.**
+`assets/Essentials_v19.1/Audio/` is already in the repo and tracked:
+
+    SE   858 files (.ogg/.wav)   — a large, usable effects library
+    ME    22 files (.ogg)        — jingles: victory, capture success, …
+    BGM   35 files, of which 32 are .mid and 3 are .ogg
+    BGS    0
+
+⚠️ **GODOT DOES NOT PLAY MIDI, AND THOSE 32 FILES ARE INERT BYTES** — none has
+a `.import` sidecar, so the engine never ingested them. The three usable `.ogg`
+BGM tracks are *Evolution*, *HoF room* and *Hall of Fame* — **not a town theme
+and not a battle theme among them.** So the half Rob asked for (town + battle
+music) is the half with no assets, while the half nobody asked for (858 sound
+effects) is ready to wire.
+
+That makes BGM an **asset-sourcing question before it is a code question** —
+render the MIDIs through a soundfont, find `.ogg` equivalents, or commission
+them. That decision belongs to Rob, not to an implementation session.
+
+**Seams that already exist**, so the code half is small when it comes:
+`playbgm`/`playse`/`playfanfare`/`waitfanfare`/`fadeoutbgm`/`fadedefaultbgm`
+are named no-ops in `ScriptVM` (`script_vm.gd:559`), and the battle animation
+VM already records an SE id and pan per cue for **M36-S**. ⚠️ **Do NOT port
+source's m4a engine** — channel priority and DirectSound allocation are
+hardware accommodation; the fidelity that matters is which cue plays and when.
+
+### Suggested order
+
+**movement tail → `trywondercardscript` → M27M1 → M27M4 → M27M3 → M27M5 →
+connect → audio scoping → `pokemart`.**
+
+The movement tail buys visible polish immediately for very little. M27M1/M27M4
+precede the brush so a map is painted once. Audio scoping sits before
+`pokemart` because it is a decision Rob makes rather than work, and
+`pokemart` is the biggest single build with nothing waiting on it.
+
+**Standing rules apply unchanged**: the C/T/A key governs any row this block
+grows, and rule 1 — never fill `A` — is in force here as everywhere else.
+
+
 ## Current status
 
 Full session-by-session build history (every sub-tier, bug fix, source
@@ -3492,6 +3606,33 @@ Full per-phase build detail for the M23.11 table above, plus the M24
 (trainer data pipeline), M25 (battle-UI mastery, closed 2026-07-20), and
 M26 (graphical rework) session logs, all live in
 `docs/status/m23-m26.md`.
+
+## RPG progress tiers *(Rob's call, 2026-08-08)*
+
+A ten-tier maturity ladder for the project as a whole — product-playability
+and polish, not feature completion. This is **orthogonal to the M-number
+milestone system above**: milestones track *what* gets built; these tiers
+track *whether the shipped result is playable end to end* and how rough it
+still is. A tier only advances when its criteria are actually true of the
+running game, not when the milestone work that enables it lands.
+
+**Current tier: Tier 1. Working toward: Tier 2.**
+
+| Tier | Definition |
+|---|---|
+| 1 | *(current)* Baseline — the state before Tier 2's criteria below are met. |
+| 2 | **Pre-Alpha** *(current goal)*. Battle sim playable with occasional bugs (25% of move animations confirmed). RPG playable through the first badge, with one custom-authored map. |
+| 3 | **Alpha.** Playable through 2 badges. Custom encounters on 3 maps; 2 or more custom maps. Battle sim/engine bugs almost gone — visible bugs still occasional. 50% of move animations confirmed. |
+| 4 | **Pre-Beta.** Playable through 4 badges. Orange Islands started. |
+| 5 | **Beta.** Playable through 4 badges. Orange Island maps created; some scripts created for the area. |
+| 6 | **Quality Beta.** Orange Islands finished, with occasional issues. |
+| 7 | Playable through 8 badges. |
+| 8 | **Polish tier.** |
+| 9 | **Playtest launch.** |
+| 10 | **Launch.** |
+
+Update the "current tier" marker as tiers close, the same way the M-number
+milestones above track state — do not let it go stale.
 
 ## Development workflow
 
