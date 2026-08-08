@@ -3075,9 +3075,27 @@ block grows, and rule 1 — never fill `A` — is in force here as everywhere
 else.
 
 
-## M27Q — Entity & event authoring *(new block, scoped 2026-08-08 — PROPOSED, NOT APPROVED)*
+## M27Q — Entity & event authoring *(scoped 2026-08-08; Q1–Q4 BUILT the same day, Q5 deferred indefinitely)*
 
-⚠️ **SCOPED BY RECON, AWAITING ROB'S IN/OUT CALL.** Nothing below is built and
+**Where this block stands, 2026-08-08.** `Q1` `Q2` `Q3` `Q4` are built and
+green; **`Q5` is deferred indefinitely by Rob and is not scheduled work**. The
+paragraphs below were written as a proposal and are kept as the scope of
+record — where a decision was later taken, it is marked inline at the tier
+rather than by rewriting the proposal around it.
+
+⚠️ **THE `A` SLOT IS STILL EMPTY FOR ALL OF IT.** Built and tested is not
+approved, and one thing in particular has NEVER BEEN SEEN IN PLAY: Q1 changed
+every trainer's AI, leaving 1,205 of 1,477 measurably weaker, and no human has
+fought one. That is the largest unverified claim in this block.
+
+**Four things were found that were not in the plan**, each recorded at its own
+tier: the `CHECKVIABILITY` importer bug (80 trainers silently missing a flag
+this project already implements), the `@tool` placeholder bug (which made every
+Q2/Q3 affordance on `TrainerData` invisible), the trainer-class dropdown
+data-loss bug caught by its own coverage assertion, and the overlay
+contamination footgun, now closed structurally rather than by discipline.
+
+⚠️ **SCOPED BY RECON, ORIGINALLY AWAITING ROB'S IN/OUT CALL.** Nothing below is built and
 nothing is approved. Every number is measured; the command that produced it is
 named. The `A` slot stays empty here as everywhere else.
 
@@ -3312,9 +3330,28 @@ positives, and a tool that cries wolf twice on a corpus this size gets ignored
 labels and a handful of flags this is holdable in your head; at fifty it is
 not. Building it before there is anything to collide with is speculative.
 
-**Q5 — custom team builder investigation.** ⚠️ **A RECON TIER, NOT A BUILD —
-its deliverable is a decision, and it must not start until Q2 has been used in
-anger.** The question it answers: does authoring a trainer team want Godot's
+**Q5 — custom team builder investigation. ⚠️ DEFERRED INDEFINITELY — Rob's
+call, 2026-08-08. Not scheduled, not next, not blocked on anything.** Q2
+shipped Godot's native array-of-resources editor for `TrainerData.party` at
+zero cost, and until authoring a real trainer with it proves annoying there is
+no evidence a bespoke builder is worth anything. Building one first would be
+picking a solution before the problem is known to exist. **The trigger to
+revisit is experiential, not a date**: hand-author a few trainers, and if the
+raw `species_dex`/`move_ids` int fields genuinely get in the way, reopen this
+with that as the brief.
+
+⚠️ **ONE PIECE OF Q5 SHOULD NOT WAIT FOR IT, AND IS THE REASON THIS TIER IS
+DEFERRED RATHER THAN DELETED.** `MovepoolResolver.legal_move_ids` calls
+`ResourceLoader.exists()` ONCE PER CANDIDATE MOVE NAME — `get_learnable_moves()`
+returns ~87 entries for Bulbasaur alone, so a roster sweep is roughly 300,000
+filesystem checks across 3,444 party mons. That is not only a Q5 problem: the
+**simulator's existing team builder calls the same function on every
+species/level change**, so the cost is already being paid live, per keystroke,
+today. Hoisting the implemented-move-id set out of the loop (one
+`DirAccess.get_files("res://data/moves/")`) is a small, independent fix worth
+doing on its own merits, and it unblocks any future roster lint for free.
+
+The original question, kept for whenever it reopens: does authoring a trainer team want Godot's
 native array-of-resources editor (free, shipped in Q2), or the simulator's own
 `scenes/team_builder/team_builder_screen.tscn`, or a third thing? **The real
 distinction is legality, not layout.** The simulator's builder enforces move
