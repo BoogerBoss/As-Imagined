@@ -65,7 +65,11 @@ const MAP_DATA_ASSERTIONS := 8
 ## [M27Q Q3] 510 -> 525. Section AT (ScriptPreview: the op listing, chain
 ## following, loop protection and dialogue lookup), 15 assertions, likewise
 ## read off the run that reported `525 + 0 gated == 510`.
-const EXPECTED_TOTAL := 525
+##
+## [M27Q Q4] 525 -> 536 -> 541. Section AU (NameUsage: the name-collision
+## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
+## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
+const EXPECTED_TOTAL := 541
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -239,6 +243,8 @@ func _ready() -> void:
 	_test_bake_guard()
 	_test_inspector_affordances()
 	_test_script_preview()
+	_test_name_usage()
+	_test_overlay_toggle_never_bakes()
 	_test_gesture_lifecycle()
 	_test_clip_math()
 	_test_write_half()
@@ -3810,3 +3816,101 @@ func _test_script_preview() -> void:
 			ScriptPreview.MAX_LINES > 212)
 	_chk("AT.15 depth is capped so one signpost cannot walk half of Kanto",
 			ScriptPreview.MAX_DEPTH > 0 and ScriptPreview.MAX_DEPTH <= 8)
+
+
+## Section AU — [M27Q Q4] NameUsage: is this name taken, how often, where.
+##
+## ⚠️ **AU.05 AND AU.06 ARE THE POINT.** The first cut of this tool reported
+## the project's ONLY authored flag as colliding with the corpus, because
+## `ScriptPreview.ops_index()` merges authored scripts into the same index and
+## the flag's own two uses looked like corpus hits. A collision checker whose
+## first output is a false positive is worse than no checker.
+func _test_name_usage() -> void:
+	# --- a name nobody uses
+	var free_r: Dictionary = NameUsage.lookup("FLAG_HIDE_ROUTE22_SIGN")
+	_chk("AU.01 an unused name reads free with zero references",
+			free_r["verdict"] == "free" and int(free_r["count"]) == 0)
+
+	# --- a real imported flag, with locations that name themselves
+	var taken: Dictionary = NameUsage.lookup("FLAG_BADGE01_GET")
+	_chk("AU.02 an imported flag reads taken", taken["verdict"] == "taken")
+	_chk("AU.03 ...with a real reference count", int(taken["count"]) > 1)
+	_chk("AU.04 ...and locations say WHERE and in WHICH op",
+			(taken["locations"] as Array).size() > 0
+			and _joined_keys(taken["locations"]).contains("setflag"))
+
+	# --- the authored flag: its own uses must NOT read as a collision
+	var mine: Dictionary = NameUsage.lookup(
+			"FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ")
+	_chk("AU.05 an authored flag used only by its own script reads 'yours'",
+			mine["verdict"] == "yours")
+	_chk("AU.06 ...because imported_refs separates my uses from everyone's",
+			int(mine["count"]) > 0 and int(mine["imported_refs"]) == 0)
+
+	# --- deliberately shared registers are never collisions
+	_chk("AU.07 VAR_RESULT is a shared register, not a collision",
+			NameUsage.lookup("VAR_RESULT")["verdict"] == "shared")
+	_chk("AU.08 VAR_TEMP_* is shared by prefix",
+			NameUsage.is_shared_register("VAR_TEMP_1")
+			and NameUsage.is_shared_register("VAR_TEMP_9"))
+	# ⚠️ Not vacuous: VAR_TEMP_1 really is used 600+ times by the corpus, so a
+	# rule that merely counted references would condemn it.
+	_chk("AU.09 ...even though the corpus references it heavily",
+			int(NameUsage.lookup("VAR_TEMP_1")["count"]) > 100)
+
+	# --- the audit: everything authored today is correctly namespaced
+	_chk("AU.10 audit_authored() reports no problems for current content",
+			NameUsage.audit_authored().is_empty())
+	# The convention itself is a clean namespace BY MEASUREMENT.
+	_chk("AU.11 no imported name occupies the FLAG_AUTHORED_ prefix",
+			int(NameUsage.lookup("FLAG_AUTHORED_TOTALLY_NEW_THING")["count"]) == 0)
+
+
+func _joined_keys(locs: Array) -> String:
+	var out := PackedStringArray()
+	for l in locs:
+		out.append("%s|%s" % [l["where"], l["detail"]])
+	return " ".join(out)
+
+
+## Section AV — [M27Q Q4 follow-up] the overlay toggle cannot contaminate a map.
+##
+## ⚠️ **THIS IS THE ASSERTION THE WHOLE TOGGLE RESTS ON.** Section N catches an
+## overlay that HAS been baked in; this proves the toggle's overlay CANNOT be.
+## The mechanism is that `add_child` from code leaves `owner == null` and
+## `PackedScene.pack()` visits only owned nodes — the same guarantee `[M27D D1]`
+## already relies on for entity sprites. If Godot ever changed that, every map
+## would start silently gaining a debug node again, and N would only notice
+## after someone saved.
+func _test_overlay_toggle_never_bakes() -> void:
+	var packed := load("res://scenes/maps/PalletTown_Frlg.tscn") as PackedScene
+	var root: Node2D = packed.instantiate()
+
+	# Exactly what plugin._on_overlay_toggled does.
+	var ov = (load("res://scenes/overworld/map_overlay.tscn") as PackedScene).instantiate()
+	ov.name = "MapOverlayEditorTemp"
+	ov.map_data = load("res://scenes/maps/PalletTown_Frlg_data.tres")
+	root.add_child(ov)
+
+	_chk("AV.01 a code-added child has no owner", ov.owner == null)
+	_chk("AV.02 ...and is really in the tree, so AV.03-AV.05 are not vacuous",
+			root.get_node_or_null("MapOverlayEditorTemp") != null)
+
+	var out := PackedScene.new()
+	var err := out.pack(root)
+	_chk("AV.03 the scene still packs cleanly", err == OK)
+	ResourceSaver.save(out, "user://_m27a_overlay_bake_check.tscn")
+	var txt := FileAccess.open("user://_m27a_overlay_bake_check.tscn",
+			FileAccess.READ).get_as_text()
+	_chk("AV.04 the overlay node never reaches the packed scene",
+			not txt.contains("MapOverlayEditorTemp"))
+	# ⚠️ The SECOND half of the contamination, and the one that is easy to miss:
+	# `map_data` is a serialised property pointing at a resource, so an owned
+	# overlay drags in an ext_resource for the map's own _data.tres — a
+	# dependency a baked map is deliberately built without, since MapManager
+	# resolves it by path convention instead.
+	_chk("AV.05 nor does the map_data resource it points at",
+			not txt.contains("map_overlay.tscn") and not txt.contains("_data.tres"))
+	DirAccess.remove_absolute(
+			ProjectSettings.globalize_path("user://_m27a_overlay_bake_check.tscn"))
+	root.free()

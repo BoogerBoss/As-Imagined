@@ -31,6 +31,37 @@ var _target: MapOverlay = null
 ## above: different trigger (selection, not viewport input), different target
 ## (any OverworldEntity, not a MapOverlay) and no write path at all.
 var _entity_inspector: EditorInspectorPlugin = null
+
+## [M27Q Q4] The name-collision checker. A project-level QUESTION, not a
+## property of the selection, so it lives on the toolbar beside Save Map Data
+## rather than in the Inspector.
+var _name_button: Button = null
+var _name_dialog: AcceptDialog = null
+
+## [M27Q Q4 follow-up] The overlay toggle.
+##
+## ⚠️ **THIS EXISTS BECAUSE "REMEMBER TO DELETE IT BEFORE SAVING" IS NOT A
+## WORKFLOW, AND IT HAS NOW FAILED TWICE.** Adding a MapOverlay through the
+## editor UI gives it an `owner`, and an owned node is written into the baked
+## scene by `PackedScene.pack()`. It contaminates TWICE over: the node itself,
+## and — because `map_data` is a serialised property pointing at a resource —
+## an `ext_resource` line for the map's own `_data.tres`, a dependency the
+## baked scene is deliberately built NOT to have (`MapManager` resolves it by
+## path convention at load time instead).
+##
+## A node added from CODE has `owner == null`, and `pack()` skips it along with
+## anything its properties reference. That is the same guarantee `[M27D D1]`
+## already relies on for entity sprites: "built with no `owner`, so Godot never
+## serialises them and a baked scene stays byte-identical whether or not it has
+## been opened." Section N is currently the only thing standing between a
+## forgotten deletion and a permanently contaminated map; this makes forgetting
+## impossible instead of merely detectable.
+const OVERLAY_SCENE := "res://scenes/overworld/map_overlay.tscn"
+## Distinct from a plain "MapOverlay" so the toggle can never remove a node
+## somebody placed deliberately — it only ever owns the one it created.
+const TEMP_OVERLAY_NAME := "MapOverlayEditorTemp"
+
+var _overlay_button: Button = null
 var _painting := false
 var _last_cell := Vector2i(-9999, -9999)
 var _dirty := false
@@ -47,6 +78,24 @@ func _enter_tree() -> void:
 	_entity_inspector = preload("res://addons/map_overlay_editor/entity_inspector.gd").new()
 	add_inspector_plugin(_entity_inspector)
 
+	_name_dialog = preload("res://addons/map_overlay_editor/name_usage_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(_name_dialog)
+	_name_button = Button.new()
+	_name_button.text = "Name Usage"
+	_name_button.tooltip_text = ("Is a FLAG_/VAR_/trainer/label name already "
+			+ "taken, how often, and where?")
+	_name_button.pressed.connect(func() -> void: _name_dialog.popup_fresh())
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _name_button)
+
+	_overlay_button = Button.new()
+	_overlay_button.text = "Overlay"
+	_overlay_button.toggle_mode = true
+	_overlay_button.tooltip_text = ("Add/remove the MapOverlay on the open map. "
+			+ "Added from code, so it has no owner and can never be saved into "
+			+ "the scene.")
+	_overlay_button.toggled.connect(_on_overlay_toggled)
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
+
 
 func _exit_tree() -> void:
 	if _save_button != null:
@@ -56,6 +105,75 @@ func _exit_tree() -> void:
 	if _entity_inspector != null:
 		remove_inspector_plugin(_entity_inspector)
 		_entity_inspector = null
+	if _name_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _name_button)
+		_name_button.queue_free()
+		_name_button = null
+	if _name_dialog != null:
+		# Parented to the editor base control, so it must be freed explicitly
+		# rather than riding the plugin's own teardown.
+		_name_dialog.queue_free()
+		_name_dialog = null
+	if _overlay_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
+		_overlay_button.queue_free()
+		_overlay_button = null
+
+
+## Add or remove the scratch overlay on whatever map is open.
+##
+## ⚠️ Never trusts the button's own state to decide what exists. The edited
+## scene can change under it, and a stale bool would then either add a second
+## overlay or refuse to remove a real one. The scene tree is the truth.
+func _on_overlay_toggled(pressed: bool) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		_overlay_button.set_pressed_no_signal(false)
+		return
+	var existing := root.get_node_or_null(TEMP_OVERLAY_NAME)
+	if not pressed:
+		if existing != null:
+			existing.queue_free()
+		return
+	if existing != null:
+		return
+
+	# ⚠️ Refuses on anything that is not a baked map. The overlay reads
+	# `MapData`, and the convention `<Map>.tscn` -> `<Map>_data.tres` is the
+	# only thing that resolves one — the same convention `MapManager` uses.
+	var scene_path := root.scene_file_path
+	if not scene_path.begins_with("res://scenes/maps/"):
+		push_warning("Overlay: only a baked map under scenes/maps/ has MapData.")
+		_overlay_button.set_pressed_no_signal(false)
+		return
+	var data_path := scene_path.replace(".tscn", "_data.tres")
+	if not ResourceLoader.exists(data_path):
+		push_warning("Overlay: no MapData at %s." % data_path)
+		_overlay_button.set_pressed_no_signal(false)
+		return
+
+	# ⚠️ A MapOverlay already sitting in the scene is the CONTAMINATION BUG, not
+	# something to add a second one beside. Say so rather than compounding it.
+	for c in root.get_children():
+		if c is MapOverlay:
+			push_warning("Overlay: this scene already contains a MapOverlay "
+					+ "node (%s). It is baked in and should be deleted — see "
+					+ "m27a section N." % c.name)
+			_overlay_button.set_pressed_no_signal(false)
+			return
+
+	var node := (load(OVERLAY_SCENE) as PackedScene).instantiate()
+	node.name = TEMP_OVERLAY_NAME
+	node.map_data = load(data_path)
+	# ⚠️ NO `owner` IS SET, AND THAT IS THE ENTIRE MECHANISM. add_child leaves
+	# owner null, PackedScene.pack() visits only owned nodes, so neither this
+	# node nor the _data.tres its map_data points at can reach the file.
+	root.add_child(node)
+	# Select it so the paint path is live immediately -- _handles/_edit key on
+	# the selection, so an unselected overlay would look inert.
+	var sel := EditorInterface.get_selection()
+	sel.clear()
+	sel.add_node(node)
 
 
 ## The one place an edit reaches disk. Reports the real result; a save that

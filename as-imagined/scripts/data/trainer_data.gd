@@ -1,3 +1,4 @@
+@tool
 class_name TrainerData
 extends Resource
 
@@ -192,10 +193,36 @@ func describe_party() -> PackedStringArray:
 	return out
 
 
+## dex -> species name, read straight from the JSON.
+##
+## ⚠️ **DELIBERATELY NOT `PokemonRegistry.get_species()`, AND THE FIRST CUT WAS
+## AND IT BROKE IN THE EDITOR.** `PokemonRegistry` is an AUTOLOAD whose script
+## is not `@tool`, so it does not execute in the editor at all — every species
+## would have rendered as `Species #39`. `MoveRegistry`/`ItemRegistry` are
+## plain static classes and are fine; only this one was an autoload. Reading
+## the JSON directly costs one parse per session and works identically in the
+## editor and at runtime, which is the property a panel needs.
+static var _species_names: Dictionary = {}
+static var _species_loaded := false
+
+
+static func species_name_for(dex: int) -> String:
+	if not _species_loaded:
+		_species_loaded = true
+		var f := FileAccess.open("res://data/pokemon.json", FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			f.close()
+			if parsed is Array:
+				for row in (parsed as Array):
+					_species_names[int((row as Dictionary).get("dex", 0))] = \
+							str((row as Dictionary).get("name", ""))
+	return str(_species_names.get(dex, ""))
+
+
 func _describe_mon(m: TrainerPartyMon) -> String:
-	var species: Dictionary = PokemonRegistry.get_species(m.species_dex)
-	var name := str(species.get("name", "")) if not species.is_empty() \
-			else "Species #%d" % m.species_dex
+	var resolved := species_name_for(m.species_dex)
+	var name := resolved if resolved != "" else "Species #%d" % m.species_dex
 	var line := "%s · Lv%d" % [name, m.level]
 	if m.nickname != "":
 		line += " \"%s\"" % m.nickname
