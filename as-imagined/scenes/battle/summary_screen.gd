@@ -260,6 +260,14 @@ var _move_detail_pill_labels: Array[OutlineLabel] = []
 
 
 func setup(parent_bs, party: BattleParty, start_index: int) -> void:
+	# [M26A1 / 3:2 Phase 3] Letterboxed at an honest integer 2x rather than
+	# stretched to 3:2 — see `UiLetterbox`. Applied here rather than in the
+	# `.tscn` so all three screens share ONE mechanism, including
+	# `switch_select_screen`, which has no tree to author it into.
+	UiLetterbox.apply(self)
+	var _backdrop := get_node_or_null("Backdrop") as Control
+	if _backdrop != null:
+		UiLetterbox.expand_to_viewport(_backdrop)
 	_parent_bs = parent_bs
 	_party = party
 	_mon_index = clampi(start_index, 0, max(0, party.members.size() - 1))

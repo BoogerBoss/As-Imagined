@@ -191,9 +191,36 @@ to the whole table — not per-sprite fudging.
 
 | | |
 |---|---|
-| **Do** | Whichever Decision 2 selects, for `item_select_screen`, `switch_select_screen`, `summary_screen`. Delete `bag_bg_female.png` — **zero references**, confirmed. |
+| **Do** | Whichever Decision 2 selects, for `item_select_screen`, `switch_select_screen`, `summary_screen`. |
 | **Done when** | All three render without stretching artefacts; their suites green. |
 | **Do NOT** | Non-uniformly stretch 4:3 art to fill 3:2. Letterboxing is honest; distortion is not. |
+| **Status** | ✅ **Done 2026-08-07 — letterboxed.** `scripts/ui/ui_letterbox.gd`, wired into all three `setup()` calls. |
+
+**Decision 2 — RESOLVED: letterbox now, re-author later.** Rob's call. The
+screens are drawn at an honest integer **2×** (1024×768, exactly twice the
+pack's 512×384), centred in 1200×800 with **88 px side bars and 16 px top/
+bottom**.
+
+⚠️ **THE LETTERBOX IS BUILT TO BE DELETED, AND THAT SHAPED THE DESIGN.** It is
+one class plus three one-line call sites. The alternative — reparenting each
+screen's contents into a fixed frame — would have touched all three trees and
+broken every `$Node/Path` in their scripts, for a measure that is temporary by
+decision. Applying it at the **root** instead means every child keeps the
+coordinates it was already authored against, including Summary's hand-placed
+`GbaLayer` at (32, 64).
+
+⚠️ **The bars must be OPAQUE, which is not obvious.** These screens are child
+overlays over a *live* battle (`[M25h-1.4]`), so a transparent bar shows the
+battle still running either side of the panel — reading as a rendering bug
+rather than a letterbox. `switch_select_screen` had no backdrop of its own and
+needed one added.
+
+⚠️ **CORRECTION — `bag_bg_female.png` IS NOT DEAD, AND THIS PLAN SAID TO
+DELETE IT.** The "zero references" check only covered scenes and scripts;
+`scripts/gen_bag_sprites.py` **emits** it, so deleting the PNG would be undone
+by the next generator run. More importantly `[M27K K-b]` since built real
+gender selection, so this is unwired art **with a future consumer**, not
+leftover weight. Left in place.
 
 ---
 
@@ -221,9 +248,14 @@ than depending on it**: zoom 5 shows 15×10 tiles where zoom 3 showed 21.3×16,
 so *less* void is exposed at an unskirted map edge, not more. The old **12×9
 depth is moot** rather than merely stale — there is no skirt to size.
 
-⚠️ **Still open, and Rob's call, not this plan's:** whether a border skirt
-returns and in what form. Walking to a map edge shows void today. That is
-pre-existing and unchanged by Phase 4.
+✅ **RESOLVED — THE BORDER SKIRT IS DEAD.** Rob, 2026-08-07: *"Border skirt is
+dead. I will be drawing my own borders."* Borders become authored map content
+rather than a rendered system, so **nothing here is owed a skirt** and a future
+session must not re-land one from `39d0dba3`. The codebase already says so at
+the data: `map_data.gd`'s `border` field is documented as *"NOTHING READS THIS
+AT RUNTIME… borders are hand-drawn into the maps themselves now"*, and the
+fields stay only because the importer still emits them. This plan was the last
+stale copy.
 
 ⚠️ **A COUPLED CONSTANT THE PLAN NEVER NAMED, AND PHASE 4 WOULD HAVE SHIPPED
 IT BROKEN.** `TiledWeatherOverlay.TILE_SCALE` was `3.0`, carrying the comment

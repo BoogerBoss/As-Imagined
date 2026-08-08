@@ -204,8 +204,12 @@ func setup(parent_bs, field_slot: int, is_forced_replacement: bool) -> void:
 
 
 func _build() -> void:
-	anchor_right = 1.0
-	anchor_bottom = 1.0
+	# [M26A1 / 3:2 Phase 3] Letterboxed at an honest integer 2x rather than
+	# stretched to 3:2 — see `UiLetterbox`. This screen has only a root node
+	# in its `.tscn` (everything below is built here), which is why the
+	# letterbox is applied in code for all three screens rather than authored
+	# into two trees and coded into a third.
+	UiLetterbox.apply(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 	var is_doubles: bool = _parent_bs != null and _parent_bs._is_doubles()
@@ -213,10 +217,26 @@ func _build() -> void:
 	var bg := TextureRect.new()
 	bg.texture = load(_PARTY_DIR + "party_bg_doubles.png") \
 			if is_doubles else load(_PARTY_DIR + "party_bg_singles.png")
+	# Fills the letterboxed panel exactly (1024x768 = 2x the art's own
+	# 512x384), so STRETCH_SCALE here is a clean integer upscale rather than
+	# the 2.34 x 2.08 distortion filling a 3:2 viewport would give.
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	bg.stretch_mode = TextureRect.STRETCH_SCALE
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	# ⚠️ The letterbox bars must be OPAQUE. This screen is a CHILD OVERLAY
+	# over a live battle, so a transparent bar shows the battle still running
+	# either side of the panel — which reads as a rendering bug rather than a
+	# letterbox. The other two screens already own a full-rect `Backdrop`
+	# ColorRect; this one has none, so it gets one here, added BEFORE `bg` so
+	# it draws behind it.
+	var bars := ColorRect.new()
+	bars.color = Color(0.05, 0.05, 0.05, 1.0)
+	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UiLetterbox.expand_to_viewport(bars)
+	add_child(bars)
+
 	add_child(bg)
 
 	_header = Label.new()
