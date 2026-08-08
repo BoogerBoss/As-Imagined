@@ -204,7 +204,37 @@ to the whole table — not per-sprite fudging.
 | **Do** | Camera zoom 3 → **5**, giving exactly **15×10 tiles — the GBA viewport** (today: 21.3×16). Re-measure border-skirt depth against the new visible region. |
 | **Files** | `scenes/overworld/overworld.gd:613`, `map_manager.gd` |
 | **Done when** | Visible region is 15×10; no void at map edges; the 23 overworld suites green. |
-| ⚠️ **Blocked on** | **The skirt system is not in `map_manager.gd` at HEAD** (see the note on `8115a7f8`). Either re-land it first or sequence Phase 4 after it. **Do not re-derive 12×9** — that value was measured against 1024×768 zoom 3 and is meaningless here. |
+| **Status** | ✅ **Done 2026-08-07.** `CAMERA_ZOOM = 5`; visible region is exactly **15×10 tiles**. |
+
+⚠️ **THE STATED BLOCKER WAS WRONG, AND THE CORRECTION MATTERS.** This row read
+*"blocked on the skirt system not being in `map_manager.gd` at HEAD — re-land
+it first."* The skirt is indeed absent (zero matches; the file is 1283 lines,
+last touched by `8115a7f8`), **but it was not lost.** That commit's own `git
+notes` records the 542 deletions it swept as *"Rob's and… intended; only their
+attribution is wrong"* — the mistake was mine, in committing them under my
+message, not in their existence. `m27a_step_resolver_test` agrees: it reports
+500/500, not 514/514, because its 13 skirt assertions went with the
+implementation.
+
+So there was nothing to re-land, and **Phase 4 improves the situation rather
+than depending on it**: zoom 5 shows 15×10 tiles where zoom 3 showed 21.3×16,
+so *less* void is exposed at an unskirted map edge, not more. The old **12×9
+depth is moot** rather than merely stale — there is no skirt to size.
+
+⚠️ **Still open, and Rob's call, not this plan's:** whether a border skirt
+returns and in what form. Walking to a map edge shows void today. That is
+pre-existing and unchanged by Phase 4.
+
+⚠️ **A COUPLED CONSTANT THE PLAN NEVER NAMED, AND PHASE 4 WOULD HAVE SHIPPED
+IT BROKEN.** `TiledWeatherOverlay.TILE_SCALE` was `3.0`, carrying the comment
+*"matches overworld.gd's own fixed `_camera.zoom`"* — a hand-kept duplicate,
+unavoidable because `overworld.gd` has no `class_name` for that class to read.
+Left at 3 it would draw every weather tile at 3/5 size with visible gaps
+between them, which is the exact failure that file's own header warns about.
+Found by grepping for consumers of the zoom, **not** by reading the plan.
+Both are now 5 and `m27n_weather_test` pins them equal, so the duplication is
+CHECKED rather than commented — the same fix `check_bake_diff` needed after
+two hand-kept copies of one rule drifted and produced a false positive.
 
 ⚠️ **Cutting the visible area by ~50% is a real gameplay change**, not just a
 render change. Encounter pacing, how much of a map reads at once, and cutscene

@@ -23,6 +23,29 @@ extends Node2D
 
 const CELL := 16
 
+## [M26A1 / 3:2 Phase 4] Camera zoom, and it is not a feel value.
+##
+## At the 1200x800 canvas (a uniform 5x GBA) a zoom of 5 makes the visible
+## region exactly **15 x 10 tiles -- the GBA's own viewport**:
+##
+##     1200 / 5 / 16 = 15      800 / 5 / 16 = 10
+##
+## ⚠️ **THIS IS A GAMEPLAY CHANGE, NOT A RENDER CHANGE, AND THAT IS THE
+## POINT.** The previous 1024x768 / zoom 3 showed 21.3 x 16.0 tiles -- 42%
+## more width and 60% more height than the real game. How much of a map reads
+## at once, how cutscenes frame, and how close an encounter feels all shift.
+##
+## ⚠️ **`_snap_camera_to_player` DEPENDS ON THIS BEING AN INTEGER**, so an
+## integer world position can only ever land on an integer screen position.
+## A fractional zoom reintroduces the sub-pixel drift that function exists to
+## remove -- see its own doc comment.
+##
+## ⚠️ **`TiledWeatherOverlay.TILE_SCALE` MUST MATCH THIS.** It is a separate
+## hand-kept copy (that class cannot reach this file -- `overworld.gd` has no
+## `class_name`), and a mismatch renders weather tiles at the wrong size with
+## visible gaps between them. `m27n_weather_test` pins the two equal.
+const CAMERA_ZOOM := 5
+
 ## Which map the player starts in. An @export rather than a constant because
 ## this is exactly the thing that stopped being fixed at authoring time — C4
 ## changes it during play, and a warp (C5) changes it on arrival.
@@ -610,7 +633,7 @@ func _add_camera() -> void:
 	if _player == null:
 		return
 	_camera = Camera2D.new()
-	_camera.zoom = Vector2(3, 3)
+	_camera.zoom = Vector2(CAMERA_ZOOM, CAMERA_ZOOM)
 	# Smoothing OFF, deliberately. The player's own movement is already the
 	# tween — layering Camera2D's built-in smoothing on top means the camera is
 	# forever lerping toward a continuously-moving target, which never lands on
@@ -632,8 +655,8 @@ func _add_camera() -> void:
 ## The one place the camera's position is ever set, so a future call site
 ## cannot reintroduce the sub-pixel drift by copying `_player.global_position`
 ## raw. Rounds in WORLD space (not screen space) — correct as long as camera
-## zoom is an integer, which it is (3), so an integer world position can only
-## ever land on an integer screen position.
+## zoom is an integer, which it is (`CAMERA_ZOOM`), so an integer world
+## position can only ever land on an integer screen position.
 func _snap_camera_to_player() -> void:
 	if _camera == null or _player == null:
 		return

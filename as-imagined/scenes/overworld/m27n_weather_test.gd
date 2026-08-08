@@ -38,7 +38,7 @@ extends Node
 ##     uses Fog, so — like Drought — this is exercised by directly driving
 ##     `WeatherManager`/`TiledWeatherOverlay` instances.
 
-const EXPECTED_TOTAL := 48
+const EXPECTED_TOTAL := 53
 
 var _total := 0
 var _failed := 0
@@ -66,6 +66,7 @@ func _ready() -> void:
 	_test_tiled_overlay_drift()
 	_test_tiled_registry_integration()
 	_test_camera_scroll_push()
+	_test_tile_scale_matches_camera_zoom()
 	await _test_transition_hooks()
 
 	var accounted := _total + _gated
@@ -500,3 +501,51 @@ func _test_transition_hooks() -> void:
 			requested.has(ow.manager.weather_of("Route1_Frlg")))
 
 	ow.queue_free()
+
+
+# ── [M26A1 / 3:2 Phase 4] The camera zoom, and the copy of it that lives here
+#
+# ⚠️ **`TiledWeatherOverlay.TILE_SCALE` IS A HAND-KEPT DUPLICATE OF
+# `overworld.gd`'s `CAMERA_ZOOM`, AND IT CANNOT BE ANYTHING ELSE:**
+# `overworld.gd` carries no `class_name`, so this class has no way to read it.
+# A mismatch draws every weather tile at the wrong size and leaves visible
+# gaps -- which is exactly the failure `tiled_weather_overlay.gd`'s own header
+# already warns about for source's literal 5x4 grid.
+#
+# So the duplication is pinned rather than trusted. This project has paid for
+# two hand-kept copies of one rule before (`map_baker` vs `check_bake_diff`'s
+# normalisation rules, which drifted and produced a false positive nobody
+# could explain), and the fix there was the same: assert them equal and say at
+# both sites that they must stay in step.
+#
+# ⚠️ **Phase 4 would have shipped this broken.** The plan named only the
+# camera; this constant was found by grepping for consumers rather than by
+# reading the plan, and nothing else in the tree would have failed.
+func _test_tile_scale_matches_camera_zoom() -> void:
+	var ow: GDScript = load("res://scenes/overworld/overworld.gd")
+	var zoom: float = float(ow.get_script_constant_map().get("CAMERA_ZOOM", -1))
+	var cell: float = float(ow.get_script_constant_map().get("CELL", -1))
+
+	_chk("overworld.gd exposes CAMERA_ZOOM", zoom > 0.0)
+	_chk("TiledWeatherOverlay.TILE_SCALE matches the camera zoom (weather tiles "
+			+ "are sized in screen pixels, so a mismatch leaves gaps)",
+			is_equal_approx(TiledWeatherOverlay.TILE_SCALE, zoom))
+
+	# The zoom must stay an INTEGER: `_snap_camera_to_player` rounds in world
+	# space, which only lands on a whole screen pixel while the zoom is whole.
+	# A fractional zoom reintroduces the sub-pixel drift that function exists
+	# to remove, and it would do so silently.
+	_chk("the camera zoom is an integer, so world rounding still lands on a whole "
+			+ "screen pixel", is_equal_approx(zoom, floorf(zoom)))
+
+	# ⚠️ The headline: the visible region is the GBA's own viewport. This is
+	# the assertion that actually pins Phase 4's intent -- the two above would
+	# still pass at zoom 3, which showed 21.3 x 16.0 tiles.
+	var vw: float = float(ProjectSettings.get_setting("display/window/size/viewport_width"))
+	var vh: float = float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var tiles_x: float = vw / zoom / cell
+	var tiles_y: float = vh / zoom / cell
+	_chk("the visible region is exactly 15 tiles wide (the GBA's own viewport)",
+			is_equal_approx(tiles_x, 15.0))
+	_chk("the visible region is exactly 10 tiles tall (the GBA's own viewport)",
+			is_equal_approx(tiles_y, 10.0))

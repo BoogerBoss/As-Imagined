@@ -22,9 +22,9 @@ extends Node2D
 ## measured and fixed once, one layer up the chain).
 ##
 ## Grid size is DERIVED from the real viewport size and this project's own
-## fixed camera zoom (3, `TILE_SCALE` below), NOT source's literal 5x4
-## (sized for a 240x160 GBA screen) -- porting 5x4 onto this project's
-## 1024x768 canvas would leave visible gaps.
+## fixed camera zoom (`TILE_SCALE` below), NOT source's literal 5x4 (sized
+## for a 240x160 GBA screen) -- porting 5x4 onto this project's own canvas
+## would leave visible gaps.
 ##
 ## ⚠️ DISCLOSED SIMPLIFICATION: each type's per-frame ANIMATION is not
 ## ported -- every tile draws a single static frame (the sheet's own first
@@ -37,7 +37,16 @@ extends Node2D
 ## exact sub-frame rects is disproportionate; revisit once a real Fog/Ash/
 ## Sandstorm map is reachable and the animation is actually visible.
 
-const TILE_SCALE := 3.0  # matches overworld.gd's own fixed `_camera.zoom`
+## ⚠️ **A HAND-KEPT COPY OF `overworld.gd`'s `CAMERA_ZOOM`, AND IT HAS TO BE
+## ONE:** that file carries no `class_name`, so this class genuinely cannot
+## reach it. A mismatch draws every weather tile at the wrong size and leaves
+## visible gaps between them -- the exact failure this file's own header
+## warns about for source's literal 5x4 grid.
+##
+## `m27n_weather_test` pins the two equal, so the duplication is CHECKED
+## rather than merely commented. Two hand-kept copies of one rule is the
+## drift shape this project has already paid for once (`check_bake_diff`).
+const TILE_SCALE := 5.0
 const FRAME_SECONDS := 1.0 / 60.0  # source's own frame unit, 60fps-equivalent
 const ALPHA_UNIT := 1.0 / 16.0  # one BLDALPHA coefficient step (0-16 range)
 
