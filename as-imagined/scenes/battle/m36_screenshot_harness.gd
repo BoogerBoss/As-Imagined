@@ -273,6 +273,30 @@ func _run() -> void:
 		else:
 			print("HARNESS: failed to save %s (err %d)" % [path, err])
 
+	# [bg probe] Report the anim background layer's real geometry vs the
+	# viewport, so "the background does not fill the screen" becomes a
+	# measurement rather than an impression.
+	var eff = _screen.get("_effect_layer")
+	var stage_root: Control = eff.get_parent() as Control if eff != null else null
+	if stage_root != null:
+		var bg := stage_root.get_node_or_null("AnimBackgroundLayer") as TextureRect
+		print("BGPROBE: stage_root=%s rect=%s" % [stage_root.name,
+				str(stage_root.get_global_rect())])
+		if bg != null:
+			print("BGPROBE: visible=%s rect=%s tex=%s stretch=%d viewport=%s"
+					% [str(bg.visible), str(bg.get_global_rect()),
+						str(bg.texture.get_size()) if bg.texture != null else "<none>",
+						bg.stretch_mode, str(get_viewport().get_visible_rect().size)])
+		else:
+			print("BGPROBE: no AnimBackgroundLayer child")
+			for c in stage_root.get_children():
+				if c is Control:
+					var r: Rect2 = (c as Control).get_global_rect()
+					print("   child: %-22s idx=%d y=%.0f..%.0f (%.0f%%..%.0f%%)"
+							% [c.name, c.get_index(), r.position.y, r.end.y,
+								100.0 * r.position.y / 768.0, 100.0 * r.end.y / 768.0])
+	else:
+		print("BGPROBE: no effect layer / stage root")
 	_report_opponent_side("AFTER move")
 	if _anim_frames > 0:
 		print("HARNESS: animation ran %d GBA frames; captured %d shots every "
