@@ -55,41 +55,19 @@ func priority() -> int:
 ## the editor, silent at boot, and first surfaced as the VM halting
 ## `UNRESOLVED` when you walked up and pressed A.
 ##
-## Built once and cached: `data/map_scripts.json` is 8.6 MB and measures
-## **28 ms to read + 198 ms to parse for 17,159 labels**, which is fine once per
-## editor session and would not be fine per validation call.
-static var _label_index: Dictionary = {}
-static var _label_index_built := false
-
-
-## ⚠️ **FAILS OPEN, DELIBERATELY.** Returns an EMPTY dictionary if the corpus
-## cannot be read, and the caller then warns about nothing. A validator that
-## cannot see the corpus would otherwise flag every entity on every map at
-## once — which is worse than no warning, because the real one would be
-## invisible in the noise and the whole check would get ignored.
+## ⚠️ **[M27Q Q3] DELEGATES TO `ScriptPreview` RATHER THAN HOLDING ITS OWN
+## INDEX.** Q2 built a private one here; Q3's panel needed the same corpus and
+## briefly had a second. Two lazy caches of an 8.6 MB file is 226 ms paid twice
+## and, far worse, two answers to "does this label exist" that could disagree
+## — which is the shape of the bug that had just cost 80 trainers a flag.
+## One index, one parse, one answer.
+##
+## Fails open exactly as `ScriptPreview` does: an unreadable corpus yields an
+## empty index and the caller warns about nothing, because a validator that
+## cannot see the corpus would otherwise condemn all 2,386 scripted entities
+## at once and bury the real warning.
 static func _script_labels() -> Dictionary:
-	if _label_index_built:
-		return _label_index
-	_label_index_built = true
-	var f := FileAccess.open("res://data/map_scripts.json", FileAccess.READ)
-	if f == null:
-		return _label_index
-	var parsed: Variant = JSON.parse_string(f.get_as_text())
-	f.close()
-	if not (parsed is Dictionary):
-		return _label_index
-	for k in (parsed as Dictionary):
-		_label_index[str(k)] = true
-	# Authored scripts live in GDScript, not the corpus, and `EventRegistry` is
-	# populated at RUNTIME by `ScriptDriver.setup` — so in the editor it is
-	# empty unless something fills it. Filling it here is safe: `register_all`
-	# is static, builds plain op arrays, and `register` keeps the first
-	# registration rather than erroring on a repeat.
-	if EventRegistry.labels().is_empty():
-		AuthoredEvents.register_all()
-	for name in EventRegistry.labels():
-		_label_index[str(name)] = true
-	return _label_index
+	return ScriptPreview.ops_index()
 
 
 func _get_configuration_warnings() -> PackedStringArray:

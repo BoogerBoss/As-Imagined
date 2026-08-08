@@ -61,7 +61,11 @@ const MAP_DATA_ASSERTIONS := 8
 ## and the script_label resolution warning (8), then the Open-trainer-resource
 ## button (3). Both figures read off a real run — `507 + 0 gated == 499` and
 ## then `510 + 0 gated == 507` — never counted from `_chk(` call sites.
-const EXPECTED_TOTAL := 510
+##
+## [M27Q Q3] 510 -> 525. Section AT (ScriptPreview: the op listing, chain
+## following, loop protection and dialogue lookup), 15 assertions, likewise
+## read off the run that reported `525 + 0 gated == 510`.
+const EXPECTED_TOTAL := 525
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -234,6 +238,7 @@ func _ready() -> void:
 	_test_trainer_sight_runtime()
 	_test_bake_guard()
 	_test_inspector_affordances()
+	_test_script_preview()
 	_test_gesture_lifecycle()
 	_test_clip_math()
 	_test_write_half()
@@ -3742,3 +3747,66 @@ func _test_inspector_affordances() -> void:
 
 func _joined(a: PackedStringArray) -> String:
 	return " | ".join(a)
+
+
+## Section AT — [M27Q Q3] ScriptPreview: label -> op listing + dialogue.
+##
+## ⚠️ **THE WHOLE POINT OF THIS CLASS IS THAT IT IS TESTABLE.** The panel that
+## renders it lives in the plugin, which has no automated coverage and has
+## shipped three defects; every rule — chain-following, loop protection,
+## truncation, text lookup — was put on this side of the boundary so a headless
+## suite could drive it. This section is that suite.
+func _test_script_preview() -> void:
+	var ops := ScriptPreview.ops_index()
+	_chk("AT.01 the index carries the whole imported corpus", ops.size() > 17000)
+	# ⚠️ Authored scripts are merged through EventRegistry.merge_into — the SAME
+	# call ScriptDriver.setup makes — so the preview resolves a label exactly as
+	# the running game would rather than by a second, bespoke merge.
+	_chk("AT.02 authored labels are merged in alongside the imported ones",
+			ops.has("PalletTown_Authored_SeaBreeze"))
+	_chk("AT.03 the text corpus loaded too", ScriptPreview.texts_index().size() > 11000)
+
+	# --- a real imported script, chain and all
+	var r: Dictionary = ScriptPreview.build("PalletTown_EventScript_SignLady")
+	_chk("AT.04 a real imported label resolves", r["found"])
+	_chk("AT.05 ...is not marked authored", not r["authored"])
+	_chk("AT.06 ...produces an op listing", (r["lines"] as PackedStringArray).size() > 0)
+	_chk("AT.07 ...and finds its dialogue through the chain",
+			(r["dialogue"] as Array).size() > 0)
+	# Following happens by LOOKUP, not an opcode whitelist, so a branching op
+	# added by a future VM stage is followed without touching this class.
+	_chk("AT.08 chain targets are followed, not just the entry label",
+			_joined(r["lines"]).contains("PalletTown_EventScript_SignLadyDone"))
+	# ⚠️ Real corpus scripts revisit shared labels (Common_Movement_FacePlayer
+	# is reached three times here). Without the visited set this recurses.
+	_chk("AT.09 a revisited label is marked rather than re-walked or looped",
+			_joined(r["lines"]).contains("already shown above"))
+
+	# --- dialogue resolves to real page text, not just a label
+	var pages_seen := 0
+	for d in (r["dialogue"] as Array):
+		pages_seen += (d["pages"] as PackedStringArray).size()
+	_chk("AT.10 dialogue entries carry real page text from map_texts.json",
+			pages_seen > 0)
+
+	# --- an authored script reports itself as authored (the jump-to-source
+	# button is authored-only, Rob's call 2026-08-08)
+	var a: Dictionary = ScriptPreview.build("PalletTown_Authored_SeaBreeze")
+	_chk("AT.11 an authored label resolves and is flagged authored",
+			a["found"] and a["authored"])
+
+	# --- the failure cases
+	var miss: Dictionary = ScriptPreview.build("Definitely_Not_A_Label")
+	_chk("AT.12 an unknown label reports not-found rather than empty-but-fine",
+			not miss["found"])
+	var blank: Dictionary = ScriptPreview.build("")
+	_chk("AT.13 an empty label is a real state and resolves to nothing",
+			not blank["found"])
+
+	# ⚠️ NOT vacuous: measured across all 1,738 labels real placements
+	# reference, the median listing is 8 lines and only 1.3% hit a cap — so a
+	# cap that never fired would mean the walker had stopped walking.
+	_chk("AT.14 the line cap is above the p99 of real placements (212)",
+			ScriptPreview.MAX_LINES > 212)
+	_chk("AT.15 depth is capped so one signpost cannot walk half of Kanto",
+			ScriptPreview.MAX_DEPTH > 0 and ScriptPreview.MAX_DEPTH <= 8)

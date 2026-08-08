@@ -29,6 +29,8 @@ func _ready() -> void:
 	_test_section_e_risky()
 	_test_section_f_factories()
 	_test_section_g_flag_table()
+	_test_section_h_name_hints()
+	_test_section_i_describe_party()
 
 	var total := _pass + _fail
 	print("m24c_test: %d/%d passed" % [_pass, total])
@@ -461,3 +463,123 @@ func _test_section_g_flag_table() -> void:
 			found = (p.hint == PROPERTY_HINT_FLAGS and p.hint_string == hint)
 	_chk("G.07 TrainerData.ai_flags actually carries that hint via _validate_property",
 			found)
+
+
+# ── Section H: [M27Q Q2 follow-up] name dropdowns for the int fields ────────
+#
+# ⚠️ **H.03/H.04 ARE THE POINT OF THIS SECTION.** A "Name:value" dropdown that
+# omits an id already present in the data does not merely look wrong — the
+# control renders blank and the first click overwrites a real value with an
+# unrelated one. Building the list from NAMED classes alone did exactly that:
+# 11 of 117 converted classes carry no class_name_text and 7 of them are in
+# use. These assertions are what caught it.
+func _test_section_h_name_hints() -> void:
+	var probe: TrainerData = ResourceLoader.load(
+			"res://data/trainers/TRAINER_LASS_ROBIN_FRLG.tres")
+	var class_hint := ""
+	var item_hint := ""
+	var class_kind := -1
+	var item_kind := -1
+	for p in probe.get_property_list():
+		if p.name == "trainer_class_id":
+			class_hint = str(p.hint_string); class_kind = p.hint
+		elif p.name == "battle_items":
+			item_hint = str(p.hint_string); item_kind = p.hint
+
+	_chk("H.01 trainer_class_id is an enum of names", class_kind == PROPERTY_HINT_ENUM
+			and class_hint.contains("COOLTRAINER:"))
+	# An ARRAY hints its ELEMENTS through a packed type-string payload; setting
+	# the enum on the array itself would hint the array, not the ints in it.
+	_chk("H.02 battle_items hints its elements, not the array",
+			item_kind == PROPERTY_HINT_TYPE_STRING
+			and item_hint.begins_with("%d/%d:" % [TYPE_INT, PROPERTY_HINT_ENUM]))
+
+	var class_ids := _hint_ids(class_hint)
+	var item_ids := _hint_ids(item_hint)
+	var missing_class := PackedStringArray()
+	var missing_item := PackedStringArray()
+	var dir := DirAccess.open("res://data/trainers")
+	for f in dir.get_files():
+		if not f.ends_with(".tres"):
+			continue
+		var t: TrainerData = ResourceLoader.load("res://data/trainers/" + f)
+		if t == null:
+			continue
+		if not class_ids.has(t.trainer_class_id):
+			missing_class.append(str(t.trainer_class_id))
+		for it in t.battle_items:
+			if not item_ids.has(int(it)):
+				missing_item.append(str(it))
+	_chk("H.03 every trainer_class_id in the roster is offered (missing: %s)"
+			% ", ".join(missing_class), missing_class.is_empty())
+	_chk("H.04 every battle item id in the roster is offered (missing: %s)"
+			% ", ".join(missing_item), missing_item.is_empty())
+	# The unnamed-but-used classes must be present AND legible as gaps.
+	_chk("H.05 unnamed classes are listed as gaps rather than dropped",
+			class_hint.contains("(unnamed)"))
+	# ⚠️ Stored value is the real id, never a dropdown index — a positional
+	# enum would reinterpret every existing .tres if a class were inserted.
+	_chk("H.06 the hint encodes real ids, not positions",
+			class_ids.has(probe.trainer_class_id) and probe.trainer_class_id == 68)
+
+
+## ids out of a "Name:value,Name:value" hint, tolerating the array prefix.
+func _hint_ids(hint: String) -> Dictionary:
+	var out := {}
+	var body := hint
+	var colon := body.find(":")
+	if body.begins_with("%d/%d:" % [TYPE_INT, PROPERTY_HINT_ENUM]):
+		body = body.substr(colon + 1)
+	for part in body.split(","):
+		var bits := part.rsplit(":", true, 1)
+		if bits.size() == 2:
+			out[bits[1].to_int()] = true
+	return out
+
+
+# ── Section I: [M27Q Q3] the read-only party roster ─────────────────────────
+#
+# The panel that shows this contains no rules — it prints what describe_party()
+# returns. These drive the rules.
+func _test_section_i_describe_party() -> void:
+	var robin: TrainerData = ResourceLoader.load(
+			"res://data/trainers/TRAINER_LASS_ROBIN_FRLG.tres")
+	var lines := robin.describe_party()
+	_chk("I.01 one line per party member", lines.size() == robin.party.size())
+	# Robin is the Kanto content anchor used elsewhere in this project:
+	# dex 39 Jigglypuff at level 14.
+	_chk("I.02 species resolves to a NAME, not a dex number",
+			lines.size() > 0 and lines[0].contains("Jigglypuff"))
+	_chk("I.03 the level is shown", lines.size() > 0 and lines[0].contains("Lv14"))
+
+	# ⚠️ An empty move list is a REAL, common state — trainerproc leaves moves
+	# unspecified and the engine derives them from the learnset at battle
+	# start. Saying so beats an empty bracket, which reads as data loss.
+	var blank := TrainerData.new()
+	var m := TrainerPartyMon.new()
+	m.species_dex = 25
+	m.level = 5
+	blank.party = [m]
+	var bl := blank.describe_party()
+	_chk("I.04 a mon with no moves says where they come from",
+			bl[0].contains("moves from learnset"))
+
+	# ⚠️ THE ASSERTION THAT MATTERS MOST. This project implements 717 of 935
+	# moves, so an id with no shipped .tres is reachable. Rendering nothing for
+	# it would make a real gap look like a three-move Pokémon.
+	m.move_ids = [1, 999999]
+	var gap := blank.describe_party()
+	_chk("I.05 a real move id renders as its name", gap[0].contains("Pound"))
+	_chk("I.06 an UNRESOLVABLE move id renders as its number, never as nothing",
+			gap[0].contains("#999999"))
+
+	# Same rule for a species with no entry at all.
+	m.species_dex = 999999
+	_chk("I.07 an unresolvable species falls back to its number",
+			blank.describe_party()[0].contains("Species #999999"))
+
+	# Held item, when there is one.
+	m.species_dex = 25
+	m.held_item_id = 28  # Potion
+	_chk("I.08 a held item is shown by name",
+			blank.describe_party()[0].contains("@Potion"))

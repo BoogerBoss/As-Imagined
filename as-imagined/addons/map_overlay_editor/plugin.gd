@@ -25,6 +25,12 @@ extends EditorPlugin
 var _save_button: Button = null
 
 var _target: MapOverlay = null
+
+## [M27Q Q3] The entity script/dialogue panel. Its own file, and its own
+## EditorInspectorPlugin, because it shares nothing with the painting half
+## above: different trigger (selection, not viewport input), different target
+## (any OverworldEntity, not a MapOverlay) and no write path at all.
+var _entity_inspector: EditorInspectorPlugin = null
 var _painting := false
 var _last_cell := Vector2i(-9999, -9999)
 var _dirty := false
@@ -38,6 +44,8 @@ func _enter_tree() -> void:
 	_save_button.pressed.connect(_on_save_pressed)
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _save_button)
 	_save_button.hide()
+	_entity_inspector = preload("res://addons/map_overlay_editor/entity_inspector.gd").new()
+	add_inspector_plugin(_entity_inspector)
 
 
 func _exit_tree() -> void:
@@ -45,6 +53,9 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _save_button)
 		_save_button.queue_free()
 		_save_button = null
+	if _entity_inspector != null:
+		remove_inspector_plugin(_entity_inspector)
+		_entity_inspector = null
 
 
 ## The one place an edit reaches disk. Reports the real result; a save that
