@@ -32,6 +32,10 @@ var _disable_anim := false
 # Trigger state -- see _run()'s own comment on why a fixed gap did not work.
 const _TRIGGER_TIMEOUT := 3000
 var _anim_started := false
+## ⚠️ [2026-08-07] Move ids whose animation started that were NOT the forced
+## one. Reported on a timeout so a silent capture-of-the-wrong-move becomes a
+## named failure -- see `_run()`'s trigger block.
+var _foreign_anims: Array[int] = []
 var _anim_frames := 0
 var _move_landed := false
 
@@ -181,9 +185,27 @@ func _run() -> void:
 	#
 	# Now the harness waits for the battle screen to say the animation has
 	# actually started, and only then begins shooting.
+	# ⚠️ **MATCHES THE MOVE ID, AND THE FIRST VERSION DID NOT — IT CAPTURED THE
+	# WRONG MOVE'S ANIMATION AND SAID NOTHING.**
+	#
+	# `anim_script_started(move_id)` has always carried the id; the old lambda
+	# discarded it and set the flag for ANY animation. Both battlers act every
+	# turn here (`queue_move(1, 0)` is the opponent's Tackle), so whenever the
+	# forced move failed to animate, the harness serenely shot the OPPONENT'S
+	# move instead and labelled the PNGs with the forced move's id.
+	#
+	# Found by reviewing the output rather than the code: a Thunder run
+	# (`--move=87`) produced six frames captioned "Foe Blastoise used Tackle".
+	# Thunder is 70% accuracy, it missed, no animation started for it, and the
+	# opponent's Tackle tripped the trigger. Every low-accuracy move in the
+	# roster had that exposure, and a reviewer signing off from these PNGs would
+	# have been looking at the wrong animation entirely.
 	if _screen.has_signal("anim_script_started"):
-		_screen.connect("anim_script_started",
-				func(_id: int): _anim_started = true)
+		_screen.connect("anim_script_started", func(id: int):
+			if id == _move_id:
+				_anim_started = true
+			elif not _foreign_anims.has(id):
+				_foreign_anims.append(id))
 		_screen.connect("anim_script_finished",
 				func(_id: int, f: int): _anim_frames = f)
 	# A move the engine DECLINES falls through to the legacy hit effect and
@@ -198,6 +220,14 @@ func _run() -> void:
 	if not engine_will_play:
 		_bm.move_executed.connect(func(_a, _b, _m, _d): _move_landed = true)
 
+	# ⚠️ **FORCE THE HIT.** Without it an accuracy roll decides whether this run
+	# captures anything, so a 70%-accuracy move silently fails ~30% of the time
+	# -- and, before the id check above, silently captured the OPPONENT'S move
+	# instead. `_force_hit` is BattleManager's own existing test seam
+	# (`battle_manager.gd:599`), not a harness invention. The animation is what
+	# is under review; whether the move would have connected is not.
+	_bm._force_hit = true
+
 	_bm.set_human_controlled(0, false)
 	_bm.set_human_controlled(1, false)
 	_bm.queue_move(0, 0)
@@ -211,11 +241,24 @@ func _run() -> void:
 	if not _anim_started and not _move_landed:
 		print("HARNESS: TRIGGER NEVER FIRED after %d frames -- the move never "
 				% waited + "executed. Nothing captured.")
+		# ⚠️ Names what DID animate. Before the id check this was the silent
+		# case that produced mislabelled PNGs; now it is a loud one that says
+		# exactly which move ran instead.
+		if not _foreign_anims.is_empty():
+			print("HARNESS: but move(s) %s DID animate -- the forced move %d "
+					% [str(_foreign_anims), _move_id]
+					+ "did not. Nothing was captured rather than capturing "
+					+ "the wrong move.")
 		get_tree().quit(1)
 		return
 	print("HARNESS: triggered after %d frames (%s)" % [waited,
 			"anim_script_started" if _anim_started
 			else "move_executed fallback"])
+	# Not a failure -- the opponent animating too is normal -- but worth saying,
+	# because it is the condition under which the old bug produced wrong shots.
+	if not _foreign_anims.is_empty():
+		print("HARNESS: (other move(s) %s also animated this turn; shots are "
+				% str(_foreign_anims) + "gated on move %d)" % _move_id)
 
 	# Capture across the animation window from the moment it began.
 	for shot in range(_shot_count):
