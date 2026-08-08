@@ -74,6 +74,35 @@ text = "Background:"
 layout_mode = 2
 custom_minimum_size = Vector2(260, 0)
 
+[node name="MovePoolRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/MovePoolRow"]
+layout_mode = 2
+text = "Move pool:"
+
+[node name="FromSpin" type="SpinBox" parent="Scroll/VBox/MovePoolRow"]
+layout_mode = 2
+min_value = 0.0
+max_value = 935.0
+value = 0.0
+prefix = "from "
+
+[node name="ToSpin" type="SpinBox" parent="Scroll/VBox/MovePoolRow"]
+layout_mode = 2
+min_value = 0.0
+max_value = 935.0
+value = 0.0
+prefix = "to "
+
+[node name="ForceCheck" type="CheckBox" parent="Scroll/VBox/MovePoolRow"]
+layout_mode = 2
+text = "Force (ignore legality)"
+
+[node name="MovePoolLabel" type="Label" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Move pool: off — random teams use their normal legal movesets."
+
 [node name="RefreshButton" type="Button" parent="Scroll/VBox"]
 layout_mode = 2
 text = "Refresh Team Lists"

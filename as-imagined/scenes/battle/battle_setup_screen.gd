@@ -43,6 +43,12 @@ const _OPTION_FIXTURE := "__fixture__"
 @onready var _player_option: OptionButton = $Scroll/VBox/PlayerRow/PlayerTeamOptionButton
 @onready var _opponent_option: OptionButton = $Scroll/VBox/OpponentRow/OpponentTeamOptionButton
 @onready var _background_option: OptionButton = $Scroll/VBox/BackgroundRow/BackgroundOptionButton
+## [M36 bench] The move-pool filter — see `_apply_move_pool` for what it is for.
+@onready var _pool_from: SpinBox = $Scroll/VBox/MovePoolRow/FromSpin
+@onready var _pool_to: SpinBox = $Scroll/VBox/MovePoolRow/ToSpin
+@onready var _pool_force: CheckBox = $Scroll/VBox/MovePoolRow/ForceCheck
+@onready var _pool_label: Label = $Scroll/VBox/MovePoolLabel
+
 @onready var _refresh_button: Button = $Scroll/VBox/RefreshButton
 @onready var _manage_teams_button: Button = $Scroll/VBox/ManageTeamsButton
 @onready var _launch_button: Button = $Scroll/VBox/LaunchButton
@@ -55,8 +61,14 @@ func _ready() -> void:
 	_refresh_button.pressed.connect(_refresh_team_lists)
 	_manage_teams_button.pressed.connect(_on_manage_teams_pressed)
 	_launch_button.pressed.connect(_on_launch_pressed)
+	# [M36 bench] Live readout — the counts are only useful if they update as
+	# you turn the dials, not after you have already launched a battle.
+	_pool_from.value_changed.connect(func(_v: float): _apply_move_pool())
+	_pool_to.value_changed.connect(func(_v: float): _apply_move_pool())
+	_pool_force.toggled.connect(func(_on: bool): _apply_move_pool())
 	_refresh_team_lists()
 	_populate_background_options()
+	_apply_move_pool()
 
 	# [Autoplay — matches the M23.1-addendum precedent] Without this, a
 	# direct sweep invocation of this scene idles forever with no
@@ -211,7 +223,13 @@ func _resolve_party(option: OptionButton, allow_fixture: bool) -> BattleParty:
 	var meta: Dictionary = option.get_item_metadata(option.selected)
 	match meta.get("type", ""):
 		_OPTION_RANDOM:
-			return RandomTeamGenerator.generate_team()
+			# [M36 bench] Applies to BOTH sides, so one battle shows roughly
+			# twice as many of the moves under test.
+			return RandomTeamGenerator.generate_team(
+					RandomTeamGenerator.DEFAULT_TEAM_SIZE,
+					RandomTeamGenerator.DEFAULT_MIN_LEVEL,
+					RandomTeamGenerator.DEFAULT_MAX_LEVEL,
+					_move_pool_range(), _pool_force.button_pressed)
 		_OPTION_FIXTURE:
 			return BattleScreenShared.build_fixture_opp_party() if allow_fixture else null
 		"saved":
@@ -285,3 +303,75 @@ func _on_launch_pressed() -> void:
 	var target := "res://scenes/battle/battle_screen_doubles.tscn" if _format == Format.DOUBLES \
 			else "res://scenes/battle/battle_screen_singles.tscn"
 	get_tree().change_scene_to_file(target)
+
+
+# ── [M36 bench] The move-pool filter ────────────────────────────────────────
+#
+# ⚠️ **THIS EXISTS BECAUSE SCREENSHOTS ARE A BAD WAY TO REVIEW ANIMATIONS**, a
+# conclusion `docs/m26_f1_recon.md` reached before this was built: *"A live
+# preview is what actually gates every version of this — a knob or a comparison
+# you cannot see is useless, and today the only preview is the windowed
+# screenshot harness at a minute-plus per look."* Constraining a random battle
+# to a range of move ids turns the simulator itself into that preview: you play
+# a battle and watch the animations under test, at full speed, in context.
+#
+# ⚠️ **OFF BY DEFAULT AND IT MUST STAY THAT WAY.** This screen is the
+# simulator's real front door, not a debug scene. `Vector2i.ZERO` means "no
+# filter" and reproduces the pre-bench behaviour exactly.
+
+
+## The chosen range, or `Vector2i.ZERO` for "off". Zero in either box is off,
+## so the filter cannot be half-configured into something meaningless.
+func _move_pool_range() -> Vector2i:
+	var lo := int(_pool_from.value)
+	var hi := int(_pool_to.value)
+	if lo <= 0 or hi <= 0:
+		return Vector2i.ZERO
+	return Vector2i(mini(lo, hi), maxi(lo, hi))
+
+
+## Report what the pool actually contains BEFORE a battle is launched.
+##
+## ⚠️ **THE ANIMATION COUNT IS THE POINT.** Without it, a move that renders
+## nothing is ambiguous — an unported behaviour falling back to the generic hit
+## effect looks identical to a real visual bug. `AnimDispatcher.can_play_move`
+## already knows the difference, so the answer is free and worth having in front
+## of you before you spend a battle on it.
+func _apply_move_pool() -> void:
+	var r := _move_pool_range()
+	if r == Vector2i.ZERO:
+		_pool_label.text = "Move pool: off — random teams use their normal legal movesets."
+		return
+
+	var real := 0
+	var animated := 0
+	# ⚠️ **BUILT THE SAME WAY THE BATTLE SCREEN BUILDS IT** — a bare
+	# `AnimDispatcher.new()` has no behaviour registry and would answer
+	# `can_play_move == false` for EVERYTHING, quietly reporting "0 of N have
+	# animations" and reading as a catastrophic regression rather than a
+	# mis-wired readout. An earlier cut here guarded with
+	# `ClassDB.class_exists("AnimDispatcher")`, which is worse still: ClassDB
+	# only knows ENGINE classes, never a GDScript `class_name`, so the check was
+	# always false and the count never appeared at all.
+	# ⚠️ `register_all` IS NOT OPTIONAL. A fresh AnimBehaviorRegistry is EMPTY;
+	# without this the dispatcher answers `can_play_move == false` for every
+	# move and the readout reports "0 of N have real animations" — which reads
+	# as a catastrophic regression rather than a mis-wired label. This is the
+	# same two-step the battle screen itself does
+	# (`battle_screen_shared.gd:1902-1903`).
+	var behaviors := AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(behaviors)
+	var disp := AnimDispatcher.new(behaviors)
+	for id in range(r.x, r.y + 1):
+		if MoveRegistry.get_move(id) == null:
+			continue
+		real += 1
+		if disp.can_play_move(id):
+			animated += 1
+
+	var mode := "FORCED (legality ignored)" if _pool_force.button_pressed \
+			else "legal movesets only"
+	var anim_part := " — %d of %d have real animations, %d fall back" \
+			% [animated, real, real - animated]
+	_pool_label.text = "Move pool %d-%d: %d real moves, %s%s" \
+			% [r.x, r.y, real, mode, anim_part]
