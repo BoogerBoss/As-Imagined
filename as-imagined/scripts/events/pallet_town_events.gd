@@ -67,10 +67,10 @@ static func sea_breeze() -> Array:
 	return EventScript.new() \
 		.lock() \
 		.face_player() \
-		.goto_if_set("FLAG_AUTHORED_SEA_BREEZE_READ", LABEL_SIGN_POST_AGAIN) \
+		.goto_if_set("FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ", LABEL_SIGN_POST_AGAIN) \
 		.msgbox(TEXT_SEA_BREEZE) \
 		.native("Wait", ["20"]) \
-		.set_flag("FLAG_AUTHORED_SEA_BREEZE_READ") \
+		.set_flag("FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ") \
 		.checkpoint(VAR_SCENE, 1) \
 		.release() \
 		.end()

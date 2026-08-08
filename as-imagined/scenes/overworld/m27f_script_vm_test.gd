@@ -2267,7 +2267,7 @@ func _test_m27g_g6_event_script() -> void:
 	vm.resume_after_native(null)
 	_drive(vm)
 	_chk("R.17 and it completes, setting the flag and checkpoint it declares",
-			flags.flag_get("FLAG_AUTHORED_SEA_BREEZE_READ")
+			flags.flag_get("FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ")
 			and flags.var_get(PalletTownEvents.VAR_SCENE) == 1)
 	# The gate branches on the second read — the whole point of the flag.
 	var vm2 := ScriptVM.new(_src(ops, texts), flags)

@@ -3236,16 +3236,81 @@ in the editor knows which authored labels exist. Either the plugin calls
 `AuthoredEvents.register_all()` itself (static, idempotent, refuses duplicates)
 or it reads `map_scripts.json` directly — and that file is 8.6 MB.
 
-**Q4 — project-wide tools, as buttons not panels.** A free-flag/var allocator
-and a "show uses" reverse index are *actions*, not properties of a selected
-node, so they hang off the toolbar beside the existing **Save Map Data**
-button rather than justifying a dock. Both come from **one** scan of
-`ops_by_label` for `setflag`/`clearflag`/`goto_if_set`/`setvar`/`compare` plus
-every entity's `visibility_flag` and every `Trigger`'s var — build them
-together or neither. ⚠️ Flags here are **free-form strings, not numeric ids**,
-so "next free" is a naming-convention decision, not an integer scan — and a
-convention is cheap to establish now and expensive to retrofit once colliding
-labels exist.
+**Q4 — the name-collision checker, as a button not a panel.** ⚠️ **RE-SCOPED
+2026-08-08, AND THE ORIGINAL FRAMING IS RETIRED AS WRONG — Rob's observation.**
+This was scoped as a *free-flag/var allocator*, ported from HexManiacAdvance,
+which scans for the next unused flag starting at `0x21`. **That feature is
+meaningless here.** HMA needs it because a GBA save is a fixed bit array and
+you can genuinely run out; `FlagStore` keys on **free-form strings**
+(`flag_get(flag_name: String)`), so there is no pool, no exhaustion, and
+nothing to allocate. Write `FLAG_SETO_MET` and it works.
+
+⚠️ **BUT THE OPPOSITE RISK IS REAL AND GETS WORSE, NOT BETTER, IN A STRING
+WORLD.** With numbered flags the failure is running out. With names the failure
+is silently REUSING one: author `FLAG_HIDE_ROUTE22_SIGN` and if Kanto already
+uses it, the new NPC and some Route 22 event now share state, with nothing
+anywhere reporting it. There is no equivalent of `EventRegistry.merge_into`'s
+loud collision refusal for flags — that guard covers script labels only.
+Measured over `data/map_scripts.json`: the corpus already references **1,004
+distinct `FLAG_*` names and 236 distinct `VAR_*` names**, across **16 name
+families with five or more members** (so near-misses are easy), with the
+longest name at 59 characters. That is not a namespace anyone holds in their
+head.
+
+So Q4 answers **"is this name taken, how often, and where"** rather than
+"what is free". One query, three parts to the answer:
+
+- **count** — `0` means the name is yours; `1` is probably your own single use;
+  anything higher means you are about to share state with existing content.
+- **locations** — which maps and which labels, so a hit is actionable rather
+  than merely alarming (`FLAG_HIDE_ROUTE22_SIGN — 3 uses: Route22,
+  Route22_Gate, ViridianCity`).
+- **the same treatment for `VAR_*`**, `trainer_key` and text labels, which is
+  the "show uses" reverse index folded in — it is the same traversal, and
+  splitting them would mean walking 17,159 op lists twice.
+
+**Cheaper than when first scoped, because Q3 already paid for the index.**
+`ScriptPreview.ops_index()` parses and caches both corpora (8.6 MB, 226 ms,
+once per session) and `texts_index()` the 11,596 text rows, so the scan is a
+walk over data already in memory. Sources: `ops_by_label` for
+`setflag`/`clearflag`/`goto_if_set`/`goto_if_unset`/`call_if_set`/
+`call_if_unset` and `setvar`/`addvar`/`subvar`/`copyvar`/`compare`, plus every
+placed entity's `visibility_flag` and every `Trigger`'s var.
+
+⚠️ **The rules go in a testable class, the button goes in the plugin** — the
+same split `ScriptPreview` and `entity_inspector.gd` already use, for the same
+reason recorded there.
+
+**THE NAMING CONVENTION IS SETTLED — `FLAG_AUTHORED_<MAP>_<THING>`, Rob's
+call, 2026-08-08.** A checker only *reports* collisions; a convention makes
+them structurally impossible, which is strictly better, and it was settled
+while exactly ONE authored flag existed. Zero of the imported 1,004 names
+begin `FLAG_AUTHORED_`, so the prefix is a clean namespace by measurement
+rather than by hope. The map segment is what separates two maps that both want
+a `_SIGN_READ`.
+
+Applied retroactively the same day, at a total cost of three lines:
+`FLAG_AUTHORED_SEA_BREEZE_READ` → `FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ`
+(it predated the convention and carried no map segment). Doing it at one flag
+is the whole reason the convention was worth settling before Q4 rather than
+after.
+
+⚠️ **THE CONVENTION GOVERNS NAMES YOU INVENT, NOT REFERENCE-DEFINED REGISTERS
+YOU DELIBERATELY SHARE — and this distinction is load-bearing for the checker.**
+Measured across `scripts/events/`, authored code references three flag/var
+names: `FLAG_AUTHORED_PALLETTOWN_SEA_BREEZE_READ` (unique), plus **`VAR_RESULT`
+and `VAR_TEMP_1`, which BOTH also appear in the imported corpus — correctly**.
+`VAR_RESULT` is source's own shared result register that every yes/no box
+writes to, and `VAR_TEMP_1` is deliberately temp precisely because a temp var
+clears on map change (see `PalletTownEvents`' own note). Sharing them IS the
+mechanism. So Q4's checker must treat reference-defined registers as expected
+overlap rather than collisions, or it will report two permanent false
+positives, and a tool that cries wolf twice on a corpus this size gets ignored
+— which costs more than not building it.
+
+**Value scales with content, so timing is a real question.** With 14 authored
+labels and a handful of flags this is holdable in your head; at fifty it is
+not. Building it before there is anything to collide with is speculative.
 
 **Q5 — custom team builder investigation.** ⚠️ **A RECON TIER, NOT A BUILD —
 its deliverable is a decision, and it must not start until Q2 has been used in
