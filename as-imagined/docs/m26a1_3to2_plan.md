@@ -53,6 +53,11 @@ prior canvas changes (16:9 → 4:3). See **Decision 1**.
 
 ## Open decisions — needed before Phase 2 and Phase 3
 
+**Decision 1 — RESOLVED 2026-08-07: adopt.** Rob: *"almost no UI elements are
+implemented correctly yet, so we will be reimplementing them all."* Preserving
+a composition that is going to be redone has no value, which makes this the
+recommended option on cost as well as fidelity. Original framing kept below.
+
 **Decision 1 — battler placement: adopt `sBattlerCoords`, or preserve the
 current composition?**
 
@@ -130,12 +135,22 @@ how the current placement drifted from source in the first place.
 | **Files** | `project.godot`, `battle_screen_singles.tscn`, `battle_screen_doubles.tscn` |
 | **Done when** | Project boots at 1200×800; both expressions return `(5.0, 5.0)` **by construction, not by coincidence**. |
 | **Do NOT** | Touch sprite placement, UI screens, or the overworld. |
+| **Status** | ✅ **Done 2026-08-07.** Canvas 1200×800, `aspect="keep"` explicit, both `-96` pairs removed. Scoreboard reads `anim=5.0000  weather=(5.0000, 5.0000)`. |
 
-⚠️ **Why rewrite `pixel_scale` rather than assert the two agree?** At 1200×800
-the width-only float returns `5.0` and the equality holds — so an assertion
-would pass and the fault would stay latent, waiting for the next canvas change.
-**This is the second aspect change this project has made.** Prevention beats
-detection here, and the rewrite is a one-line signature change.
+⚠️ **THE `pixel_scale()` REWRITE WAS DROPPED, AND THIS ENTRY IS THE RECORD OF
+WHY — DO NOT REINSTATE IT.** I proposed making it per-axis to match weather.
+Reading the code killed that: `pixel_scale()` has exactly ONE production
+consumer (`AnimBehaviors._scale`), and it scales **animation offsets**. A
+uniform float keeps a diagonal offset at 45° and a circular orbit circular;
+per-axis would skew both, on 779 move animations. Weather fills the screen so
+per-axis is right *there*; animations preserve shape so a float is right
+*here*. **The recon said "neither is wrong" and I had misread it as "one needs
+fixing."**
+
+What replaced it is an invariant on the real hazard — the canvas silently
+ceasing to be a uniform GBA multiple — pinned in
+`m26a1_battler_geometry_test`. Set a non-3:2 resolution and it fails loudly,
+forcing a re-decision instead of a silent 12.5% squash.
 
 ⚠️ **The project is visibly wrong at the end of this phase and stays wrong
 until Phase 2.** Do not start unless Phases 1–2 can land together.
@@ -150,6 +165,20 @@ until Phase 2.** Do not start unless Phases 1–2 can land together.
 | **Files** | `battle_screen_singles.tscn`, `battle_screen_doubles.tscn`, `battle_screen_shared.gd` |
 | **Done when** | Every battler sits within 1px of `sBattlerCoords × 5`; `m25h1_bottom_region_test` green **unmodified** (it asserts all four `B_WIN_MSG` anchors AND that every offset is zero — all resolution-independent, so a canvas change cannot move them; if it goes red, geometry was converted to pixels somewhere and that is the finding); Phase 0's capture set reshot and compared. |
 | **Do NOT** | Re-tune by eye. If a derived position looks wrong, that is a finding to record, not a number to nudge. |
+| **Status** | ✅ **Done 2026-08-07**, via `scripts/gen_battler_coords.py` — generated, not transcribed. |
+
+⚠️ **A REAL REGRESSION PHASE 2 CAUSED, CAUGHT BY AN EXISTING SUITE.** Moving
+the battlers broke all 8 of `m26_trainer_category_party_test`'s trainer-sprite
+assertions: a trainer portrait **shares its battler's box** — it stands where
+the battler will stand — and I had moved only the battler. The generator now
+places both from the same parse, so the pairing is guaranteed rather than
+remembered.
+
+⚠️ **The six boxes were 312, 292 and 131 px before this, none derived from
+anything.** All are now 320×320 — 5× the GBA's own 64×64. **The doubles
+battlers therefore grow ~2.4×**, which is the single most likely thing to read
+wrong on screen, and is also exactly source's proportion (four 64×64 sprites on
+240×160). Screenshot call for Rob.
 
 ⚠️ **Sprites are ~4.8× the GBA's 64×64 relative to the canvas.** Source's
 coordinates assume GBA-sized sprites; at this scale they may overlap the
@@ -225,8 +254,8 @@ of tuning against no authority.
   what was true; it could not settle what was wanted.**
 - Any move-animation re-authoring. 3:2 fixes the *mapping*; whether a given
   animation reads well is M36's own question.
-- ~~The `AnimStage.pixel_scale()` per-axis rewrite.~~ ⚠️ **Moved INTO Phase 1.**
-  This entry argued the rewrite was unnecessary because the two forms agree at
-  1200×800. True, and beside the point: agreement by coincidence is not the same
-  as agreement by construction, and the coincidence is exactly what a future
-  canvas change breaks.
+- ~~The `AnimStage.pixel_scale()` per-axis rewrite.~~ ❌ **Dropped outright —
+  it was never a bug.** This entry first said "unnecessary", then I moved it
+  into Phase 1 as a prevention measure, then reading the code showed the
+  rewrite would have *introduced* a defect. See Phase 1's ⚠️ block. The
+  invariant that replaced it lives in `m26a1_battler_geometry_test`.
