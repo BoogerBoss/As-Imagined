@@ -29,6 +29,19 @@ var _frames_between := 4
 # the animation engine or exists without it.
 var _disable_anim := false
 
+## [3:2 Phase 0] Dump every battler/panel/region rect as CANVAS FRACTIONS and
+## exit, instead of capturing an animation.
+##
+## ⚠️ **FRACTIONS, NOT PIXELS, AND THAT IS THE WHOLE POINT.** The conversion
+## changes the canvas, so a pixel baseline would differ everywhere by
+## construction and prove nothing. A fraction baseline changes ONLY where the
+## layout genuinely moved — which is exactly the question Phase 2 has to answer.
+## Without this the acceptance criterion is "looks right to me", which is how
+## the current battler placement drifted from `sBattlerCoords` across two prior
+## canvas changes in the first place.
+var _layout_only := false
+var _doubles := false
+
 # Trigger state -- see _run()'s own comment on why a fixed gap did not work.
 const _TRIGGER_TIMEOUT := 3000
 var _anim_started := false
@@ -57,6 +70,55 @@ func _ready() -> void:
 # Reports every node on the opposing side: whether it exists, is visible,
 # where it sits, and what its modulate is. This is the diagnostic for the
 # reported regression (opponent sprite / trainer / HP bar not appearing).
+## [3:2 Phase 0] The baseline. Every node whose position the conversion could
+## move, as a fraction of the canvas.
+##
+## ⚠️ Reports the sprite CENTRE, not its top-left, because `sBattlerCoords` is
+## a centre — comparing a top-left against it would be off by half a sprite and
+## would look like a placement error that is not there.
+func _dump_layout() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var stage := _screen.get_node_or_null("BattleStage") as Control
+	if stage == null:
+		print("LAYOUT: BattleStage missing")
+		return
+	print("LAYOUT canvas=%dx%d format=%s" % [int(vp.x), int(vp.y),
+			"doubles" if _doubles else "singles"])
+	print("LAYOUT %-24s %-19s %-19s %s"
+			% ["node", "centre(frac)", "topleft(frac)", "size(px)"])
+	var names := ["Background", "PlayerBase", "EnemyBase",
+			"PlayerSprite0", "OpponentSprite0", "PlayerSprite1", "OpponentSprite1",
+			"PlayerPanel0", "OpponentPanel0", "PlayerPanel1", "OpponentPanel1",
+			"MessageBackdrop", "PartyStatusPlayer", "PartyStatusOpponent"]
+	for n in names:
+		var c := stage.get_node_or_null(n) as Control
+		if c == null:
+			continue
+		var r: Rect2 = c.get_global_rect()
+		print("LAYOUT %-24s (%.4f, %.4f)   (%.4f, %.4f)   %.0fx%.0f"
+				% [n, (r.position.x + r.size.x * 0.5) / vp.x,
+					(r.position.y + r.size.y * 0.5) / vp.y,
+					r.position.x / vp.x, r.position.y / vp.y,
+					r.size.x, r.size.y])
+	# The action/message region lives outside BattleStage.
+	# ⚠️ Lives under SharedChrome, NOT BattleStage — `m25h1_bottom_region_test`
+	# reads it at `SharedChrome/ActionRegion`. Its ANCHORS (0.75/0.95) are the
+	# thing the conversion must not disturb, and they are what that suite
+	# asserts; the pixel rect below is context, not the criterion.
+	for path in ["SharedChrome/ActionRegion", "ActionRegion"]:
+		var a := _screen.get_node_or_null(path) as Control
+		if a != null:
+			var ar: Rect2 = a.get_global_rect()
+			print("LAYOUT %-24s anchors top=%.3f bottom=%.3f  y=%.4f..%.4f"
+					% [path, a.anchor_top, a.anchor_bottom,
+						ar.position.y / vp.y, ar.end.y / vp.y])
+			break
+	# ⚠️ The two GBA->canvas scales, side by side. At 3:2 they must be equal;
+	# at 4:3 they cannot be. This line is the conversion's own scoreboard.
+	print("LAYOUT scale anim(width-only)=%.4f  weather(per-axis)=(%.4f, %.4f)"
+			% [vp.x / 240.0, vp.x / 240.0, vp.y / 160.0])
+
+
 func _report_opponent_side(when: String) -> void:
 	print("--- opponent side %s ---" % when)
 	var stage := _screen.get_node_or_null("BattleStage")
@@ -90,6 +152,10 @@ func _parse_args() -> void:
 			_frames_between = int(arg.split("=")[1])
 		elif arg == "--noanim":
 			_disable_anim = true
+		elif arg == "--layout":
+			_layout_only = true
+		elif arg == "--doubles":
+			_doubles = true
 
 
 # Builds two real parties whose lead knows the move under test, so the
@@ -114,8 +180,15 @@ func _build_battle() -> bool:
 	opp.members = [defender] as Array[BattlePokemon]
 	opp.active_indices = [0] as Array[int]
 
-	BattleSetupContext.set_pending(player, opp, false, "")
-	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	if _doubles:
+		# A second battler per side, so the doubles slots have occupants.
+		player.members.append(PokemonFactory.create_battle_pokemon(3, 50, [_move_id]))
+		player.active_indices = [0, 1] as Array[int]
+		opp.members.append(PokemonFactory.create_battle_pokemon(6, 50, [33]))
+		opp.active_indices = [0, 1] as Array[int]
+	BattleSetupContext.set_pending(player, opp, _doubles, "")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_%s.tscn"
+			% ("doubles" if _doubles else "singles"))
 	_screen = scene.instantiate()
 	add_child(_screen)
 	return true
@@ -171,6 +244,11 @@ func _run() -> void:
 				% [_move_id, verdict.get("label", "?"),
 					str(disp.can_play_move(_move_id)),
 					str(verdict.get("missing", []))])
+
+	if _layout_only:
+		_dump_layout()
+		get_tree().quit(0)
+		return
 
 	DirAccess.make_dir_recursive_absolute(SHOT_DIR)
 	_report_opponent_side("BEFORE move")

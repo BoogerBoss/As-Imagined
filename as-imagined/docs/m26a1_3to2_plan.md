@@ -81,6 +81,41 @@ for real FRLG art anyway, letterbox now and re-author when that happens.
 | **Files** | `scenes/battle/m36_screenshot_harness.gd` |
 | **Done when** | A single command produces before/after fraction tables and a PNG set, so Phase 2 is diffable rather than eyeballed. |
 | **Do NOT** | Change any geometry yet. |
+| **Status** | ✅ **Done 2026-08-07.** `--layout` and `--doubles` landed; singles + doubles baselines captured. It found two things on its first run — below. |
+
+**What Phase 0 caught before Phase 1 touched anything** — both were invisible
+to the ordinary test sweep, which is the entire argument for instrumenting
+first:
+
+1. **`m25h1_bottom_region_test` was red at 40/41 and nobody knew.** The suite
+   asserted `ActionRegion.anchor_bottom == 0.95` (source's `B_WIN_MSG`
+   proportion) while the scene had carried `1.0` since `02bc4926` ("Polished
+   lower battle text field") deliberately changed it. **Rob's call: return to
+   0.95, and start from reference where possible.**
+
+   So the fix went further than the one anchor. `B_WIN_MSG` defines all four
+   edges (`tilemapLeft=2, tilemapTop=15, width=26, height=4` of a 30×20-tile
+   screen), and the region now carries **all four as anchors with every offset
+   zero** — `0.0667 / 0.75 / 0.9333 / 0.95`. Both prior geometries mixed
+   anchors with hand-tuned pixel offsets (`14/18/-18/18`, then `5/2/-5/-1`);
+   ⚠️ **neither offset set was reference-derived** — the older one is not more
+   faithful for being older.
+
+   ⚠️ **This makes Phase 2's message-region derivation already done, and
+   canvas-proof.** Proportional anchors survive the aspect change with no edit,
+   which is the same argument as Phase 1's `pixel_scale()` rewrite: a constant
+   tuned against one canvas is a latent bug on the next, and this project has
+   now changed canvas twice.
+
+   ⚠️ **The wider finding: the battle suites are not in the routine sweep.**
+   This session's work swept the 23 overworld suites only; 224 exist. Phase 5's
+   full sweep is not a formality.
+
+2. **`PartyStatusPlayer` and `PartyStatusOpponent` both report `(0,0)` /
+   `216×30`** — identical rects at the canvas origin, in singles *and* doubles.
+   Either they are inert at capture time or one is genuinely mispositioned.
+   ⚠️ **Resolve before Phase 2**, or the conversion faithfully preserves a bug
+   into the new canvas and it becomes much harder to attribute afterwards.
 
 ⚠️ Without this, Phase 2's acceptance is "looks right to me," which is exactly
 how the current placement drifted from source in the first place.
@@ -91,10 +126,16 @@ how the current placement drifted from source in the first place.
 
 | | |
 |---|---|
-| **Do** | `project.godot`: `viewport_width=1200`, `viewport_height=800`. Add `window/stretch/aspect="keep"` **explicitly** — it is absent today though M26A1 records choosing it (recon §5.3). Remove `BattleStage/Background`'s `offset_top = -96` / `offset_bottom = -96`. Assert `AnimStage.pixel_scale()` now equals `_weather_stage_scale()` on both axes. |
+| **Do** | `project.godot`: `viewport_width=1200`, `viewport_height=800`. Add `window/stretch/aspect="keep"` **explicitly** — it is absent today though M26A1 records choosing it (recon §5.3). Remove `BattleStage/Background`'s `offset_top = -96` / `offset_bottom = -96`. **Make `AnimStage.pixel_scale()` per-axis (`Vector2`) outright**, matching `_weather_stage_scale()`'s form. |
 | **Files** | `project.godot`, `battle_screen_singles.tscn`, `battle_screen_doubles.tscn` |
-| **Done when** | Project boots at 1200×800; `pixel_scale() == 5.0` and `_weather_stage_scale() == (5.0, 5.0)`; a new assertion pins them equal so they can never diverge again. |
+| **Done when** | Project boots at 1200×800; both expressions return `(5.0, 5.0)` **by construction, not by coincidence**. |
 | **Do NOT** | Touch sprite placement, UI screens, or the overworld. |
+
+⚠️ **Why rewrite `pixel_scale` rather than assert the two agree?** At 1200×800
+the width-only float returns `5.0` and the equality holds — so an assertion
+would pass and the fault would stay latent, waiting for the next canvas change.
+**This is the second aspect change this project has made.** Prevention beats
+detection here, and the rewrite is a one-line signature change.
 
 ⚠️ **The project is visibly wrong at the end of this phase and stays wrong
 until Phase 2.** Do not start unless Phases 1–2 can land together.
@@ -107,7 +148,7 @@ until Phase 2.** Do not start unless Phases 1–2 can land together.
 |---|---|
 | **Do** | Replace point-anchor + pixel-offset placement with positions derived from `sBattlerCoords × 5`. Generate the table rather than transcribing it — same discipline as `metatile_behavior.gd` and `movement_types.gd`. Re-derive health-box and message-region geometry from `sStandardBattleWindowTemplates`. |
 | **Files** | `battle_screen_singles.tscn`, `battle_screen_doubles.tscn`, `battle_screen_shared.gd` |
-| **Done when** | Every battler sits within 1px of `sBattlerCoords × 5`; `m25h1_bottom_region_test` green **unmodified** (it asserts anchors 0.75/0.95, which are resolution-independent); Phase 0's capture set reshot and compared. |
+| **Done when** | Every battler sits within 1px of `sBattlerCoords × 5`; `m25h1_bottom_region_test` green **unmodified** (it asserts all four `B_WIN_MSG` anchors AND that every offset is zero — all resolution-independent, so a canvas change cannot move them; if it goes red, geometry was converted to pixels somewhere and that is the finding); Phase 0's capture set reshot and compared. |
 | **Do NOT** | Re-tune by eye. If a derived position looks wrong, that is a finding to record, not a number to nudge. |
 
 ⚠️ **Sprites are ~4.8× the GBA's 64×64 relative to the canvas.** Source's
@@ -175,11 +216,17 @@ of tuning against no authority.
 
 ## Explicitly not in this plan
 
-- The message-box 75%/95%-vs-100% question. ⚠️ **Unverified** — the recon's
-  first draft asserted it as a bug and it was never checked against how FRLG
-  renders. Settle it separately, on evidence.
+- ~~The message-box 75%/95%-vs-100% question.~~ ✅ **Settled 2026-08-07 — the
+  region is back on source's proportion, and on all four edges.** ⚠️ Worth
+  keeping the shape of how it settled: the recon refused to act on the claim
+  because it was unverified, and that was right — the evidence turned out to
+  be a *deliberate* authored change, not the bug v1 asserted. It then took
+  Rob's call, not the evidence, to decide which way to go. **Evidence settled
+  what was true; it could not settle what was wanted.**
 - Any move-animation re-authoring. 3:2 fixes the *mapping*; whether a given
   animation reads well is M36's own question.
-- The `AnimStage.pixel_scale()` per-axis rewrite — **it becomes unnecessary**,
-  since at 1200×800 the width-only float and the per-axis Vector2 agree. Phase
-  1's equality assertion is what guarantees that.
+- ~~The `AnimStage.pixel_scale()` per-axis rewrite.~~ ⚠️ **Moved INTO Phase 1.**
+  This entry argued the rewrite was unnecessary because the two forms agree at
+  1200×800. True, and beside the point: agreement by coincidence is not the same
+  as agreement by construction, and the coincidence is exactly what a future
+  canvas change breaks.

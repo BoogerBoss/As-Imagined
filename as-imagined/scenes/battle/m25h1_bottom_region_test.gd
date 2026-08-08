@@ -2,7 +2,7 @@ extends Node
 
 # [M25h-1] Regression suite for the shared bottom-region paging system —
 # TOP/FIGHT/TARGET_SELECT relocated into a new real-proportion region
-# (ActionRegion, anchor_top=0.75/anchor_bottom=0.95, matching source's own
+# (ActionRegion, all four anchors from source's own B_WIN_MSG template,
 # B_WIN_MSG tilemapTop=15/height=4 tiles = y=120-152px of a 160px screen),
 # plus the Side0Label/Side1Label deletion. SWITCH/ITEM originally stayed in
 # the old inline `_button_area` at this sub-phase's own time of writing —
@@ -126,8 +126,46 @@ func _test_action_region_anchored_to_real_proportion() -> void:
 	var region: Control = instance.get_node("SharedChrome/ActionRegion")
 	_chk("ActionRegion's top anchor matches source's own B_WIN_MSG proportion (tilemapTop=15/160=0.75)",
 			is_equal_approx(region.anchor_top, 0.75))
+	# ⚠️ **ALL FOUR ANCHORS ARE SOURCE'S OWN `B_WIN_MSG`, AND EVERY OFFSET IS
+	# ZERO. THAT IS THE POINT — DO NOT REINTRODUCE PIXEL OFFSETS HERE.**
+	#
+	# `sStandardBattleWindowTemplates[B_WIN_MSG]` (`src/battle_bg.c:156`) is
+	# `tilemapLeft=2, tilemapTop=15, width=26, height=4` on a 30x20-tile
+	# screen, so the region is exactly:
+	#
+	#     left   2/30       = 0.0666667      top     15/20 = 0.75
+	#     right  (2+26)/30  = 0.9333333      bottom  (15+4)/20 = 0.95
+	#
+	# ⚠️ **Anchors are proportional, so this geometry is resolution- AND
+	# aspect-independent.** It survives the 4:3 -> 3:2 canvas change with no
+	# edit at all, which is exactly why it is expressed this way: a pixel
+	# offset is a constant tuned against one canvas, and this project has now
+	# changed canvas twice.
+	#
+	# ⚠️ **HISTORY, so this is not "restored" back the other way a third
+	# time.** `02bc4926` ("Polished lower battle text field") moved the bottom
+	# anchor to 1.0 and re-tuned the offsets with it; this assertion was not
+	# updated and sat red at 40/41 until 2026-08-07, found by the 3:2
+	# conversion's Phase 0 layout baseline on its first run. Rob's call was to
+	# return to 0.95 and start from reference where possible — hence all four
+	# anchors here, not just the bottom one, and hence no offsets: the old
+	# 14/18/-18/18 were inherited tuning, no more source-derived than the
+	# 5/2/-5/-1 that replaced them.
+	#
+	# ⚠️ The battle suites are not in the routine overworld sweep, which is
+	# why a red assertion went unnoticed. See `docs/m26a1_3to2_plan.md`.
 	_chk("ActionRegion's bottom anchor matches source's own B_WIN_MSG proportion ((15+4)/20=0.95)",
 			is_equal_approx(region.anchor_bottom, 0.95))
+	_chk("ActionRegion's left anchor matches source's own B_WIN_MSG proportion (2/30=0.0667)",
+			abs(region.anchor_left - 2.0 / 30.0) < 0.001)
+	_chk("ActionRegion's right anchor matches source's own B_WIN_MSG proportion ((2+26)/30=0.9333)",
+			abs(region.anchor_right - 28.0 / 30.0) < 0.001)
+	# The discriminator: anchors alone do not pin the geometry if a pixel
+	# offset is layered on top, and the two prior geometries BOTH carried
+	# them. Without this, a future "just nudge it 5px" edit passes silently.
+	_chk("every offset is zero, so the geometry is purely proportional",
+			is_zero_approx(region.offset_left) and is_zero_approx(region.offset_top)
+			and is_zero_approx(region.offset_right) and is_zero_approx(region.offset_bottom))
 	instance.queue_free()
 
 
