@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 309
+const EXPECTED_TOTAL := 310
 
 var _total := 0
 var _failed := 0
@@ -2517,3 +2517,14 @@ func _test_m27r_movement_tail() -> void:
 	_chk("T.14 with NO resolver/emote callables the actions still run clean "
 			+ "rather than reporting a coverage gap", runner.last_unknown() == "")
 	node.queue_free()
+
+	# [M27R Step 2] The Mystery Gift man is REACHABLE — he stands on a baked
+	# Pokécentre 2F — so his script must not stop mid-conversation even though
+	# Mystery Gift itself is excluded.
+	var vmw := ScriptVM.new(_src({"W": [
+			_op("trywondercardscript"), _op("setflag", ["F"]), _op("end")]}),
+			FlagStore.new())
+	vmw.start("W")
+	_run(vmw)
+	_chk("T.15 trywondercardscript is a no-op, and the script CONTINUES past it "
+			+ "rather than halting", vmw.pause_reason == ScriptVM.Pause.DONE)

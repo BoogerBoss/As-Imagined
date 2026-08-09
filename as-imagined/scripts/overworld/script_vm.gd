@@ -620,6 +620,31 @@ func step() -> bool:
 			pause_reason = Pause.WAIT_NATIVE
 			return false
 
+		# [M27R Step 2] Mystery Gift. One corridor use,
+		# `CableClub_EventScript_MysteryGiftMan_Frlg`.
+		#
+		# ⚠️ **A NO-OP RATHER THAN A HALT BECAUSE THE MAN IS REACHABLE.** Mystery
+		# Gift itself is permanently excluded (it is Wireless/link infrastructure
+		# this project has none of), but he stands on the Pokécentre 2F, which IS
+		# baked — so a player can walk upstairs and talk to him, and an
+		# UNKNOWN_OP there is a conversation that stops mid-sentence rather than
+		# a feature that is merely absent.
+		#
+		# ⚠️ **AND THE NPC IS NOT GOING AWAY — Rob, 2026-08-09: he gets a new,
+		# authored script when the time comes.** So this is a placeholder for
+		# content, not a permanent exclusion: when that script lands it will
+		# simply not call this opcode, and this entry can go with it. Recorded
+		# so a later session does not "resolve" the gap by deleting the NPC or
+		# by building Mystery Gift.
+		#
+		# Its sibling `erasebox` (4 uses) is deliberately NOT listed here: every
+		# one is a `CableClub_EventScript_Exit*` reachable only from inside a
+		# link room, and those maps are permanently unbaked, so it cannot be
+		# reached by any gesture. Measured, not assumed — recorded here rather
+		# than fixed so the next audit does not re-discover it as a gap.
+		"trywondercardscript":
+			return true
+
 		# [M27K K-a] The mon picture Oak shows while offering the starter. This
 		# project has no picture layer in the field at all — the front sprites
 		# are pulled and battle-only. A no-op loses the flourish, not the scene.
