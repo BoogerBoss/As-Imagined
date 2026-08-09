@@ -168,7 +168,9 @@ const CELL := 16
 ## EVENTS is appended, never inserted: `mode` is exported and serialises as an
 ## INT, so re-ordering this enum would silently repoint every saved overlay.
 ## Appending also joins it to `next_mode()`'s cycle for free.
-enum Mode { OFF, BEHAVIOR, MOVEMENT, PROVENANCE, LAYER_TYPE, EVENTS }
+## ⚠️ APPENDED, never reordered — `mode` is a serialised @export, so renumbering
+## the existing six would silently change what an already-open scene is set to.
+enum Mode { OFF, BEHAVIOR, MOVEMENT, PROVENANCE, LAYER_TYPE, EVENTS, CONNECTIONS }
 
 
 # ------------------------------------------------------- appearance (live)
@@ -506,6 +508,7 @@ func _fill(c: Color) -> Color:
 @export var mode: Mode = Mode.BEHAVIOR:
 	set(value):
 		mode = value
+		_sync_previews()
 		queue_redraw()
 
 ## [Events mode] Where the placed entities live.
@@ -636,7 +639,199 @@ func _draw() -> void:
 	# it. In EVENTS mode `_draw_cell` contributes only that grid.
 	if mode == Mode.EVENTS:
 		_draw_events(area, legend)
+	# ⚠️ NOT inside the cell pass above: that loop skips anything out of bounds,
+	# and a neighbour is BY DEFINITION out of bounds. This is the one view that
+	# draws outside the map.
+	if mode == Mode.CONNECTIONS:
+		_draw_connections(legend)
 	_draw_legend(area, legend)
+
+
+# ------------------------------------------------ [M27M5] connections view
+#
+# ⚠️ **CONNECTIONS ARE OTHERWISE INVISIBLE.** An edge is three numbers in a
+# Dictionary — direction, map, offset — with no way to see where the neighbour
+# actually lands or that two of them collide. Every seam defect this project has
+# had was found by walking, because there was nothing to look at.
+
+## Which of THIS map's connections the offset editor targets. -1 edits nothing.
+@export var connection_index: int = -1:
+	set(value):
+		connection_index = value
+		connection_offset = _offset_of(value)
+		_conn_cache = {}
+		queue_redraw()
+
+## The selected connection's offset. Writing it moves the neighbour — and the
+## RECIPROCAL on the neighbour's own side, which is the whole reason this is not
+## just an Inspector edit of `MapData.connections`.
+@export var connection_offset: int = 0:
+	set(value):
+		connection_offset = value
+		_apply_offset(value)
+
+## `placed_rects` loads a MapData per reachable map, which is far too much for
+## a per-frame `_draw`. Rebuilt only when the mode, the selection or an offset
+## changes.
+var _conn_cache: Dictionary = {}
+
+## Neighbours whose reciprocal this overlay has edited. Saved alongside our own
+## MapData — ⚠️ without this, moving a seam would write one side and leave the
+## other, which is the one state the connection format cannot express.
+var _dirty_neighbours: Dictionary = {}
+
+
+func _offset_of(idx: int) -> int:
+	if map_data == null or idx < 0 or idx >= map_data.connections.size():
+		return 0
+	return int(map_data.connections[idx].get("offset", 0))
+
+
+func _apply_offset(value: int) -> void:
+	if map_data == null or connection_index < 0 \
+			or connection_index >= map_data.connections.size():
+		return
+	var conn: Dictionary = map_data.connections[connection_index]
+	if int(conn.get("offset", 0)) == value:
+		return
+	conn["offset"] = value
+	# The other side, negated. A seam written on one side only is not a
+	# half-applied edit — it is two maps that disagree about where they meet.
+	var nb_name := MapConstants.map_name_for(str(conn.get("map", "")))
+	var nb := _neighbour_data(nb_name)
+	if nb != null:
+		var want_dir: int = MapAuthoring.OPPOSITE.get(
+				int(conn.get("direction", 0)), -1)
+		for c in nb.connections:
+			if int(c.get("direction", -1)) == want_dir \
+					and MapConstants.map_name_for(str(c.get("map", ""))) \
+							== map_data.map_name:
+				c["offset"] = -value
+				_dirty_neighbours[nb_name] = nb
+	_unsaved_edits = true
+	_conn_cache = {}
+	_sync_previews()
+	queue_redraw()
+
+
+## Real neighbour tiles, so a seam can be lined up by eye.
+##
+## ⚠️ **DIRECT CONNECTIONS ONLY — at most four maps.** `placed_rects` reaches
+## the whole graph (8 maps from Route 2, including Viridian City at 48x40), and
+## instantiating all of them to look at one seam is a great deal of scene for no
+## gain. The wider graph still draws as outlines, which is all it is needed
+## for: spotting an overlap.
+##
+## ⚠️ **`owner` IS LEFT NULL, AND THAT IS THE SAFETY.** `PackedScene.pack()`
+## skips a node with no owner, so a preview can never be baked into the map the
+## way a hand-added MapOverlay once was (section N). Same guarantee the Overlay
+## toggle and `[M27D D1]`'s entity sprites already rely on.
+const PREVIEW_ROOT := "__ConnectionPreviews"
+
+
+func _sync_previews() -> void:
+	var existing := get_node_or_null(PREVIEW_ROOT)
+	if existing != null:
+		existing.free()
+	if mode != Mode.CONNECTIONS or map_data == null:
+		return
+	var host := Node2D.new()
+	host.name = PREVIEW_ROOT
+	# Dimmed, so a neighbour never reads as part of THIS map — the one way a
+	# preview could actively mislead rather than merely inform.
+	host.modulate = Color(1, 1, 1, 0.55)
+	host.z_index = -1
+	add_child(host)
+	if _conn_cache.is_empty():
+		_conn_cache = MapAuthoring.placed_rects(map_data.map_name)
+	for c in map_data.connections:
+		var nb := MapConstants.map_name_for(str(c.get("map", "")))
+		if nb == "" or not _conn_cache.has(nb):
+			continue
+		var path := "res://scenes/maps/%s.tscn" % nb
+		if not ResourceLoader.exists(path):
+			continue
+		var inst := (load(path) as PackedScene).instantiate() as Node2D
+		if inst == null:
+			continue
+		inst.position = Vector2((_conn_cache[nb] as Rect2i).position) * CELL
+		host.add_child(inst)   # owner deliberately NOT set
+
+
+func _neighbour_data(map_name: String) -> MapData:
+	if map_name == "":
+		return null
+	if _dirty_neighbours.has(map_name):
+		return _dirty_neighbours[map_name]
+	var p := "res://scenes/maps/%s_data.tres" % map_name
+	return load(p) as MapData if ResourceLoader.exists(p) else null
+
+
+## Where every reachable map sits, in THIS map's own cell space — which is
+## exactly what `placed_rects` returns, with this map at (0, 0).
+func _draw_connections(legend: Dictionary) -> void:
+	if map_data == null or map_data.map_name == "":
+		legend["no MapData"] = untagged_color
+		return
+	if _conn_cache.is_empty():
+		_conn_cache = MapAuthoring.placed_rects(map_data.map_name)
+	if map_data.connections.is_empty():
+		legend["this map has no connections"] = text_color
+		return
+
+	var font := _font if _font != null else ThemeDB.fallback_font
+	var self_rect: Rect2i = _conn_cache.get(map_data.map_name,
+			Rect2i(0, 0, map_data.width, map_data.height))
+	for name in _conn_cache:
+		var r: Rect2i = _conn_cache[name]
+		var is_self: bool = name == map_data.map_name
+		# ⚠️ Overlap is drawn, not just refused at creation time: an existing
+		# pair can be made to collide by dragging an offset, and
+		# `chunk_owning()` answers overlapping chunks nondeterministically.
+		var clash := false
+		if not is_self:
+			for other in _conn_cache:
+				if other != name and other != map_data.map_name \
+						and (_conn_cache[other] as Rect2i).intersects(r):
+					clash = true
+		var col: Color = text_color if is_self else (
+				untagged_color if clash else layer_type_color(0))
+		var box := Rect2(Vector2(r.position) * CELL, Vector2(r.size) * CELL)
+		draw_rect(box, col, false, 2.0)
+		var label: String = name
+		if not is_self:
+			for i in range(map_data.connections.size()):
+				var c: Dictionary = map_data.connections[i]
+				if MapConstants.map_name_for(str(c.get("map", ""))) == name:
+					label = "[%d] %s  offset %d%s" % [i, name,
+							int(c.get("offset", 0)),
+							"  ⚠ OVERLAP" if clash else ""]
+					if i == connection_index:
+						draw_rect(box, col, false, 5.0)
+		draw_string(font, box.position + Vector2(6, 16), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
+
+	# ⚠️ **A SILENT NO-OP IS THE ONE THING THIS EDITOR MUST NOT BE.**
+	# `connection_offset` writes nothing unless `connection_index` names a real
+	# connection, and the default is -1 — so typing an offset with nothing
+	# selected changes neither the data nor the picture, and looks broken rather
+	# than unselected. Say which it is.
+	if connection_index < 0 or connection_index >= map_data.connections.size():
+		legend["⚠ set connection_index (0-%d) before connection_offset"
+				% maxi(0, map_data.connections.size() - 1)] = untagged_color
+	else:
+		legend["editing [%d] — offset %d" % [connection_index, connection_offset]] = text_color
+	for i in range(map_data.connections.size()):
+		var c: Dictionary = map_data.connections[i]
+		var nm := MapConstants.map_name_for(str(c.get("map", "")))
+		legend["[%d] %s off %d%s" % [i, nm if nm != "" else str(c.get("map", "?")),
+				int(c.get("offset", 0)),
+				"" if _conn_cache.has(nm) else "  (not baked)"]] = (
+						text_color if _conn_cache.has(nm) else untagged_color)
+	# Self rect is drawn above; noted so the legend explains the outline.
+	legend["%s (this map)" % map_data.map_name] = text_color
+	if self_rect.size == Vector2i.ZERO:
+		legend["this map has no size"] = untagged_color
 
 
 ## [Events mode] One marker per placed entity, clipped like the cell pass.
@@ -1445,8 +1640,22 @@ func _save_map_data() -> Error:
 	# ERROR-lines-are-failures rule (scripts/run_overworld_tests.sh) unusable.
 	if map_data.resource_path.is_empty():
 		return ERR_FILE_BAD_PATH
+	# ⚠️ **NEIGHBOURS FIRST, AND THIS IS NOT OPTIONAL.** Moving a seam edits the
+	# reciprocal on the OTHER map's resource. Saving only our own would leave
+	# the two sides disagreeing about where they meet — a state the connection
+	# format cannot express and nothing downstream checks, so it would surface
+	# as a map that loads at the wrong place.
+	for nb_name in _dirty_neighbours:
+		var nb: MapData = _dirty_neighbours[nb_name]
+		if nb == null or nb.resource_path.is_empty():
+			continue
+		var nerr := ResourceSaver.save(nb, nb.resource_path)
+		if nerr != OK:
+			return nerr
+		_tell_editor_one_file_changed(nb.resource_path)
 	var err := ResourceSaver.save(map_data, map_data.resource_path)
 	if err == OK:
+		_dirty_neighbours.clear()
 		_unsaved_edits = false
 		_tell_editor_one_file_changed(map_data.resource_path)
 	return err

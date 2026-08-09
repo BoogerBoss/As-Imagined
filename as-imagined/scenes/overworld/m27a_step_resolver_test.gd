@@ -71,8 +71,9 @@ const MAP_DATA_ASSERTIONS := 8
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
 ## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
-## BA (M27M5 authored map + edge link, 9) and BB (the creator, 12).
-const EXPECTED_TOTAL := 597
+## BA (M27M5 authored map + edge link, 9), BB (the creator, 12) and
+## BC (the connections view + offset editor, 5).
+const EXPECTED_TOTAL := 602
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -265,6 +266,7 @@ func _ready() -> void:
 	_test_m27m3_metatile_brush()
 	_test_m27m5_authored_map()
 	_test_m27m5_creator()
+	_test_m27m5_connection_view()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4394,6 +4396,55 @@ func _test_m27m5_creator() -> void:
 	_chk("BB.12 a map in neither table answers empty, not a stray table",
 			WildEncounters.table_for("NoSuchMapAnywhere").is_empty()
 			and not WildEncounters.has_table("NoSuchMapAnywhere"))
+
+
+## [M27M5] Seeing connections, and moving one.
+##
+## ⚠️ Works on DUPLICATED MapData throughout. The offset editor writes to both
+## sides in memory, and a test that used the real resources would edit tracked
+## files — which is exactly how BB.08's first draft corrupted two of them.
+func _test_m27m5_connection_view() -> void:
+	_chk("BC.01 CONNECTIONS is appended to Mode, leaving the first six put",
+			MapOverlay.Mode.OFF == 0 and MapOverlay.Mode.EVENTS == 5
+			and MapOverlay.Mode.CONNECTIONS == 6)
+
+	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres"):
+		_gated += 4
+		return
+	var r2 := (load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
+			).duplicate(true) as MapData
+	var ov := MapOverlay.new()
+	ov.map_data = r2
+
+	# Which connection is Xanadu's?
+	var idx := -1
+	for i in range(r2.connections.size()):
+		if str(r2.connections[i].get("map", "")) == "MAP_AUTHORED_XANADU_NURSERY":
+			idx = i
+	_chk("BC.02 selecting a connection reads its current offset back",
+			idx >= 0 and _select(ov, idx) == 0)
+
+	# ⚠️ THE INVARIANT THE EDITOR EXISTS TO PROTECT. Moving a seam must move
+	# BOTH sides; one side alone is not a partial edit, it is two maps that
+	# disagree about where they meet.
+	ov.connection_offset = 3
+	_chk("BC.03 moving the offset moves THIS side",
+			int(r2.connections[idx].get("offset", 99)) == 3)
+	var nb: MapData = ov._dirty_neighbours.get("XanaduNursery")
+	var recip := 99
+	if nb != null:
+		for c in nb.connections:
+			if str(c.get("map", "")) == "MAP_ROUTE2":
+				recip = int(c.get("offset", 99))
+	_chk("BC.04 ...and the RECIPROCAL on the neighbour, negated",
+			nb != null and recip == -3)
+	_chk("BC.05 the neighbour is queued for saving, not silently left behind",
+			ov._dirty_neighbours.has("XanaduNursery") and ov.has_unsaved_edits())
+
+
+func _select(ov: MapOverlay, idx: int) -> int:
+	ov.connection_index = idx
+	return ov.connection_offset
 
 
 ## [M27M3] The metatile brush.
