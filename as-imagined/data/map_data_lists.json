@@ -1,0 +1,1233 @@
+{
+"AbandonedShip_HiddenFloorRooms_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleArenaBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleArenaBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleArenaCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleArenaLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleArenaLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleDomeBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleDomeBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleDomeCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleDomeLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleDomeLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleDomePreBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleDomePreBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleFactoryBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleFactoryBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleFactoryLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleFactoryLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleFactoryPreBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleFactoryPreBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePalaceBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePalaceBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePalaceCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePalaceLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePalaceLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeCorridor_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeRoomFinal_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeRoomFinal_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeRoomNormal_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeRoomWildMons_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeRoomWildMons_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePikeThreePathRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePikeThreePathRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePyramidFloor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePyramidLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePyramidLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattlePyramidTop_OnFrame": [
+"0"
+],
+"BattleFrontier_BattlePyramidTop_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerElevator_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerElevator_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerLobby_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerLobby_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiBattleRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiBattleRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiCorridor_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiCorridor_OnWarp": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiPartnerRoom_OnFrame": [
+"0"
+],
+"BattleFrontier_BattleTowerMultiPartnerRoom_OnWarp": [
+"0"
+],
+"BattleFrontier_Mart_Pokemart": [
+"ITEM_ULTRA_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_FULL_RESTORE",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_MAX_REPEL",
+"ITEM_PROTEIN",
+"ITEM_CALCIUM",
+"ITEM_IRON",
+"ITEM_ZINC",
+"ITEM_CARBOS",
+"ITEM_HP_UP"
+],
+"BattleFrontier_ReceptionGate_OnFrame": [
+"0"
+],
+"CableClub_OnFrame": [
+"0"
+],
+"CableClub_OnFrame_Frlg": [
+"0"
+],
+"CableClub_OnWarp": [
+"0"
+],
+"CableClub_OnWarp_Frlg": [
+"0"
+],
+"CaveHole_CheckFallDownHole": [
+"0"
+],
+"CeladonCity_DepartmentStore_2F_Items": [
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_REVIVE",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_BURN_HEAL",
+"ITEM_ICE_HEAL",
+"ITEM_SUPER_REPEL"
+],
+"CeladonCity_DepartmentStore_2F_TMs": [
+"ITEM_TM05",
+"ITEM_TM15",
+"ITEM_TM28",
+"ITEM_TM31",
+"ITEM_TM43",
+"ITEM_TM45"
+],
+"CeladonCity_DepartmentStore_4F_Items": [
+"ITEM_POKE_DOLL",
+"ITEM_RETRO_MAIL",
+"ITEM_FIRE_STONE",
+"ITEM_THUNDER_STONE",
+"ITEM_WATER_STONE",
+"ITEM_LEAF_STONE"
+],
+"CeladonCity_DepartmentStore_5F_Vitamins": [
+"ITEM_HP_UP",
+"ITEM_PROTEIN",
+"ITEM_IRON",
+"ITEM_CALCIUM",
+"ITEM_ZINC",
+"ITEM_CARBOS"
+],
+"CeladonCity_DepartmentStore_5F_XItems": [
+"ITEM_X_ATTACK",
+"ITEM_X_DEFEND",
+"ITEM_X_SPEED",
+"ITEM_X_SPECIAL",
+"ITEM_X_ACCURACY",
+"ITEM_GUARD_SPEC",
+"ITEM_DIRE_HIT"
+],
+"CeruleanCity_Mart_Items": [
+"ITEM_POKE_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_BURN_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL"
+],
+"CinnabarIsland_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"CinnabarIsland_OnFrame": [
+"0"
+],
+"ContestHall_OnFrame": [
+"0"
+],
+"ContestHall_OnWarp": [
+"0"
+],
+"EverGrandeCity_ChampionsRoom_OnFrame": [
+"0"
+],
+"EverGrandeCity_ChampionsRoom_OnWarp": [
+"0"
+],
+"EverGrandeCity_DrakesRoom_OnFrame": [
+"0"
+],
+"EverGrandeCity_DrakesRoom_OnWarp": [
+"0"
+],
+"EverGrandeCity_GlaciasRoom_OnFrame": [
+"0"
+],
+"EverGrandeCity_GlaciasRoom_OnWarp": [
+"0"
+],
+"EverGrandeCity_Hall1_OnWarp": [
+"0"
+],
+"EverGrandeCity_Hall2_OnWarp": [
+"0"
+],
+"EverGrandeCity_Hall3_OnWarp": [
+"0"
+],
+"EverGrandeCity_Hall4_OnWarp": [
+"0"
+],
+"EverGrandeCity_Hall5_OnWarp": [
+"0"
+],
+"EverGrandeCity_HallOfFame_OnFrame": [
+"0"
+],
+"EverGrandeCity_HallOfFame_OnWarp": [
+"0"
+],
+"EverGrandeCity_PhoebesRoom_OnFrame": [
+"0"
+],
+"EverGrandeCity_PhoebesRoom_OnWarp": [
+"0"
+],
+"EverGrandeCity_PokemonLeague_1F_Pokemart": [
+"ITEM_ULTRA_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_FULL_RESTORE",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_MAX_REPEL"
+],
+"EverGrandeCity_SidneysRoom_OnFrame": [
+"0"
+],
+"EverGrandeCity_SidneysRoom_OnWarp": [
+"0"
+],
+"FallarborTown_BattleTentBattleRoom_OnFrame": [
+"0"
+],
+"FallarborTown_BattleTentBattleRoom_OnWarp": [
+"0"
+],
+"FallarborTown_BattleTentCorridor_OnFrame": [
+"0"
+],
+"FallarborTown_BattleTentLobby_OnFrame": [
+"0"
+],
+"FallarborTown_BattleTentLobby_OnWarp": [
+"0"
+],
+"FallarborTown_Mart_Pokemart": [
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_SUPER_REPEL",
+"ITEM_X_SP_ATK",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_DIRE_HIT",
+"ITEM_GUARD_SPEC"
+],
+"FarawayIsland_Interior_OnFrame": [
+"0"
+],
+"FiveIsland_LostCave_Room10_OnFrame": [
+"0"
+],
+"FiveIsland_ResortGorgeous_OnFrame": [
+"0"
+],
+"FiveIsland_ResortGorgeous_OnWarp": [
+"0"
+],
+"FortreeCity_DecorationShop_PokemartDecor_Chairs": [
+"DECOR_SMALL_CHAIR",
+"DECOR_POKEMON_CHAIR",
+"DECOR_HEAVY_CHAIR",
+"DECOR_RAGGED_CHAIR",
+"DECOR_COMFORT_CHAIR",
+"DECOR_BRICK_CHAIR",
+"DECOR_CAMP_CHAIR",
+"DECOR_HARD_CHAIR"
+],
+"FortreeCity_DecorationShop_PokemartDecor_Desks": [
+"DECOR_SMALL_DESK",
+"DECOR_POKEMON_DESK",
+"DECOR_HEAVY_DESK",
+"DECOR_RAGGED_DESK",
+"DECOR_COMFORT_DESK",
+"DECOR_BRICK_DESK",
+"DECOR_CAMP_DESK",
+"DECOR_HARD_DESK"
+],
+"FortreeCity_Gym_OnWarp": [
+"0"
+],
+"FortreeCity_Mart_Pokemart": [
+"ITEM_GREAT_BALL",
+"ITEM_ULTRA_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_HYPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_REVIVE",
+"ITEM_SUPER_REPEL",
+"ITEM_WOOD_MAIL"
+],
+"FourIsland_IcefallCave_1F_OnFrame": [
+"0"
+],
+"FourIsland_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_FULL_RESTORE",
+"ITEM_MAX_POTION",
+"ITEM_REVIVE",
+"ITEM_ICE_HEAL",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"FourIsland_OnFrame": [
+"0"
+],
+"FuchsiaCity_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_MAX_REPEL"
+],
+"FuchsiaCity_SafariZone_Entrance_OnFrame": [
+"0"
+],
+"IndigoPlateau_Exterior_OnFrame": [
+"0"
+],
+"IndigoPlateau_PokemonCenter_1F_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_FULL_RESTORE",
+"ITEM_MAX_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_MAX_REPEL"
+],
+"LavaridgeTown_HerbShop_Pokemart": [
+"ITEM_ENERGY_POWDER",
+"ITEM_ENERGY_ROOT",
+"ITEM_HEAL_POWDER",
+"ITEM_REVIVAL_HERB"
+],
+"LavaridgeTown_Mart_Pokemart": [
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_BURN_HEAL",
+"ITEM_REVIVE",
+"ITEM_SUPER_REPEL",
+"ITEM_X_SPEED"
+],
+"LavaridgeTown_OnFrame": [
+"0"
+],
+"LavenderTown_Mart_Items": [
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_REVIVE",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_BURN_HEAL",
+"ITEM_ICE_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_SUPER_REPEL"
+],
+"LilycoveCity_ContestLobby_OnFrame": [
+"0"
+],
+"LilycoveCity_DepartmentStoreRooftop_PokemartDecor_ClearOutSale": [
+"DECOR_MUD_BALL",
+"DECOR_FENCE_LENGTH",
+"DECOR_FENCE_WIDTH",
+"DECOR_TIRE",
+"DECOR_BREAKABLE_DOOR",
+"DECOR_SOLID_BOARD",
+"DECOR_SAND_ORNAMENT",
+"DECOR_STAND",
+"DECOR_SLIDE",
+"DECOR_TV",
+"DECOR_ROUND_TV",
+"DECOR_CUTE_TV",
+"DECOR_WAILMER_DOLL",
+"DECOR_RHYDON_DOLL",
+"0"
+],
+"LilycoveCity_DepartmentStore_2F_Pokemart1": [
+"ITEM_POKE_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_ULTRA_BALL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_FULL_HEAL",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_BURN_HEAL",
+"ITEM_ICE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_FLUFFY_TAIL"
+],
+"LilycoveCity_DepartmentStore_2F_Pokemart2": [
+"ITEM_POTION",
+"ITEM_SUPER_POTION",
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_REVIVE",
+"ITEM_REPEL",
+"ITEM_SUPER_REPEL",
+"ITEM_MAX_REPEL",
+"ITEM_WAVE_MAIL",
+"ITEM_MECH_MAIL"
+],
+"LilycoveCity_DepartmentStore_3F_Pokemart_StatBoosters": [
+"ITEM_X_SPEED",
+"ITEM_X_SP_ATK",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_DIRE_HIT",
+"ITEM_GUARD_SPEC",
+"ITEM_X_ACCURACY"
+],
+"LilycoveCity_DepartmentStore_3F_Pokemart_Vitamins": [
+"ITEM_PROTEIN",
+"ITEM_CALCIUM",
+"ITEM_IRON",
+"ITEM_ZINC",
+"ITEM_CARBOS",
+"ITEM_HP_UP"
+],
+"LilycoveCity_DepartmentStore_4F_Pokemart_AttackTMs": [
+"ITEM_TM_FIRE_BLAST",
+"ITEM_TM_THUNDER",
+"ITEM_TM_BLIZZARD",
+"ITEM_TM_HYPER_BEAM"
+],
+"LilycoveCity_DepartmentStore_4F_Pokemart_DefenseTMs": [
+"ITEM_TM_PROTECT",
+"ITEM_TM_SAFEGUARD",
+"ITEM_TM_REFLECT",
+"ITEM_TM_LIGHT_SCREEN"
+],
+"LilycoveCity_DepartmentStore_5F_OnWarp": [
+"0"
+],
+"LilycoveCity_DepartmentStore_5F_Pokemart_Cushions": [
+"DECOR_PIKA_CUSHION",
+"DECOR_ROUND_CUSHION",
+"DECOR_ZIGZAG_CUSHION",
+"DECOR_SPIN_CUSHION",
+"DECOR_DIAMOND_CUSHION",
+"DECOR_BALL_CUSHION",
+"DECOR_GRASS_CUSHION",
+"DECOR_FIRE_CUSHION",
+"DECOR_WATER_CUSHION"
+],
+"LilycoveCity_DepartmentStore_5F_Pokemart_Dolls": [
+"DECOR_PICHU_DOLL",
+"DECOR_PIKACHU_DOLL",
+"DECOR_MARILL_DOLL",
+"DECOR_JIGGLYPUFF_DOLL",
+"DECOR_DUSKULL_DOLL",
+"DECOR_WYNAUT_DOLL",
+"DECOR_BALTOY_DOLL",
+"DECOR_KECLEON_DOLL",
+"DECOR_AZURILL_DOLL",
+"DECOR_SKITTY_DOLL",
+"DECOR_SWABLU_DOLL",
+"DECOR_GULPIN_DOLL"
+],
+"LilycoveCity_DepartmentStore_5F_Pokemart_Mats": [
+"DECOR_SURF_MAT",
+"DECOR_THUNDER_MAT",
+"DECOR_FIRE_BLAST_MAT",
+"DECOR_POWDER_SNOW_MAT",
+"DECOR_ATTRACT_MAT",
+"DECOR_FISSURE_MAT",
+"DECOR_SPIKES_MAT",
+"DECOR_GLITTER_MAT",
+"DECOR_JUMP_MAT",
+"DECOR_SPIN_MAT"
+],
+"LilycoveCity_DepartmentStore_5F_Pokemart_Posters": [
+"DECOR_BALL_POSTER",
+"DECOR_GREEN_POSTER",
+"DECOR_RED_POSTER",
+"DECOR_BLUE_POSTER",
+"DECOR_CUTE_POSTER",
+"DECOR_PIKA_POSTER",
+"DECOR_LONG_POSTER",
+"DECOR_SEA_POSTER",
+"DECOR_SKY_POSTER"
+],
+"LilycoveCity_LilycoveMuseum_2F_OnFrame": [
+"0"
+],
+"LilycoveCity_PokemonTrainerFanClub_OnFrame": [
+"0"
+],
+"LittlerootTown_BrendansHouse_1F_OnFrame": [
+"0"
+],
+"LittlerootTown_BrendansHouse_2F_OnWarp": [
+"0"
+],
+"LittlerootTown_MaysHouse_1F_OnFrame": [
+"0"
+],
+"LittlerootTown_MaysHouse_2F_OnWarp": [
+"0"
+],
+"LittlerootTown_OnFrame": [
+"0"
+],
+"LittlerootTown_OnWarp": [
+"0"
+],
+"LittlerootTown_ProfessorBirchsLab_OnFrame": [
+"0"
+],
+"LittlerootTown_ProfessorBirchsLab_OnWarp": [
+"0"
+],
+"MauvilleCity_Mart_Pokemart": [
+"ITEM_POKE_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_GUARD_SPEC",
+"ITEM_DIRE_HIT",
+"ITEM_X_ACCURACY"
+],
+"MossdeepCity_GameCorner_1F_OnFrame": [
+"0"
+],
+"MossdeepCity_GameCorner_1F_OnWarp": [
+"0"
+],
+"MossdeepCity_Mart_Pokemart": [
+"ITEM_ULTRA_BALL",
+"ITEM_NET_BALL",
+"ITEM_DIVE_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_MAX_REPEL",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE"
+],
+"MossdeepCity_SpaceCenter_2F_OnFrame": [
+"0"
+],
+"MossdeepCity_StevensHouse_OnFrame": [
+"0"
+],
+"MtChimney_CableCarStation_OnFrame": [
+"0"
+],
+"OldaleTown_Mart_Pokemart_Basic": [
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING"
+],
+"OldaleTown_Mart_Pokemart_Expanded": [
+"ITEM_POKE_BALL",
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING"
+],
+"OneIsland_Harbor_OnFrame": [
+"0"
+],
+"OneIsland_Harbor_OnWarp": [
+"0"
+],
+"OneIsland_OnFrame": [
+"0"
+],
+"OneIsland_PokemonCenter_1F_OnFrame": [
+"0"
+],
+"PalletTown_OnFrame": [
+"0"
+],
+"PalletTown_PlayersHouse_2F_OnWarp": [
+"0"
+],
+"PalletTown_ProfessorOaksLab_OnFrame": [
+"0"
+],
+"PalletTown_ProfessorOaksLab_OnWarp": [
+"0"
+],
+"PetalburgCity_Gym_OnFrame": [
+"0"
+],
+"PetalburgCity_Gym_OnWarp": [
+"0"
+],
+"PetalburgCity_Mart_Pokemart_Basic": [
+"ITEM_POKE_BALL",
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_ORANGE_MAIL"
+],
+"PetalburgCity_Mart_Pokemart_Expanded": [
+"ITEM_POKE_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_POTION",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_ORANGE_MAIL"
+],
+"PetalburgCity_OnFrame": [
+"0"
+],
+"PetalburgCity_WallysHouse_OnFrame": [
+"0"
+],
+"PetalburgCity_WallysHouse_OnWarp": [
+"0"
+],
+"PewterCity_Mart_Items": [
+"ITEM_POKE_BALL",
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_BURN_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL"
+],
+"Pokemart_DefaultItemList": [
+"ITEM_ULTRA_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_FULL_RESTORE",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_MAX_REPEL"
+],
+"PokemonLeague_AgathasRoom_OnFrame": [
+"0"
+],
+"PokemonLeague_AgathasRoom_OnWarp": [
+"0"
+],
+"PokemonLeague_BrunosRoom_OnFrame": [
+"0"
+],
+"PokemonLeague_BrunosRoom_OnWarp": [
+"0"
+],
+"PokemonLeague_ChampionsRoom_OnFrame": [
+"0"
+],
+"PokemonLeague_ChampionsRoom_OnWarp": [
+"0"
+],
+"PokemonLeague_HallOfFame_OnFrame": [
+"0"
+],
+"PokemonLeague_HallOfFame_OnWarp": [
+"0"
+],
+"PokemonLeague_LancesRoom_OnFrame": [
+"0"
+],
+"PokemonLeague_LancesRoom_OnWarp": [
+"0"
+],
+"PokemonLeague_LoreleisRoom_OnFrame": [
+"0"
+],
+"PokemonLeague_LoreleisRoom_OnWarp": [
+"0"
+],
+"Route101_OnFrame": [
+"0"
+],
+"Route104_OnFrame": [
+"0"
+],
+"Route104_PrettyPetalFlowerShop_Pokemart_Plants": [
+"DECOR_RED_PLANT",
+"DECOR_TROPICAL_PLANT",
+"DECOR_PRETTY_FLOWERS",
+"DECOR_COLORFUL_PLANT",
+"DECOR_BIG_PLANT",
+"DECOR_GORGEOUS_PLANT"
+],
+"Route105_OnFrame": [
+"0"
+],
+"Route110_OnFrame": [
+"0"
+],
+"Route110_TrickHouseEnd_OnFrame": [
+"0"
+],
+"Route110_TrickHouseEnd_OnWarp": [
+"0"
+],
+"Route110_TrickHouseEntrance_OnFrame": [
+"0"
+],
+"Route110_TrickHouseEntrance_OnWarp": [
+"0"
+],
+"Route110_TrickHousePuzzle6_OnWarp": [
+"0"
+],
+"Route110_TrickHousePuzzle7_OnFrame": [
+"0"
+],
+"Route111_OnFrame": [
+"0"
+],
+"Route111_OnWarp": [
+"0"
+],
+"Route112_CableCarStation_OnFrame": [
+"0"
+],
+"Route114_OnFrame": [
+"0"
+],
+"Route115_OnFrame": [
+"0"
+],
+"Route116_OnFrame": [
+"0"
+],
+"Route118_OnFrame": [
+"0"
+],
+"Route121_SafariZoneEntrance_OnFrame": [
+"0"
+],
+"Route125_OnFrame": [
+"0"
+],
+"Route127_OnFrame": [
+"0"
+],
+"Route128_OnFrame": [
+"0"
+],
+"Route129_OnFrame": [
+"0"
+],
+"Route16_OnWarp": [
+"0"
+],
+"Route18_OnWarp": [
+"0"
+],
+"RustboroCity_DevonCorp_3F_OnFrame": [
+"0"
+],
+"RustboroCity_DevonCorp_3F_OnWarp": [
+"0"
+],
+"RustboroCity_Mart_Pokemart_Basic": [
+"ITEM_POKE_BALL",
+"ITEM_POTION",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE"
+],
+"RustboroCity_Mart_Pokemart_Expanded": [
+"ITEM_POKE_BALL",
+"ITEM_TIMER_BALL",
+"ITEM_REPEAT_BALL",
+"ITEM_POTION",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL",
+"ITEM_X_SPEED",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE"
+],
+"RustboroCity_OnFrame": [
+"0"
+],
+"RusturfTunnel_OnFrame": [
+"0"
+],
+"SSAnne_Exterior_OnFrame": [
+"0"
+],
+"SSTidalCorridor_OnFrame": [
+"0"
+],
+"SafariZone_South_OnFrame": [
+"0"
+],
+"SaffronCity_Mart_Items": [
+"ITEM_GREAT_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"SaffronCity_PokemonTrainerFanClub_OnFrame": [
+"0"
+],
+"SeafoamIslands_B3F_OnFrame": [
+"0"
+],
+"SeafoamIslands_B4F_OnFrame": [
+"0"
+],
+"SeafoamIslands_B4F_OnWarp": [
+"0"
+],
+"SecretBase_OnFrame": [
+"0"
+],
+"SecretBase_OnWarp": [
+"0"
+],
+"SevenIsland_House_Room1_OnFrame": [
+"0"
+],
+"SevenIsland_House_Room2_OnFrame": [
+"0"
+],
+"SevenIsland_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_FULL_RESTORE",
+"ITEM_MAX_POTION",
+"ITEM_HYPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"SixIsland_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_FULL_RESTORE",
+"ITEM_MAX_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL",
+"ITEM_DREAM_MAIL"
+],
+"SixIsland_PokemonCenter_1F_OnFrame": [
+"0"
+],
+"SkyPillar_Outside_OnFrame": [
+"0"
+],
+"SkyPillar_Top_OnWarp": [
+"0"
+],
+"SlateportCity_BattleTentBattleRoom_OnFrame": [
+"0"
+],
+"SlateportCity_BattleTentBattleRoom_OnWarp": [
+"0"
+],
+"SlateportCity_BattleTentCorridor_OnFrame": [
+"0"
+],
+"SlateportCity_BattleTentCorridor_OnWarp": [
+"0"
+],
+"SlateportCity_BattleTentLobby_OnFrame": [
+"0"
+],
+"SlateportCity_BattleTentLobby_OnWarp": [
+"0"
+],
+"SlateportCity_Mart_Pokemart": [
+"ITEM_POKE_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_POTION",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_REPEL",
+"ITEM_HARBOR_MAIL"
+],
+"SlateportCity_OnFrame": [
+"0"
+],
+"SlateportCity_PokemartDecor": [
+"DECOR_RED_BRICK",
+"DECOR_BLUE_BRICK",
+"DECOR_YELLOW_BRICK",
+"DECOR_RED_BALLOON",
+"DECOR_BLUE_BALLOON",
+"DECOR_YELLOW_BALLOON",
+"DECOR_C_LOW_NOTE_MAT",
+"DECOR_D_NOTE_MAT",
+"DECOR_E_NOTE_MAT",
+"DECOR_F_NOTE_MAT",
+"DECOR_G_NOTE_MAT",
+"DECOR_A_NOTE_MAT",
+"DECOR_B_NOTE_MAT",
+"DECOR_C_HIGH_NOTE_MAT"
+],
+"SlateportCity_PokemartDecor_Dolls": [
+"DECOR_AZURILL_DOLL",
+"DECOR_MARILL_DOLL",
+"DECOR_SKITTY_DOLL"
+],
+"SlateportCity_Pokemart_EnergyGuru": [
+"ITEM_PROTEIN",
+"ITEM_IRON",
+"ITEM_CARBOS",
+"ITEM_ZINC",
+"ITEM_CALCIUM",
+"ITEM_HP_UP"
+],
+"SlateportCity_Pokemart_PowerTMs": [
+"ITEM_TM_HIDDEN_POWER",
+"ITEM_TM_SECRET_POWER"
+],
+"SootopolisCity_Gym_1F_OnFrame": [
+"0"
+],
+"SootopolisCity_Mart_Pokemart": [
+"ITEM_ULTRA_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_MAX_REPEL",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_SHADOW_MAIL"
+],
+"SootopolisCity_MysteryEventsHouse_1F_OnFrame": [
+"0"
+],
+"SootopolisCity_MysteryEventsHouse_B1F_OnFrame": [
+"0"
+],
+"SootopolisCity_OnFrame": [
+"0"
+],
+"SootopolisCity_OnWarp": [
+"0"
+],
+"ThreeIsland_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_HYPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"TrainerHill_Elevator_OnFrame": [
+"0"
+],
+"TrainerHill_Entrance_OnFrame": [
+"0"
+],
+"TrainerHill_Entrance_Pokemart_Basic": [
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_X_SPEED",
+"ITEM_X_SP_ATK",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_DIRE_HIT",
+"ITEM_GUARD_SPEC",
+"ITEM_X_ACCURACY"
+],
+"TrainerHill_Entrance_Pokemart_Expanded": [
+"ITEM_HYPER_POTION",
+"ITEM_MAX_POTION",
+"ITEM_FULL_RESTORE",
+"ITEM_FULL_HEAL",
+"ITEM_REVIVE",
+"ITEM_X_SPEED",
+"ITEM_X_SP_ATK",
+"ITEM_X_ATTACK",
+"ITEM_X_DEFENSE",
+"ITEM_DIRE_HIT",
+"ITEM_GUARD_SPEC",
+"ITEM_X_ACCURACY"
+],
+"TrainerHill_OnFrame": [
+"0"
+],
+"TrainerHill_OnWarp": [
+"0"
+],
+"TrainerTower_Lobby_Mart_Items": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_FULL_RESTORE",
+"ITEM_MAX_POTION",
+"ITEM_HYPER_POTION",
+"ITEM_REVIVE",
+"ITEM_FULL_HEAL",
+"ITEM_ESCAPE_ROPE",
+"ITEM_MAX_REPEL"
+],
+"TrainerTower_Lobby_OnFrame": [
+"0"
+],
+"TrainerTower_OnFrame": [
+"0"
+],
+"TwoIsland_Items_ShopExpanded1": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_SODA_POP",
+"ITEM_FRESH_WATER"
+],
+"TwoIsland_Items_ShopExpanded2": [
+"ITEM_ULTRA_BALL",
+"ITEM_GREAT_BALL",
+"ITEM_LEMONADE",
+"ITEM_SODA_POP",
+"ITEM_FRESH_WATER",
+"ITEM_MOOMOO_MILK"
+],
+"TwoIsland_Items_ShopExpanded3": [
+"ITEM_ULTRA_BALL",
+"ITEM_REPEAT_BALL",
+"ITEM_TIMER_BALL",
+"ITEM_LEMONADE",
+"ITEM_SODA_POP",
+"ITEM_FRESH_WATER",
+"ITEM_MOOMOO_MILK",
+"ITEM_LAVA_COOKIE"
+],
+"TwoIsland_Items_ShopInitial": [
+"ITEM_GREAT_BALL",
+"ITEM_FRESH_WATER"
+],
+"TwoIsland_JoyfulGameCorner_OnFrame": [
+"0"
+],
+"TwoIsland_JoyfulGameCorner_OnWarp": [
+"0"
+],
+"VerdanturfTown_BattleTentBattleRoom_OnFrame": [
+"0"
+],
+"VerdanturfTown_BattleTentBattleRoom_OnWarp": [
+"0"
+],
+"VerdanturfTown_BattleTentCorridor_OnFrame": [
+"0"
+],
+"VerdanturfTown_BattleTentLobby_OnFrame": [
+"0"
+],
+"VerdanturfTown_BattleTentLobby_OnWarp": [
+"0"
+],
+"VerdanturfTown_Mart_Pokemart": [
+"ITEM_GREAT_BALL",
+"ITEM_NEST_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_BURN_HEAL",
+"ITEM_ICE_HEAL",
+"ITEM_REPEL",
+"ITEM_X_SP_ATK",
+"ITEM_FLUFFY_TAIL"
+],
+"VermilionCity_Mart_Items": [
+"ITEM_POKE_BALL",
+"ITEM_SUPER_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL",
+"ITEM_AWAKENING",
+"ITEM_ICE_HEAL",
+"ITEM_REPEL"
+],
+"VermilionCity_OnFrame": [
+"0"
+],
+"ViridianCity_Mart_Items": [
+"ITEM_POKE_BALL",
+"ITEM_POTION",
+"ITEM_ANTIDOTE",
+"ITEM_PARALYZE_HEAL"
+],
+"ViridianCity_Mart_OnFrame": [
+"0"
+]
+}

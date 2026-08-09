@@ -73,8 +73,9 @@ const MAP_DATA_ASSERTIONS := 8
 ## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
 ## BA (M27M5 authored map + edge link, 9), BB (the creator, 12) and
 ## BC (the connections view, offset editor + legend toggle, 6) and
-## BD (Part B behaviour override + hiding the metatile brush, 7).
-const EXPECTED_TOTAL := 610
+## BD (Part B behaviour override + hiding the metatile brush, 7) and
+## BE (I6a mart stock through the compiler, 6).
+const EXPECTED_TOTAL := 616
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -266,6 +267,7 @@ func _ready() -> void:
 	_test_m27m4_painted_sync()
 	_test_m27m3_metatile_brush()
 	_test_partb_behaviour_override()
+	_test_i6a_mart_stock()
 	_test_m27m5_authored_map()
 	_test_m27m5_creator()
 	_test_m27m5_connection_view()
@@ -4631,6 +4633,81 @@ func _test_partb_behaviour_override() -> void:
 			and mode_hint.contains("BEHAVIOR:5")
 			and MapOverlay.EditMode.METATILE == 4)
 	ov.free()
+
+
+## [M27I I6a] Mart stock survives the compiler.
+func _test_i6a_mart_stock() -> void:
+	if not FileAccess.file_exists(MartStock.PATH):
+		_gated += 6
+		return
+
+	# ⚠️ THE FAILURE THIS TIER EXISTS FOR: before the generator understood
+	# `.2byte`, this label still RESOLVED — to the `[release, end]` that follows
+	# the data in FRLG's own asm — so "does the list exist" answered yes while
+	# the stock was gone. Assert the CONTENTS, never mere existence.
+	var viridian := MartStock.stock_for("ViridianCity_Mart_Items")
+	var pewter := MartStock.stock_for("PewterCity_Mart_Items")
+	_chk("BE.01 the corridor's two marts carry their real stock (%d / %d)"
+			% [viridian.size(), pewter.size()],
+			viridian.size() == 4 and pewter.size() == 8)
+
+	# Shelf ORDER is source's own and is what the player sees.
+	_chk("BE.02 stock is in shelf order, resolved to real item ids",
+			viridian[0] == PokemonRegistry.item_id_of("ITEM_POKE_BALL")
+			and viridian[1] == PokemonRegistry.item_id_of("ITEM_POTION")
+			and viridian[3] == PokemonRegistry.item_id_of("ITEM_PARALYZE_HEAL"))
+
+	# ⚠️ ITEM_NONE is a TERMINATOR (source counts `while (itemList[i])`), so it
+	# must never reach a shelf as a phantom row.
+	#
+	# ⚠️ **CHECKED ON THE RAW DATA, AND THE FIRST DRAFT WAS VACUOUS.** It asked
+	# `stock_for` for resolved ids — but `ITEM_NONE` resolves to 0 and is dropped
+	# by that function's own `id > 0` filter, so the assertion passed even with
+	# the generator emitting terminators (proved by injection: 697 entries became
+	# 720 and nothing failed). The loader absorbing it is good defence; a guard
+	# that cannot fail is not a guard.
+	var phantom := 0
+	for label in MartStock.labels():
+		for name in MartStock.raw_for(str(label)):
+			if str(name) == "ITEM_NONE":
+				phantom += 1
+	_chk("BE.03 no list carries the ITEM_NONE terminator", phantom == 0)
+
+	_chk("BE.04 an absent label and an empty one answer the same: no stock",
+			not MartStock.has_stock("NoSuchListAnywhere")
+			and MartStock.stock_for("NoSuchListAnywhere").is_empty())
+
+	# ⚠️ The roster guard, and the one that would catch a regeneration losing a
+	# shop: EVERY `pokemart` in the whole corpus must name a non-empty list.
+	# The generator refuses to build otherwise; this proves the shipped data.
+	var corpus := {}
+	var f := FileAccess.open("res://data/map_scripts.json", FileAccess.READ)
+	if f != null:
+		var j := JSON.new()
+		if j.parse(f.get_as_text()) == OK:
+			corpus = j.data
+		f.close()
+	var marts := 0
+	var empty := 0
+	for label in corpus:
+		for o in corpus[label]:
+			if str(o.get("op", "")) == "pokemart":
+				marts += 1
+				var args: Array = o.get("args", [])
+				if args.is_empty() or not MartStock.has_stock(str(args[0])):
+					empty += 1
+	_chk("BE.05 every pokemart in the corpus resolves to stock (%d marts)" % marts,
+			marts > 0 and empty == 0)
+	# And the ops half must be UNTOUCHED — the clerk still runs around the shop.
+	var clerk: Array = corpus.get("ViridianCity_Mart_EventScript_Clerk", [])
+	var has_pokemart := false
+	var resumes := false
+	for i in range(clerk.size()):
+		if str(clerk[i].get("op", "")) == "pokemart":
+			has_pokemart = true
+			resumes = i + 1 < clerk.size()
+	_chk("BE.06 the clerk still compiles around the shop and resumes after it",
+			has_pokemart and resumes)
 
 
 ## Paint one metatile into every plane of a cell, the way M27M3's brush will —

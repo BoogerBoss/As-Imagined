@@ -56,6 +56,12 @@ from trainer_keys import canonical_key, is_trainer_constant
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REF = os.path.join(PROJECT, "field_script_source")
 OUT = os.path.join(PROJECT, "data", "map_scripts.json")
+## ⚠️ A SEPARATE FILE, not a key inside map_scripts.json. That file is a FLAT
+## `label -> ops` dictionary with 17,159 entries and every consumer looks a
+## label up in it directly; a top-level "data_lists" key would be indexed as a
+## label named `data_lists`. A sidecar also matches the shape this project
+## already uses for per-pair behaviours, layer types and authored encounters.
+DATA_OUT = os.path.join(PROJECT, "data", "map_data_lists.json")
 
 LABEL_RE = re.compile(r"^(\w+)::?[ \t]*(?:@.*)?$", re.M)
 """A label line.
@@ -253,7 +259,16 @@ def expand_macros(body, macros):
 
 
 def compile_body(body):
+    """Returns (ops, data) -- the opcodes, and any `.2byte` data block.
+
+    ⚠️ **A LABEL CAN BE BOTH.** A mart's stock list is DATA that sits under an
+    ordinary label, and in FRLG's own asm it is followed by leftover script
+    lines, so the label compiles to real opcodes AND carries a list. Returning
+    only one of the two is what dropped every shop's stock silently: `.2byte`
+    lines start with `.`, and every `.`-prefixed line was skipped.
+    """
     ops = []
+    data = []
     skipping = False
     for line in body.splitlines():
         line = line.split("@")[0].strip()
@@ -276,7 +291,14 @@ def compile_body(body):
             # .string runs belong to gen_map_texts; a text label compiles to no
             # ops at all, which is how the two generators stay disjoint.
             if line.startswith(".string"):
-                return None
+                return None, None
+            if line.startswith(".2byte"):
+                val = line.split(None, 1)[1].strip() if len(line.split()) > 1 else ""
+                # ⚠️ ITEM_NONE is a TERMINATOR, not stock. Source counts
+                # `while (itemList[i])` (SetShopItemsForSale, shop.c:384), so
+                # emitting it would put a phantom row on every shelf.
+                if val and val != "ITEM_NONE":
+                    data.append(val)
             continue
         parts = line.split(None, 1)
         op = parts[0]
@@ -290,11 +312,12 @@ def compile_body(body):
             continue
 
         ops.append({"op": op, "args": _canonicalise_trainers(args)})
-    return ops
+    return ops, data
 
 
 def main():
     scripts = {}
+    data_lists = {}
     for path in iter_inc_files():
         try:
             src = open(path, encoding="utf-8", errors="ignore").read()
@@ -313,7 +336,9 @@ def main():
             start = m.end()
             end = marks[i + 1].start() if i + 1 < len(marks) else len(src)
             body = expand_macros(src_clean[start:end], macros)
-            ops = compile_body(body)
+            ops, data = compile_body(body)
+            if data:
+                data_lists.setdefault(name, data)
             if ops is None or not ops:
                 continue
             scripts.setdefault(name, ops)
@@ -322,9 +347,56 @@ def main():
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(scripts, f, ensure_ascii=False, indent=0, sort_keys=True)
 
+    with open(DATA_OUT, "w", encoding="utf-8") as f:
+        json.dump(data_lists, f, ensure_ascii=False, indent=0, sort_keys=True)
+
+    # ⚠️ **FAIL THE BUILD, NOT THE SHOP.** Every `pokemart` argument must name a
+    # NON-EMPTY list. Before this generator understood `.2byte`, the label still
+    # resolved and simply carried no items -- so a shop would have opened onto an
+    # empty shelf and looked like a design decision rather than a broken build.
+    bad = []
+    for label, ops in scripts.items():
+        for o in ops:
+            if o["op"] == "pokemart":
+                target = o["args"][0] if o["args"] else ""
+                if not data_lists.get(target):
+                    bad.append("%s -> %s" % (label, target or "(no argument)"))
+    if bad:
+        print("gen_map_scripts: %d pokemart(s) resolve to no stock:" % len(bad),
+              file=sys.stderr)
+        for b in bad[:20]:
+            print("   " + b, file=sys.stderr)
+        return 1
+
+    # ...and every item a shop stocks must be a real constant. Checked HERE
+    # rather than at runtime so an unknown name is a build failure naming the
+    # list, not a shelf that is quietly one row short in play.
+    name_map = os.path.join(PROJECT, "data", "item_name_to_id.json")
+    if os.path.exists(name_map):
+        known = json.load(open(name_map, encoding="utf-8"))
+        stocked = set()
+        for label, ops in scripts.items():
+            for o in ops:
+                if o["op"] == "pokemart" and o["args"]:
+                    stocked.add(o["args"][0])
+        unknown = []
+        for label in sorted(stocked):
+            for it in data_lists.get(label, []):
+                if it not in known:
+                    unknown.append("%s -> %s" % (label, it))
+        if unknown:
+            print("gen_map_scripts: %d stocked item(s) resolve to no id:"
+                  % len(unknown), file=sys.stderr)
+            for u in unknown[:20]:
+                print("   " + u, file=sys.stderr)
+            return 1
+
     total = sum(len(v) for v in scripts.values())
     print("gen_map_scripts: %d scripts, %d ops -> %s"
           % (len(scripts), total, os.path.normpath(OUT)))
+    print("gen_map_scripts: %d data list(s), %d entries -> %s"
+          % (len(data_lists), sum(len(v) for v in data_lists.values()),
+             os.path.normpath(DATA_OUT)))
     if not scripts:
         print("gen_map_scripts: FAILED - compiled zero scripts", file=sys.stderr)
         return 1
