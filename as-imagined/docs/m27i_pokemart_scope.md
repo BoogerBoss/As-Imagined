@@ -155,12 +155,45 @@ shop, awaits its close, and returns; `ScriptDriver` resumes. Nothing to invent.
 ### Menu shape
 
 `MART_TYPE_NORMAL` gets three actions (`sShopMenuActions_BuySellQuit`,
-`shop.c:168`): **Buy / Sell / Quit**.
+`shop.c:168`): **Buy / Sell / Quit** — and that is what this project ships, per
+§5 decision 2 as revised 2026-08-09. `sShopMenuActions_BuyQuit` (`shop.c:175`)
+is a real second shape for shops that do not buy back, and is no longer needed
+here.
 
-⚠️ **This project ships Buy / Quit instead — §5 decision 2 — and that is a real
-source shape, not a trimmed one.** `sShopMenuActions_BuyQuit` (`shop.c:175`)
-exists precisely for shops that do not buy back. The divergence is only in
-WHICH shops use it, so nothing about the menu is invented.
+Leaving either screen returns to the clerk rather than closing the shop —
+`Task_GoToBuyOrSellMenu` ends on `gText_CanIHelpWithAnythingElse` /
+`gText_AnythingElseICanHelp` (`shop.c:485-487`) and re-shows the menu.
+
+### ⚠️ Sell does NOT use the mart's own list — it opens the BAG
+
+This is the finding that decides what Sell costs, and it cuts the estimate
+rather than raising it. `Task_HandleShopMenuSell` hands off to
+`CB2_GoToSellMenu`, which is one line: `GoToBagMenu(ITEMMENULOCATION_SHOP,
+POCKETS_COUNT, CB2_ExitSellMenu)` (`item_menu.c:622-624`). So selling is the
+ordinary bag screen opened in a shop CONTEXT, across all pockets — there is no
+second list widget to build. `FieldBagScreen` (`[M27I I4]`) is already that
+screen, and `[M27I I5-3]`'s item-use flow already established the pattern of a
+bag context that reports a chosen item back to a caller.
+
+**Sell rules, from `Task_ItemContext_Sell` (`item_menu.c:2179`):**
+
+⚠️ **The refusal tests TWO things, and price is one of them:**
+`GetItemPrice(item) == 0 || GetItemImportance(item)` refuses with
+`gText_CantBuyKeyItem`. Note the upstream name says *CantBuy* and it is the
+SELL refusal — do not go looking for a separate string. **A price of 0 is
+therefore unsellable by construction**, which matters directly for the Escape
+Rope question still open below.
+
+- **A stack of 1 skips the quantity picker** entirely and goes straight to
+  confirm (`tQuantity == 1`).
+- **The sell quantity cap is `MAX_MONEY / sell_price`** — 999999
+  (`include/money.h:4`), which this project's `Wallet.MAX_MONEY` already
+  matches — clamped against the stack the player actually holds. It is NOT a
+  bag-space cap; that is the BUY side.
+- `SellItem` (`item_menu.c`) is `PlaySE(SE_SHOP)` → `RemoveBagItem` →
+  `AddMoney`, in that order. `SE_SHOP` is shared with buying, so `[M27R 7a-1]`
+  already covers it, and `Bag.remove` (all-or-nothing) and `Wallet.earn`
+  (clamps at `MAX_MONEY`) are both already the right shapes.
 
 ### Rules worth porting exactly
 
@@ -209,13 +242,19 @@ Optional, but it is cheap and it is the kind of detail whose absence is noticed.
   Independently testable with no UI at all.
 - **I6b — the item roster.** The 15 heals/balls as data rows, plus Repel and
   Escape Rope as inert stock. Ends with every mart's stock loadable.
-- **I6c — the screen.** **Buy / Quit** (source's own `sShopMenuActions_BuyQuit`
-  — Sell deferred, decision 2 below), the quantity picker capped by money AND
+- **I6c — the screen, Buy half.** The clerk menu (**Buy / Sell / Quit**, with
+  Sell inert until I6d), the mart list, the quantity picker capped by money AND
   bag space, sold-out key items, and the **Premier Ball bonus** folded in
   rather than split out. `WAIT_NATIVE`, no new pause kind.
+- **I6d — Sell.** Kept separate not because it is large but because it is a
+  DIFFERENT SCREEN: it opens `FieldBagScreen` in a shop context rather than the
+  mart list, so it shares almost nothing with I6c except the wallet. Sequencing
+  it second means I6c can ship a working shop without waiting on a bag-context
+  mode.
 
-(The former I6d is gone — the Premier Ball bonus is a branch on the purchase
-I6c already makes, and splitting it would mean touching one function twice.)
+(The Premier Ball bonus is deliberately NOT its own tier — it is a branch on
+the purchase I6c already makes, and splitting it would mean touching one
+function twice.)
 
 **a and b are independently valuable** — a closes a silent data loss that
 affects 13 lists, and b makes 17 items real for the bag and party screens that
@@ -243,17 +282,23 @@ all** — the party screen shows only CANCEL. So the player keeps the item rathe
 than spending it on nothing, and it starts working the day Revive is built.
 The cost is money spent on a held item, not a consumable burned for no effect.
 
-**2. Sell is OUT of scope for now.** Buy only.
+**2. Sell is IN — Rob, 2026-08-09. This REVERSES the earlier "out of scope for
+now" call, and the earlier text is replaced rather than annotated, because a
+struck-through decision beside a live one is exactly what gets misread later.**
 
-⚠️ **This costs no invented UI, which is the useful part.** Source already ships
-a two-action menu — `sShopMenuActions_BuyQuit` (`shop.c:175`) — so
-**Buy / Quit** is a real shape from the reference rather than a trimmed-down
-one. The divergence is only in WHICH shops use it (source reserves it for
-Battle-Frontier-style shops), not in the menu existing. Record that at the site.
+The menu is source's own default **Buy / Sell / Quit**
+(`sShopMenuActions_BuySellQuit`, `shop.c:168`); `sShopMenuActions_BuyQuit` is no
+longer needed and its note is retired.
 
-It also removes the /4 sell rule and the key-item sell refusal from I6c
-entirely — both stay documented in §3 for whoever adds Sell later, and the /4
-figure in particular should not be re-derived from memory.
+⚠️ **A Step 0 pass done when this was reversed found selling to be CHEAPER than
+the deferral assumed, and for a reason that was never checked at the time: it
+does not build a list at all.** `CB2_GoToSellMenu` opens the ordinary bag
+across all pockets (`item_menu.c:622-624`), so Sell is a context on
+`FieldBagScreen` — which exists — plus a confirm, a quantity picker and two
+refusal cases. See §3 for the rules, all now sourced rather than deferred: the
+**/4** factor, the **price-0-or-importance** refusal (whose upstream string is
+confusingly named `gText_CantBuyKeyItem`), the stack-of-1 shortcut, and the
+`MAX_MONEY / sell_price` cap.
 
 **3. Premier Ball bonus is IN.** Fold into I6c rather than keeping I6d as a
 separate tier — it is a branch on the purchase that just landed, and splitting
@@ -265,6 +310,13 @@ it would mean touching the same function twice.
 matters more now that it is deliberately stocked: as the data stands it is a
 free item on ten shelves. Worth one check against source's own item table
 before I6b, since it is a data correction rather than a design call.
+
+⚠️ **Sell being back in scope gives that price a SECOND consequence, and the
+two point opposite ways.** `Task_ItemContext_Sell` refuses any item whose price
+is 0, so as the data stands Escape Rope is free to buy and impossible to sell —
+the sell side is accidentally correct while the buy side is broken. Fixing the
+price fixes both; leaving it "for now" leaves an exploit on the buy side only.
+Check the price before I6b, not before I6d.
 
 ---
 

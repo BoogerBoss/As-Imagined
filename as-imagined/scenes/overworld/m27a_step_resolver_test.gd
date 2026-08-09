@@ -69,8 +69,9 @@ const MAP_DATA_ASSERTIONS := 8
 ## [M27Q Q4] 525 -> 536 -> 541. Section AU (NameUsage: the name-collision
 ## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
-## Then section AX (the M27M Part C split-atlas coverage proof, 5).
-const EXPECTED_TOTAL := 553
+## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
+## section AY (M27M4 painted-tile sync, 14).
+const EXPECTED_TOTAL := 567
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -259,6 +260,7 @@ func _ready() -> void:
 	_test_undo_symmetry()
 	_test_m27m1_behaviour_table()
 	_test_part_c_atlas_split()
+	_test_m27m4_painted_sync()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4069,6 +4071,163 @@ func _test_part_c_atlas_split() -> void:
 	_chk("AX.05 the shareable primary is still shared, not written per pair",
 			FileAccess.file_exists(
 					"res://assets/map_atlases/general_frlg_primary_ground.png"))
+
+
+## [M27M4] Adopting hand-painted tiles into MapData.
+##
+## ⚠️ WHAT THIS TIER IS ACTUALLY FOR: a painted map RENDERS correctly and PLAYS
+## inert. `StepResolver` reads `MapData.behavior`/`collision`/`elevation`, and
+## Godot's TileMap editor writes none of them — so grass you painted is not
+## grass, a ledge is not a ledge, and nothing about looking at the map says so.
+func _test_m27m4_painted_sync() -> void:
+	# --- the inverse rule, which needs no artifacts
+	var P := AtlasLayout.PRIMARY_METATILES
+	var round_trips := true
+	for mid in [0, 1, 31, 32, P - 1, P, P + 1, P + 33]:
+		for plane in 3:
+			var sid := AtlasLayout.source_id(plane, mid)
+			if AtlasLayout.metatile_id(sid, AtlasLayout.coords(mid)) != mid:
+				round_trips = false
+	_chk("AY.01 metatile_id inverts source_id/coords on both halves, all planes",
+			round_trips)
+
+	# ⚠️ The bound matters: a primary source cannot hold an id past 639, and
+	# answering anyway would write a plausible wrong number into MapData and
+	# re-key the cell's behaviour off it.
+	_chk("AY.02 an impossible source/coord answers -1 rather than a plausible id",
+			AtlasLayout.metatile_id(-1, Vector2i.ZERO) == -1
+			and AtlasLayout.metatile_id(6, Vector2i.ZERO) == -1
+			and AtlasLayout.metatile_id(0, Vector2i(-1, 0)) == -1
+			and AtlasLayout.metatile_id(0, Vector2i(AtlasLayout.COLS, 0)) == -1
+			and AtlasLayout.metatile_id(0, Vector2i(0, P / AtlasLayout.COLS)) == -1)
+
+	var names := _baked_map_names()
+	if names.is_empty() or not ResourceLoader.exists(
+			"res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += 10
+		return
+
+	# A real baked map, deep-copied: `load()` caches, and mutating the shared
+	# instance would leak into every other section that reads this map.
+	var scene := load("res://scenes/maps/PalletTown_Frlg.tscn") as PackedScene
+	var md := (load("res://scenes/maps/PalletTown_Frlg_data.tres") as MapData
+			).duplicate(true) as MapData
+	var root := scene.instantiate() as Node2D
+	var ov := MapOverlay.new()
+	ov.map_data = md
+	ov.map_root = root
+	root.add_child(ov)
+
+	# --- the two new setters, on their OWN copy.
+	#
+	# ⚠️ Not fussiness: the first draft ran these against `md` and then asserted
+	# two assertions later that the map was untouched, which it no longer was.
+	# A fixture a test has already written to cannot answer "has anything
+	# changed" -- it fails for the tester's reason, not the code's.
+	var mdw := md.duplicate(true) as MapData
+	var before_auth := mdw.is_authored(0, 0)
+	mdw.set_metatile_id(0, 0, 123)
+	# ⚠️ Deliberate: writing a metatile must NOT mark the cell authored on its
+	# own, or every sync would make the map refuse to re-bake without --force.
+	_chk("AY.03 set_metatile_id writes the id and does NOT flip provenance",
+			mdw.metatile_at(0, 0) == 123 and mdw.is_authored(0, 0) == before_auth)
+	mdw.set_behavior(0, 0, 7)
+	_chk("AY.04 set_behavior writes the value", mdw.behavior_at(0, 0) == 7)
+	mdw.set_metatile_id(-1, -1, 999)  # must not crash or grow the array
+	_chk("AY.05 both setters refuse out-of-bounds",
+			mdw.metatile.size() == mdw.width * mdw.height)
+
+	# --- reading what the SCENE shows
+	var probe := Vector2i(12, 10)
+	var got := ov.read_painted(probe)
+	_chk("AY.06 read_painted recovers the real metatile off a baked map",
+			int(got["id"]) == md.metatile_at(probe.x, probe.y)
+			and int(got["planes"]) >= 1 and not bool(got["conflict"]))
+
+	# ⚠️ The discriminator that a ground-only read would fail: a NORMAL metatile
+	# puts NOTHING on the ground plane, and 62% of Kanto is NORMAL.
+	var ground := root.get_node_or_null("Ground") as TileMapLayer
+	var objects := root.get_node_or_null("Objects") as TileMapLayer
+	var normal_cell := Vector2i(-1, -1)
+	if ground != null and objects != null:
+		for c in objects.get_used_cells():
+			if ground.get_cell_source_id(c) == -1:
+				normal_cell = c
+				break
+	if normal_cell == Vector2i(-1, -1):
+		_gated += 1
+	else:
+		_chk("AY.07 ...including a cell with an EMPTY ground plane %s" % normal_cell,
+				int(ov.read_painted(normal_cell)["id"])
+						== md.metatile_at(normal_cell.x, normal_cell.y))
+
+	# --- change detection
+	_chk("AY.08 an untouched baked map reports NO painted changes",
+			ov.scan_painted_changes().is_empty())
+
+	# Repaint one cell with a metatile it definitely is not, through the same
+	# AtlasLayout the baker uses.
+	#
+	# ⚠️ ALL THREE PLANES, which is what M27M3's brush does and what the first
+	# draft of this test got wrong. Painting only Objects leaves Ground showing
+	# the OLD metatile, so the cell legitimately reads as a CONFLICT and sync
+	# skips it — the code was right and the test was painting something no
+	# brush produces. AY.14 now covers that case deliberately instead.
+	var newmid: int = (md.metatile_at(probe.x, probe.y) + 1) % P
+	_paint_all_planes(root, probe, newmid)
+	var found := ov.scan_painted_changes()
+	_chk("AY.09 repainting one cell is detected, and ONLY that cell",
+			found.size() == 1 and found[0] == probe)
+
+	# --- adopting it
+	var pre := ov.snapshot_cells()
+	var report := ov.sync_painted_cells()
+	_chk("AY.10 sync adopts the metatile and re-resolves behaviour from the pair",
+			int(report["changed"]) == 1
+			and md.metatile_at(probe.x, probe.y) == newmid
+			and md.behavior_at(probe.x, probe.y)
+					== MapManager.behavior_for(md.atlas, newmid))
+	# ⚠️ THE POINT OF THE TIER. Collision/elevation cannot be derived from a
+	# tile, so the repainted cell's rules are now a guess about a tile that is
+	# no longer there — it must surface for review rather than look settled.
+	_chk("AY.11 and hands the cell back to the review list",
+			md.needs_review(probe.x, probe.y)
+			and probe in md.review_cells())
+	_chk("AY.12 a second sync is a no-op — the watermark moved",
+			int(ov.sync_painted_cells()["changed"]) == 0)
+
+	# --- a cell showing two DIFFERENT metatiles is refused, not guessed at
+	var other := Vector2i(probe.x + 1, probe.y)
+	_paint_all_planes(root, other, newmid)
+	if ground != null:
+		var clash: int = (newmid + 1) % P
+		ground.set_cell(other, AtlasLayout.source_id(0, clash),
+				AtlasLayout.coords(clash))
+	var clash_report := ov.sync_painted_cells()
+	_chk("AY.14 a cell with two different metatiles across planes is REPORTED, "
+			+ "not silently resolved",
+			int(clash_report["conflicts"]) == 1
+			and int(clash_report["changed"]) == 0
+			and not md.is_authored(other.x, other.y))
+
+	# --- undo must revert ALL SIX arrays, not the original four
+	ov.restore_cells(pre)
+	_chk("AY.13 restore reverts metatile and behaviour too, not just the rules",
+			md.metatile_at(probe.x, probe.y) != newmid
+			and not md.needs_review(probe.x, probe.y))
+
+	root.free()
+
+
+## Paint one metatile into every plane of a cell, the way M27M3's brush will —
+## each plane gets its OWN source id, and the plane the metatile does not route
+## to is simply transparent art rather than a special case.
+func _paint_all_planes(root: Node2D, cell: Vector2i, mid: int) -> void:
+	for plane in PLANE_NAMES.size():
+		var layer := root.get_node_or_null(PLANE_NAMES[plane]) as TileMapLayer
+		if layer != null:
+			layer.set_cell(cell, AtlasLayout.source_id(plane, mid),
+					AtlasLayout.coords(mid))
 
 
 func _any_metatile_with(pair: String, behaviour: int) -> bool:

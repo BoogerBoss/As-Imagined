@@ -91,6 +91,33 @@ static func is_primary(metatile_id: int) -> bool:
 	return metatile_id < PRIMARY_METATILES
 
 
+## The INVERSE: which metatile a painted cell is showing. -1 when the pair does
+## not describe one.
+##
+## [M27M4] Needed because hand-painting happens in Godot's own TileMap editor,
+## which knows only about sources and atlas coords — so recovering "which
+## metatile did the author just place" means undoing `source_id()` and
+## `coords()` together. It lives here rather than in the overlay for the reason
+## this whole class exists: a second, hand-kept copy of half the rule is how the
+## two ends drift apart, and here the drift would be silent in BOTH directions
+## (a paint recorded as the wrong metatile, or a correct paint ignored).
+##
+## ⚠️ The bound is not decoration. A primary source can only hold ids 0..639,
+## because the primary atlas is exactly 20 rows — a coord below that row range
+## is a cell the author painted from a source that cannot contain it, and
+## answering with an id anyway would write a plausible wrong number into
+## `MapData.metatile` and re-key the cell's behaviour off it.
+static func metatile_id(source_id: int, atlas_coords: Vector2i) -> int:
+	if source_id < 0 or source_id >= SECONDARY_SOURCE_BASE * 2:
+		return -1
+	if atlas_coords.x < 0 or atlas_coords.y < 0 or atlas_coords.x >= COLS:
+		return -1
+	var local := atlas_coords.y * COLS + atlas_coords.x
+	if source_id < SECONDARY_SOURCE_BASE:
+		return local if local < PRIMARY_METATILES else -1
+	return PRIMARY_METATILES + local
+
+
 ## The primary tileset's name for a pair slug — `building_frlg__lab_frlg` ->
 ## `building_frlg`. The atlas filenames depend on this being exactly the
 ## generator's own `atlas_slug()` join, so the separator lives in one place.

@@ -1078,6 +1078,128 @@ func apply_edit(cell: Vector2i) -> bool:
 	return changed
 
 
+# ------------------------------------------------- [M27M4] painted-tile sync
+#
+# Hand-painting happens in Godot's own TileMap editor, which knows nothing
+# about this project: it writes tiles into the three plane layers and never
+# touches `MapData`. So a freshly painted map RENDERS correctly and PLAYS
+# inert — no encounters, no ledges, no surf — because `StepResolver` reads
+# `MapData.behavior`/`collision`/`elevation` and nothing has written them.
+#
+# ⚠️ THIS IS A PULL, NOT A HOOK, AND THAT IS DELIBERATE. There is no signal
+# for "the user painted a tile", and polling the scene every frame in the
+# editor is exactly the per-cell cost that made the collision-paint path stall
+# for ~5 s. So the author asks for it, the same way `Save Map Data` is asked
+# for. It also means Godot's own TileMap undo and this project's undo never
+# fight over one gesture.
+
+## The three plane layers, in source-id order, as painted by `map_baker`.
+const PLANE_LAYER_NAMES := ["Ground", "Objects", "Overhangs"]
+
+
+## What the SCENE is currently showing at a cell.
+##
+## Returns `{"id": int, "planes": int, "conflict": bool}` — `id` is -1 when
+## nothing is painted there.
+##
+## ⚠️ A metatile routes to ONE OR TWO of the three planes (§1.6), never all
+## three, so "read the Ground layer" is wrong for the 62% of Kanto metatiles
+## that are NORMAL and put nothing on ground at all. Every plane is read, and
+## the first painted one answers.
+##
+## `conflict` is the case worth naming: two planes of one cell showing
+## DIFFERENT metatiles. That cannot happen from a correct paint and means the
+## author placed two tiles into one cell by hand. Reported rather than
+## silently resolved, because either answer would be a guess.
+func read_painted(cell: Vector2i) -> Dictionary:
+	var out := {"id": -1, "planes": 0, "conflict": false}
+	var root := entity_root()
+	if root == null or not is_instance_valid(root):
+		return out
+	for plane in range(PLANE_LAYER_NAMES.size()):
+		var layer := root.get_node_or_null(PLANE_LAYER_NAMES[plane]) as TileMapLayer
+		if layer == null:
+			continue
+		var sid := layer.get_cell_source_id(cell)
+		if sid == -1:
+			continue
+		var mid := AtlasLayout.metatile_id(sid, layer.get_cell_atlas_coords(cell))
+		if mid < 0:
+			continue
+		out["planes"] = int(out["planes"]) + 1
+		if int(out["id"]) == -1:
+			out["id"] = mid
+		elif int(out["id"]) != mid:
+			out["conflict"] = true
+	return out
+
+
+## Cells where the scene disagrees with `MapData.metatile` — i.e. cells that
+## have been painted over since the movement rules were last authored.
+##
+## Pure read, so it can be shown before it is acted on. An unpainted cell is
+## SKIPPED rather than treated as a change: erasing every plane of a cell is
+## not the same gesture as painting a different tile there, and treating a
+## blank as metatile 0 would re-author the whole void margin of every interior.
+func scan_painted_changes() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if map_data == null:
+		return out
+	for y in range(map_data.height):
+		for x in range(map_data.width):
+			var cell := Vector2i(x, y)
+			var got: int = int(read_painted(cell)["id"])
+			if got >= 0 and got != map_data.metatile_at(x, y):
+				out.append(cell)
+	return out
+
+
+## Adopt what has been painted: update the metatile, re-resolve the behaviour
+## from the pair, and hand the cell's collision/elevation back to the review
+## backlog.
+##
+## Returns a report rather than a bare count, because three of the outcomes
+## need to be visible and only one of them is "it worked":
+##   `changed`     cells adopted
+##   `conflicts`   cells showing two different metatiles across planes
+##   `unresolved`  cells whose new metatile has no behaviour in the sidecar
+##
+## ⚠️ THE RE-AUTHORING IS THE POINT, not the metatile write. Collision and
+## elevation cannot be derived from a tile — 52.0% and 52.1% of Kanto metatiles
+## appear with more than one value — so a repainted cell keeps a guess that was
+## made about the tile that USED to be there. `author_cell_with_defaults()`
+## clears both explicit bits, which is what puts the cell into `review_cells()`
+## where a human can see it. Skipping that step is how a map ends up looking
+## finished and playing wrong.
+func sync_painted_cells() -> Dictionary:
+	var report := {"changed": 0, "conflicts": 0, "unresolved": 0}
+	if map_data == null:
+		return report
+	for cell in scan_painted_changes():
+		var got := read_painted(cell)
+		if bool(got["conflict"]):
+			report["conflicts"] = int(report["conflicts"]) + 1
+			continue
+		var mid := int(got["id"])
+		map_data.set_metatile_id(cell.x, cell.y, mid)
+		# Behaviour follows the metatile. -1 is the sidecar saying "this pair
+		# does not describe that id" — a real answer, and NOT the same as
+		# MB_NORMAL (0), which is 62% of the region and would make a missing
+		# table look like perfectly ordinary ground. Leave the old value and
+		# say so.
+		var beh := MapManager.behavior_for(map_data.atlas, mid)
+		if beh >= 0:
+			map_data.set_behavior(cell.x, cell.y, beh)
+		else:
+			report["unresolved"] = int(report["unresolved"]) + 1
+		map_data.author_cell_with_defaults(cell.x, cell.y)
+		report["changed"] = int(report["changed"]) + 1
+	if int(report["changed"]) > 0 or int(report["conflicts"]) > 0:
+		_unsaved_edits = true
+		queue_redraw()
+	return report
+
+
 ## Cell under a point in this node's own local space.
 func cell_at(local_pos: Vector2) -> Vector2i:
 	return Vector2i((local_pos / CELL).floor())
@@ -1133,6 +1255,15 @@ func gesture_is_open() -> bool:
 ## Whole arrays rather than a per-cell delta because a drag's cost is paid once
 ## on mouse-up: Viridian Forest, the largest Kanto map, is 3,726 cells, so this
 ## is ~15k ints — nothing next to the .tres write happening beside it.
+##
+## ⚠️ **[M27M4] SIX ARRAYS NOW, NOT FOUR.** `sync_painted_cells()` writes
+## `metatile` and `behavior` as well, and a snapshot that captured only the
+## original four would undo a sync HALF WAY: the cell would go back to its old
+## collision, elevation and review state while keeping the new tile's metatile
+## and behaviour — a combination nothing ever produced legitimately and which
+## the overlay draws as if it were fine. Exactly the failure this docstring's
+## own second paragraph already warned about for the explicit bits, arriving
+## through a new writer.
 func snapshot_cells() -> Dictionary:
 	if map_data == null:
 		return {}
@@ -1141,6 +1272,8 @@ func snapshot_cells() -> Dictionary:
 		"elevation": map_data.elevation.duplicate(),
 		"provenance": map_data.provenance.duplicate(),
 		"attr_explicit": map_data.attr_explicit.duplicate(),
+		"metatile": map_data.metatile.duplicate(),
+		"behavior": map_data.behavior.duplicate(),
 	}
 
 
@@ -1157,6 +1290,14 @@ func restore_cells(snap: Dictionary) -> void:
 	map_data.elevation = snap["elevation"]
 	map_data.provenance = snap["provenance"]
 	map_data.attr_explicit = snap["attr_explicit"]
+	# [M27M4] Guarded rather than assumed present: an undo action captured
+	# before this session's snapshot grew would carry only the original four,
+	# and reading a missing key would abort the restore entirely — turning a
+	# stale-but-harmless undo into a broken one.
+	if snap.has("metatile"):
+		map_data.metatile = snap["metatile"]
+	if snap.has("behavior"):
+		map_data.behavior = snap["behavior"]
 	queue_redraw()
 	_unsaved_edits = true
 	# IT NO LONGER SAVES, and the removed line is worth explaining rather than

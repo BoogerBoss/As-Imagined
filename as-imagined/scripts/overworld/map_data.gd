@@ -227,6 +227,44 @@ func set_elevation(x: int, y: int, value: int) -> void:
 	_mark_authored(x, y)
 
 
+## [M27M4] Record which metatile a cell now shows.
+##
+## ⚠️ **THIS IS A WATERMARK, NOT A CACHE OF THE SCENE, and the distinction is
+## the whole reason the field is still here.** The baked `.tscn` is the source
+## of truth for what is DRAWN; nothing renders from `metatile`. What it records
+## is *what the collision and elevation in this file were last authored
+## AGAINST* — so when the scene and this disagree, the disagreement is
+## meaningful: someone painted over a cell and its movement rules are now a
+## guess about a tile that is no longer there.
+##
+## Deliberately does NOT mark the cell authored on its own. Marking provenance
+## is `author_cell_with_defaults()`'s job, and a metatile write that quietly
+## flipped provenance would make `map_baker` refuse to re-bake a map nobody has
+## really hand-edited — the same silent-flip class `apply_edit`'s own `changed`
+## predicate was fixed for.
+func set_metatile_id(x: int, y: int, value: int) -> void:
+	if not in_bounds(x, y):
+		return
+	metatile[_idx(x, y)] = value
+
+
+## [M27M4] Behaviour is per-METATILE, so it follows the tile rather than being
+## authored per cell — measured across all 421 maps, behaviour varies by
+## placement for 0% of metatiles, which is exactly why it can be resolved from
+## the pair's sidecar instead of asked about.
+##
+## ⚠️ No explicit bit is set, because there is not one yet. `AttrFlag` reserves
+## the room (its own comment says "so behaviour can join later without another
+## format change") and **Part B is what adds the third bit** — until then a
+## behaviour written here is trusted, not reviewed.
+func set_behavior(x: int, y: int, value: int) -> void:
+	if not in_bounds(x, y):
+		return
+	if behavior.size() != metatile.size():
+		behavior.resize(metatile.size())
+	behavior[_idx(x, y)] = value
+
+
 ## Mark a cell hand-authored and give it INHERITED defaults, explicitly NOT
 ## marked explicit.
 ##

@@ -23,6 +23,7 @@ extends EditorPlugin
 ## and caused Section N to exist; a button that saves the DATA and nothing else
 ## cannot make that mistake.
 var _save_button: Button = null
+var _sync_button: Button = null
 
 var _target: MapOverlay = null
 
@@ -75,6 +76,20 @@ func _enter_tree() -> void:
 	_save_button.pressed.connect(_on_save_pressed)
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _save_button)
 	_save_button.hide()
+	# [M27M4] Adopting painted tiles is a PULL, not a hook: Godot emits no
+	# "the user painted a tile" signal, and polling the scene per frame is the
+	# same per-cell cost that made the paint path stall for ~5 s. Asking for it
+	# also keeps Godot's own TileMap undo and this addon's undo out of one
+	# gesture. The rule lives on MapOverlay; this button only presses it.
+	_sync_button = Button.new()
+	_sync_button.text = "Sync Painted Tiles"
+	_sync_button.tooltip_text = ("Adopt tiles painted since the last sync: "
+			+ "update each cell's metatile and behaviour, and hand its "
+			+ "collision/elevation back to the review list.")
+	_sync_button.pressed.connect(_on_sync_pressed)
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _sync_button)
+	_sync_button.hide()
+
 	_entity_inspector = preload("res://addons/map_overlay_editor/entity_inspector.gd").new()
 	add_inspector_plugin(_entity_inspector)
 
@@ -115,6 +130,10 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _save_button)
 		_save_button.queue_free()
 		_save_button = null
+	if _sync_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _sync_button)
+		_sync_button.queue_free()
+		_sync_button = null
 	if _entity_inspector != null:
 		remove_inspector_plugin(_entity_inspector)
 		_entity_inspector = null
@@ -213,6 +232,42 @@ func _on_save_pressed() -> void:
 	_target.queue_redraw()
 
 
+## [M27M4] Undo-able for the same reason painting is: it rewrites six per-cell
+## arrays at once, and "I meant to sync a different map" is a real mistake.
+## Goes through the same snapshot/restore pair, so redo and undo are one path.
+func _on_sync_pressed() -> void:
+	if _target == null or not is_instance_valid(_target):
+		return
+	var pre: Dictionary = _target.snapshot_cells()
+	if pre.is_empty():
+		push_error("MapOverlay: no MapData on this overlay — nothing to sync.")
+		return
+	var report: Dictionary = _target.sync_painted_cells()
+	if int(report["changed"]) == 0 and int(report["conflicts"]) == 0:
+		print("MapOverlay: nothing to sync — every painted cell already matches.")
+		return
+
+	var post: Dictionary = _target.snapshot_cells()
+	var ur := get_undo_redo()
+	ur.create_action("Sync painted tiles", UndoRedo.MERGE_DISABLE, _target)
+	ur.add_do_method(_target, "restore_cells", post)
+	ur.add_undo_method(_target, "restore_cells", pre)
+	ur.commit_action()
+
+	print("MapOverlay: adopted %d painted cell(s); %d now need review."
+			% [int(report["changed"]), _target.review_count()])
+	# Both of these are the author's problem to look at, not this addon's to
+	# resolve -- either answer would be a guess.
+	if int(report["conflicts"]) > 0:
+		push_warning(("MapOverlay: %d cell(s) show DIFFERENT metatiles on two "
+				+ "planes and were skipped — a cell can only hold one.")
+				% int(report["conflicts"]))
+	if int(report["unresolved"]) > 0:
+		push_warning(("MapOverlay: %d cell(s) got a metatile this pair has no "
+				+ "behaviour for; their old behaviour was kept.")
+				% int(report["unresolved"]))
+
+
 func _handles(object: Object) -> bool:
 	return object is MapOverlay
 
@@ -225,6 +280,8 @@ func _edit(object: Object) -> void:
 func _make_visible(visible: bool) -> void:
 	if _save_button != null:
 		_save_button.visible = visible
+	if _sync_button != null:
+		_sync_button.visible = visible
 	if not visible:
 		_flush()
 		_target = null
