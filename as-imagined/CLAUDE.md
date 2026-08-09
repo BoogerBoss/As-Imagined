@@ -3403,14 +3403,24 @@ reaches, only these are unhandled:
 - **`pokemart` — 2 uses, the one real opcode gap.** Viridian and Pewter marts
   do nothing. It needs a shop UI, so it is the largest single item in this
   phase; **M27I** owns it.
-- **The movement-action tail — ~53 uses.** NOT event-script opcodes: these are
-  the separate movement sub-language `MovementRunner` executes. Dominated by
-  **speed variants of actions already implemented** —
-  `walk_in_place_faster_*` (40) and `walk_in_place_fast_*` (8) — plus
-  `face_player`, `face_original_direction`, `jump_2_down`,
-  `emote_exclamation_mark`, `nurse_joy_bow` (1 each). The runner already
-  carries per-speed frame tables, so most of this is table entries rather than
-  new mechanics. Cheap, and the payoff is visible: cutscenes stop stuttering.
+- **The movement-action tail — FIVE actions, five uses.** ⚠️ **CORRECTED
+  2026-08-08: an earlier draft of this plan said "~53 uses" and it was wrong.**
+  That figure came from grepping `movement_runner.gd` for literal action names,
+  but `_build()` GENERATES them by concatenation (`"walk_in_place_faster_" +
+  suffix`), so the literals never appear and 48 already-implemented uses read
+  as missing. Re-measured by asking `MovementRunner.action(name)` itself,
+  across the 101 movement scripts the corridor's `applymovement` calls
+  reference (1,166 actions checked): **`emote_exclamation_mark`,
+  `face_original_direction`, `face_player`, `jump_2_down`, `nurse_joy_bow` —
+  one use each.** The same grep-vs-measure failure this file already records
+  for `OBJECT_EVENT` 26-vs-25 and for the `ai_flags` zeroes; three times now,
+  always the same shape.
+  ⚠️ **They are five, but they are not five table entries.** `face_player` and
+  `face_original_direction` need runtime context the static table has no slot
+  for (where the player is; where this entity spawned facing). `jump_2_down` is
+  an arc, not a frame count. `emote_exclamation_mark` needs the "!" bubble —
+  `[M27D D1]` already pulled `emotion_exclamation.png`, so the asset is there.
+  `nurse_joy_bow` is a bespoke animation. Small, but real work rather than data.
 - **`trywondercardscript` — 1 use.** Mystery Gift. A documented no-op, matching
   the existing named-no-op convention.
 
@@ -3432,8 +3442,24 @@ the map twice.
   tile. ⚠️ **THIS IS THE ONE THAT TURNS PAINTED GRASS INTO GRASS.** Without it
   a new map looks correct and plays inert: no encounters, no surfing, no
   ledges, because `StepResolver` reads `MapData.behavior` and nothing writes
-  it. Collision and elevation reuse the existing guess-plus-review-flag path
-  the overlay plugin already has.
+  it.
+  ⚠️ **IT IS SMALLER THAN IT SOUNDS, BECAUSE THE OVERLAY EDITOR ALREADY BUILT
+  MOST OF THE PATH — Rob's point, 2026-08-08, and worth stating so a later
+  session does not rebuild an editor that exists.** `[M27B Change 2 / Step D]`
+  shipped the whole editing apparatus: `paint()`/`apply_edit()` for collision
+  and elevation, `snapshot_cells()`/`restore_cells()` wired into the editor's
+  own undo, `review_cells()`/`review_count()` and the dirty banner,
+  `author_cell_with_defaults()` for inherit-a-guess-and-flag-it,
+  `save_map_data()` behind the Save Map Data button, and the
+  `provenance`/`attr_explicit` record. M27M4's own scope text expects to
+  inherit it — "seed via the EXISTING `author_cell_with_defaults()`".
+  What is genuinely missing is narrow: **`MapData` has exactly four mutators**
+  (`set_attr_explicit`, `set_collision`, `set_elevation`,
+  `author_cell_with_defaults`) and **there is no `set_metatile_id` and no
+  `set_behavior`** — so nothing can write the two arrays this tier is about —
+  plus the detection itself, comparing painted atlas coords against
+  `MapData.metatile`, which nothing anywhere does. **Two setters and a
+  comparison, not a write path.**
 - **M27M3 — the metatile brush, RESCOPED (Rob, 2026-08-08).** ⚠️ **It asks
   "in front of the player or behind?", NOT "what layer type is this?"** Layer
   type is a GBA hardware taxonomy for how source packed its BG layers, and it
@@ -3491,7 +3517,8 @@ hardware accommodation; the fidelity that matters is which cue plays and when.
 **movement tail → `trywondercardscript` → M27M1 → M27M4 → M27M3 → M27M5 →
 connect → audio scoping → `pokemart`.**
 
-The movement tail buys visible polish immediately for very little. M27M1/M27M4
+The movement tail is five actions across the whole corridor, so it is the
+smallest thing here and closes the last `UNKNOWN` in cutscene playback. M27M1/M27M4
 precede the brush so a map is painted once. Audio scoping sits before
 `pokemart` because it is a decision Rob makes rather than work, and
 `pokemart` is the biggest single build with nothing waiting on it.
@@ -3615,6 +3642,10 @@ milestone system above**: milestones track *what* gets built; these tiers
 track *whether the shipped result is playable end to end* and how rough it
 still is. A tier only advances when its criteria are actually true of the
 running game, not when the milestone work that enables it lands.
+
+**Subject to change** — this ladder is Rob's current thinking, not a locked
+spec; tier boundaries and criteria may be revised as the project's actual
+shape becomes clearer.
 
 **Current tier: Tier 1. Working toward: Tier 2.**
 
