@@ -841,6 +841,39 @@ class Tileset:
 
         self.count = len(self.attrs)
 
+    def primary_borrows_from_secondary(self):
+        """Do any PRIMARY metatiles draw with the SECONDARY's tiles/palettes?
+
+        [M27M Part C] ⚠️ THIS IS THE REASON A PRIMARY ATLAS IS NOT ALWAYS
+        SHAREABLE, and it defeats the obvious "one primary image per primary
+        tileset" assumption Part C started from.
+
+        On hardware the two tilesets are loaded into ONE tile/palette address
+        space, so a primary metatile is free to name tile index >= 640 or
+        palette slot >= 7 and pick up whatever the currently-paired secondary
+        put there. That is an idiom, not corruption -- it is how a shared
+        building tileset defines a fixture whose art is themed per building.
+        Rendered to a FILE, though, such a metatile has no single answer: it
+        genuinely differs per pair.
+
+        Measured across all 421 converted Kanto maps:
+          general_frlg   0 of 640 primary metatiles borrow -- fully shareable
+          building_frlg 56 of 640 borrow, placed on 208 real cells
+                        (4 corridor maps, 1 cell each -- every Pokemon Centre)
+
+        So this is rare, real, and invisible if guessed at: sharing anyway
+        renders 208 cells with another building's palette and reports nothing.
+        """
+        for mid in range(min(NUM_METATILES_IN_PRIMARY_FRLG, self.count)):
+            base = mid * NUM_TILES_PER_METATILE
+            for i in range(NUM_TILES_PER_METATILE):
+                e = self.metatiles[base + i]
+                if (e & 0x03FF) >= NUM_TILES_IN_PRIMARY_FRLG:
+                    return True
+                if ((e >> 12) & 0x0F) >= NUM_PALS_IN_PRIMARY_FRLG:
+                    return True
+        return False
+
     def behavior(self, mid):
         return self.attrs[mid] & METATILE_ATTR_BEHAVIOR_MASK_FRLG
 
@@ -875,16 +908,30 @@ class Tileset:
         return drew
 
 
-def build_atlases(ts):
-    """One 16x16 cell per metatile, per plane. Returns (images, usage)."""
+def build_atlases(ts, lo=0, hi=None):
+    """One 16x16 cell per metatile, per plane. Returns (images, usage).
+
+    [M27M Part C] `lo`/`hi` select a HALF of the pair's metatile range so the
+    shared primary and the pair's own secondary can be rendered into separate
+    images. Coordinates are re-based to `lo`, matching AtlasLayout.coords().
+
+    ⚠️ Defaults cover the whole range, so an un-split caller behaves exactly as
+    before -- the split is opt-in at the call site rather than a behaviour
+    change hidden in here.
+    """
     cols = 32
-    rows = (ts.count + cols - 1) // cols
+    if hi is None:
+        hi = ts.count
+    hi = min(hi, ts.count)
+    span = max(0, hi - lo)
+    rows = max(1, (span + cols - 1) // cols)
     imgs = [Image.new("RGBA", (cols * 16, rows * 16), (0, 0, 0, 0))
             for _ in range(3)]
     usage = [0, 0, 0]
 
-    for mid in range(ts.count):
-        ox, oy = (mid % cols) * 16, (mid // cols) * 16
+    for mid in range(lo, hi):
+        local = mid - lo
+        ox, oy = (local % cols) * 16, (local // cols) * 16
         lt = ts.layer_type(mid)
 
         # §1.6 routing table.
@@ -1238,10 +1285,32 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         # [Rider 2] One writer only. Two json.dump sites that could disagree
         # about the same file is its own bug class -- and did in fact disagree,
         # which is how the atlas field went missing on the all-corpus path.
-        imgs, _ = build_atlases(ts)
-        for img, nm in zip(imgs, ["ground", "objects", "overhangs"]):
-            ap = os.path.join(ATLAS_OUT, "%s_%s.png" % (aslug, nm))
-            if not os.path.exists(ap):          # shared across every map on this pair
+        # [M27M Part C] SPLIT: the shared primary once per PRIMARY TILESET, the
+        # secondary once per PAIR.
+        #
+        # ⚠️ Measured before doing this: Kanto has TWO primaries backing all 60
+        # pairs, and 81% of all atlas area was the primary re-rendered per pair
+        # (building_frlg__generic_building_1 was 21 rows: 20 primary, 1
+        # secondary). Splitting is 47,424 atlas cells -> 12,864.
+        # ⚠️ SHARED ONLY WHEN IT IS ACTUALLY SHAREABLE. A primary whose
+        # metatiles borrow the secondary's tiles/palettes renders differently
+        # per pair, so it gets its own per-pair file and the baker prefers
+        # that. See Tileset.primary_borrows_from_secondary() for the
+        # measurement -- guessing here writes wrong art and says nothing.
+        primary = aslug.split("__")[0]
+        shared = not ts.primary_borrows_from_secondary()
+        stem = primary if shared else aslug
+        pimgs, _ = build_atlases(ts, 0, NUM_METATILES_IN_PRIMARY_FRLG)
+        for img, nm in zip(pimgs, ["ground", "objects", "overhangs"]):
+            ap = os.path.join(ATLAS_OUT, "%s_primary_%s.png" % (stem, nm))
+            # Shared: first pair on this primary writes it, the rest match it.
+            # Per-pair: shared across every MAP on this pair, same as secondary.
+            if not os.path.exists(ap):
+                img.save(ap)
+        simgs, _ = build_atlases(ts, NUM_METATILES_IN_PRIMARY_FRLG, ts.count)
+        for img, nm in zip(simgs, ["ground", "objects", "overhangs"]):
+            ap = os.path.join(ATLAS_OUT, "%s_secondary_%s.png" % (aslug, nm))
+            if not os.path.exists(ap):      # shared across every map on this pair
                 img.save(ap)
 
         # [Corridor op-code scope] `setmetatile`'s own runtime primitive needs
@@ -1258,8 +1327,17 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
             out = Image.new("RGBA", (w * 16, h * 16), bg)
             for plane in planes:
                 for i, mid in enumerate(mids):
-                    sx, sy = (mid % 32) * 16, (mid // 32) * 16
-                    out.alpha_composite(imgs[plane].crop((sx, sy, sx + 16, sy + 16)),
+                    # [M27M Part C] Pick the half that holds this id, and
+                    # re-base the coordinate -- the same rule AtlasLayout
+                    # applies at runtime. The preview is the ONE place a wrong
+                    # split shows up as a picture rather than as silence, so it
+                    # is worth keeping honest.
+                    if mid < NUM_METATILES_IN_PRIMARY_FRLG:
+                        src, local = pimgs[plane], mid
+                    else:
+                        src, local = simgs[plane], mid - NUM_METATILES_IN_PRIMARY_FRLG
+                    sx, sy = (local % 32) * 16, (local // 32) * 16
+                    out.alpha_composite(src.crop((sx, sy, sx + 16, sy + 16)),
                                         ((i % w) * 16, (i // w) * 16))
             return out
 

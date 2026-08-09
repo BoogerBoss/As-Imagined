@@ -29,9 +29,9 @@ const CELL := 16
 ## Where map_baker writes the shared per-pair TileSets (M27M2).
 const TILESET_DIR := "res://assets/map_tilesets/"
 
-## Atlas geometry, matching map_baker.gd — a metatile id converts to atlas
-## coords the same way here as it does at bake time (`set_metatile`).
-const ATLAS_COLS := 32
+## [M27M Part C] The atlas geometry constant that used to live here is GONE, on
+## purpose: `AtlasLayout` owns the id→(source, coords) rule now, and a local
+## copy of half of it is exactly how the two paint sites would drift apart.
 
 ## §1.6 routing, matching map_baker.gd's own table: layer_type -> the planes a
 ## metatile paints into. Both halves use the same atlas coords; the per-plane
@@ -917,7 +917,10 @@ func set_metatile(gcell: Vector2i, metatile_id: int, impassable: bool) -> bool:
 
 	var lt := _layer_type_for(d.atlas, metatile_id)
 	var routed: Array = ROUTING.get(lt, [])
-	var coords := Vector2i(metatile_id % ATLAS_COLS, int(metatile_id / ATLAS_COLS))
+	# [M27M Part C] The source is no longer just the plane — a secondary id
+	# lives in a different TileSet source and at a re-based coord. Both come
+	# from `AtlasLayout` so the baker and the manager cannot drift apart.
+	var coords := AtlasLayout.coords(metatile_id)
 	var planes := [root.get_node_or_null("Ground") as TileMapLayer,
 			root.get_node_or_null("Objects") as TileMapLayer,
 			root.get_node_or_null("Overhangs") as TileMapLayer]
@@ -926,7 +929,7 @@ func set_metatile(gcell: Vector2i, metatile_id: int, impassable: bool) -> bool:
 		if layer == null:
 			continue
 		if plane in routed:
-			layer.set_cell(local, plane, coords)
+			layer.set_cell(local, AtlasLayout.source_id(plane, metatile_id), coords)
 		else:
 			layer.set_cell(local)  # not routed to this plane -- erase, don't leave stale art
 	return true

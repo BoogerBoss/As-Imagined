@@ -17,7 +17,7 @@ extends Node
 ##     (the VM has no scene-tree access), and every arg goes through
 ##     `_resolve_number` since source reads all four via `VarGet`.
 
-const EXPECTED_TOTAL := 19
+const EXPECTED_TOTAL := 20  # +1: B.09b, the secondary-half pin [M27M Part C]
 
 var _total := 0
 var _failed := 0
@@ -108,11 +108,18 @@ func _test_set_metatile_routing() -> void:
 	_chk("B.02 impassable=true forces collision solid",
 			d.collision[1 * 4 + 1] == 1)
 	# id 703 is NORMAL: objects(1) + overhangs(2), ground ERASED.
-	var coords703 := Vector2i(703 % 32, int(703 / 32))
+	#
+	# [M27M Part C] ⚠️ 703 is a SECONDARY id, so it no longer maps to
+	# `(703 % 32, 703 / 32)` in source `plane` — it lives in the pair's own
+	# secondary atlas at a RE-BASED coord. These read `AtlasLayout` rather than
+	# restating the arithmetic, which is the whole reason that class exists;
+	# what they still assert on their own is the ROUTING (which planes are
+	# painted and which are erased), which Part C does not touch.
+	var coords703 := AtlasLayout.coords(703)
 	_chk("B.03 NORMAL paints Objects", objects.get_cell_atlas_coords(Vector2i(1, 1)) == coords703
-			and objects.get_cell_source_id(Vector2i(1, 1)) == 1)
+			and objects.get_cell_source_id(Vector2i(1, 1)) == AtlasLayout.source_id(1, 703))
 	_chk("B.04 NORMAL paints Overhangs", overhangs.get_cell_atlas_coords(Vector2i(1, 1)) == coords703
-			and overhangs.get_cell_source_id(Vector2i(1, 1)) == 2)
+			and overhangs.get_cell_source_id(Vector2i(1, 1)) == AtlasLayout.source_id(2, 703))
 	_chk("B.05 and NORMAL leaves Ground erased -- the exact 'half the block "
 			+ "never renders' trap this project has already paid for twice",
 			ground.get_cell_source_id(Vector2i(1, 1)) == -1)
@@ -122,11 +129,16 @@ func _test_set_metatile_routing() -> void:
 	_chk("B.07 impassable=false leaves collision walkable",
 			d.collision[2 * 4 + 2] == 0)
 	# id 704 is COVERED: ground(0) + objects(1), overhangs ERASED.
-	var coords704 := Vector2i(704 % 32, int(704 / 32))
+	var coords704 := AtlasLayout.coords(704)
 	_chk("B.08 COVERED paints Ground", ground.get_cell_atlas_coords(Vector2i(2, 2)) == coords704
-			and ground.get_cell_source_id(Vector2i(2, 2)) == 0)
+			and ground.get_cell_source_id(Vector2i(2, 2)) == AtlasLayout.source_id(0, 704))
 	_chk("B.09 COVERED paints Objects", objects.get_cell_atlas_coords(Vector2i(2, 2)) == coords704
-			and objects.get_cell_source_id(Vector2i(2, 2)) == 1)
+			and objects.get_cell_source_id(Vector2i(2, 2)) == AtlasLayout.source_id(1, 704))
+	# ⚠️ Pins that these two really ARE secondary ids, so the assertions above
+	# cannot quietly degrade into the pre-split mapping and still pass.
+	_chk("B.09b and both ids genuinely live in the SECONDARY half",
+			not AtlasLayout.is_primary(703) and not AtlasLayout.is_primary(704)
+			and AtlasLayout.source_id(0, 704) == AtlasLayout.SECONDARY_SOURCE_BASE)
 	_chk("B.10 and COVERED leaves Overhangs erased -- the discriminator that "
 			+ "proves routing actually branches per id, not a fixed plane set",
 			overhangs.get_cell_source_id(Vector2i(2, 2)) == -1)

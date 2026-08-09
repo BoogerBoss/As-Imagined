@@ -328,6 +328,77 @@ The recon's real advantage over Part C stands and should not be forgotten:
 END of M27 work** — which also resolves the §5.3 authoring conflict cleanly,
 since by then the authoring shape will be settled rather than speculative.
 
+### ⚠️ BUILT 2026-08-09 — and the headline assumption above turned out to be
+### FALSE for one of the two primaries
+
+Part C shipped, but **"the primary is stored once per primary tileset" is only
+true of `general_frlg`.** Found by a pixel proof, not by the coverage check —
+and it would never have been found by reasoning, because the wrong version
+*renders*.
+
+**The mechanism.** On hardware the primary and secondary tilesets are loaded
+into ONE tile/palette address space, so a primary metatile is free to name tile
+index ≥ 640 or palette slot ≥ 7 and pick up whatever the *currently paired*
+secondary put there. That is a deliberate idiom — it is how a shared building
+tileset defines a fixture whose art is themed per building. Rendered to a FILE,
+such a metatile has no single answer: it genuinely differs per pair.
+
+**Measured across all 421 converted Kanto maps:**
+
+| primary | borrowing metatiles | placed on |
+|---|---|---|
+| `general_frlg` | **0** of 640 | — (fully shareable) |
+| `building_frlg` | **56** of 640 | **208 cells** (0.36% of its maps) |
+
+⚠️ **"BORROWS" IS NOT "RENDERS WRONG", and the first write-up of this conflated
+them.** Screenshot verification forced three narrowings, each measured:
+
+1. A borrowing metatile only renders wrong where it **differs from the pair that
+   won the race** to write the shared file — alphabetically
+   `building_frlg__generic_building_1_frlg`.
+2. Across the corridor's 10 building pairs that is **6 cells**, not 208.
+3. Of those, a difference confined to a plane that a fully-opaque upper plane
+   **overdraws** is invisible on screen.
+
+Metatile **98** in the four Pokémon Centres is exactly case 3 — 254 differing
+Ground pixels, **all 254 overdrawn by an opaque Objects plane**. So the Centres
+were never visibly wrong, and the earlier claim that they were is **retracted**.
+
+**The real visible corridor impact is Silph Co 1F, cells (30,0) and (30,1),
+metatiles 617/625** — differing in Objects *and* Overhangs, with 178 and 78
+pixels respectively NOT overdrawn. Pre-fix they render **solid black**;
+post-fix they are the notice board beside the stairwell. Confirmed by
+screenshot, not by inference.
+
+**Resolution: share only where it is actually shareable.** The generator asks
+`Tileset.primary_borrows_from_secondary()`; a borrowing pair writes its own
+`<pair>_primary_<plane>.png` and the baker prefers that name over the shared
+one. `AtlasLayout` is untouched — this changes which FILE backs the primary
+source, never which source or coord an id resolves to, so it stays a pure
+function of the id.
+
+**The cost is most of the predicted win**, and the earlier 3.7× figure should
+be read as measured under a false assumption:
+
+| | atlas cells | atlas bytes |
+|---|---|---|
+| before Part C | 47,424 | 1.22 MB |
+| predicted (shared primaries) | 12,864 | 0.36 MB — **3.7×** |
+| **actual (9 per-pair primaries)** | **28,224** | **0.63 MB — 1.9×** |
+
+`general_frlg` — the outdoor tileset backing 173,560 of the region's 230,619
+cells — still dedupes fully across its 11 pairs. `building_frlg`'s 9 do not.
+
+⚠️ **Two proofs ship with this, and each catches what the other cannot.** The
+coverage check (suite section **AX**) walks every painted cell of every baked
+map and asserts the tile it points at exists — it catches a wrong source or a
+wrong coord, and it caught an injected un-rebased coord on 628 cells. It did
+**not** catch the borrowing bug, because a wrongly-shared primary points at a
+tile that exists and simply holds another building's art. Only the pixel proof
+— rendering the un-split composite the old way and comparing halves — found
+that. **A "renders and renders wrong" failure needs a pixel comparison; a
+"renders nothing" failure needs a coverage walk.**
+
 ### Recommendation
 
 **Worth doing, and worth doing before Part B** — but it is a *storage format*

@@ -69,7 +69,14 @@ const MAP_DATA_ASSERTIONS := 8
 ## [M27Q Q4] 525 -> 536 -> 541. Section AU (NameUsage: the name-collision
 ## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
-const EXPECTED_TOTAL := 548
+## Then section AX (the M27M Part C split-atlas coverage proof, 5).
+const EXPECTED_TOTAL := 553
+
+## The three baked tile planes, in source-id order. Part C's coverage proof
+## walks all three, because a metatile routes to one or TWO of them and a
+## ground-only check reads half the map as empty — the exact mistake that
+## produced a false "90 of 180 cells unpainted" alarm during M27D.
+const PLANE_NAMES := ["Ground", "Objects", "Overhangs"]
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -251,6 +258,7 @@ func _ready() -> void:
 	_test_author_save_reload()
 	_test_undo_symmetry()
 	_test_m27m1_behaviour_table()
+	_test_part_c_atlas_split()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -3184,10 +3192,15 @@ func _test_tileset_preload() -> void:
 		var ts := MapManager.preloaded_tileset(pair)
 		if ts == null:
 			all_present = false
-		elif ts.get_source_count() != 3:
+		elif ts.get_source_count() != AtlasLayout.SECONDARY_SOURCE_BASE * 2:
 			all_real = false
 	_chk("AR.05 every pair on disk is retrievable by name", all_present)
-	_chk("AR.06 and each holds three real plane sources", all_real)
+	# [M27M Part C] SIX, not three — the primary's three planes plus the
+	# pair's own secondary's three. Reads the constant rather than a literal
+	# so the next change to the layout cannot leave a stale 6 here the way it
+	# left a stale 3.
+	_chk("AR.06 and each holds a primary AND a secondary source per plane",
+			all_real)
 
 	# Holding the REFERENCE is the mechanism, so the same instance must come
 	# back — a fresh instance per call would mean nothing was actually retained.
@@ -3206,7 +3219,8 @@ func _test_tileset_preload() -> void:
 	MapManager.clear_preloaded()
 	var via_disk = baker._get_or_build_tileset(on_disk[0])
 	_chk("AR.10 with the dictionary cleared it still resolves from disk",
-			via_disk != null and (via_disk as TileSet).get_source_count() == 3)
+			via_disk != null and (via_disk as TileSet).get_source_count()
+					== AtlasLayout.SECONDARY_SOURCE_BASE * 2)
 	baker.free()
 
 	# Break test: an empty directory must make the guard FIRE, not report a
@@ -3984,6 +3998,77 @@ func _test_m27m1_behaviour_table() -> void:
 			mismatches += 1
 	_chk("AW.07 the table agrees with every imported cell of a real map (%d cells)"
 			% md.metatile.size(), mismatches == 0)
+
+
+## [M27M Part C] The split-atlas coverage proof.
+##
+## ⚠️ THIS SECTION EXISTS BECAUSE THE FAILURE IS SILENT AND TOTAL.
+## `set_cell` accepts a coord whose tile was never created, stores it
+## faithfully, and renders NOTHING — no warning, no error. So a wrong source
+## id or a wrong coord does not break a test, it produces invisible terrain
+## that only a human walking the map would notice. AX.03 is the guard that
+## matters: it walks every painted cell of every baked map and asserts the
+## tile it points at genuinely exists.
+func _test_part_c_atlas_split() -> void:
+	# Pure-function rules first — these need no artifacts.
+	_chk("AX.01 a primary id keeps its plane as the source id",
+			AtlasLayout.source_id(1, 0) == 1
+			and AtlasLayout.source_id(2, AtlasLayout.PRIMARY_METATILES - 1) == 2)
+	# ⚠️ The discriminator: an id one PAST the boundary must move source AND
+	# re-base its coord. Both halves, because a rule that moved the source but
+	# not the coord would land on a row a short secondary atlas does not have,
+	# and one that re-based without moving the source would land on real but
+	# WRONG art in the primary — which renders, and renders wrong.
+	_chk("AX.02 the first SECONDARY id moves source and re-bases to row 0",
+			AtlasLayout.source_id(0, AtlasLayout.PRIMARY_METATILES)
+					== AtlasLayout.SECONDARY_SOURCE_BASE
+			and AtlasLayout.coords(AtlasLayout.PRIMARY_METATILES) == Vector2i.ZERO
+			and AtlasLayout.coords(AtlasLayout.PRIMARY_METATILES - 1)
+					== Vector2i(AtlasLayout.COLS - 1,
+							int((AtlasLayout.PRIMARY_METATILES - 1) / AtlasLayout.COLS)))
+
+	var names := _baked_map_names()
+	if names.is_empty():
+		_gated += 3
+		return
+
+	var painted := 0
+	var no_tile := 0
+	var secondary_seen := 0
+	for map_name in names:
+		var scene := load("res://scenes/maps/%s.tscn" % map_name) as PackedScene
+		if scene == null:
+			continue
+		var root := scene.instantiate() as Node2D
+		for plane in PLANE_NAMES.size():
+			var layer := root.get_node_or_null(PLANE_NAMES[plane]) as TileMapLayer
+			if layer == null:
+				continue
+			for cell in layer.get_used_cells():
+				painted += 1
+				var sid := layer.get_cell_source_id(cell)
+				if sid >= AtlasLayout.SECONDARY_SOURCE_BASE:
+					secondary_seen += 1
+				var src := layer.tile_set.get_source(sid) as TileSetAtlasSource
+				if src == null or not src.has_tile(layer.get_cell_atlas_coords(cell)):
+					no_tile += 1
+		root.free()
+
+	_chk("AX.03 every painted cell resolves to a tile that EXISTS (%d cells, %d maps)"
+			% [painted, names.size()], painted > 0 and no_tile == 0)
+	# ⚠️ Without this, AX.03 would pass on a corridor that happened to place no
+	# secondary metatile at all — the half of the split most likely to be wrong
+	# would be untested and the count would look healthy.
+	_chk("AX.04 and the SECONDARY half is genuinely exercised (%d cells)"
+			% secondary_seen, secondary_seen > 0)
+	# The shared primary is only shareable when its metatiles do not borrow the
+	# secondary's tiles/palettes. `general_frlg` does not borrow and shares;
+	# `building_frlg` does, on 56 of 640, and gets a per-pair file. Assert the
+	# shared one exists so a regression that made EVERY primary per-pair — which
+	# would still render correctly and silently undo the whole tier — is caught.
+	_chk("AX.05 the shareable primary is still shared, not written per pair",
+			FileAccess.file_exists(
+					"res://assets/map_atlases/general_frlg_primary_ground.png"))
 
 
 func _any_metatile_with(pair: String, behaviour: int) -> bool:

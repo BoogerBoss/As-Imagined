@@ -17,7 +17,8 @@ extends Node
 ## with no arguments it bakes PalletTown_Frlg.
 
 const CELL := 16
-const ATLAS_COLS := 32
+## [M27M Part C] No `ATLAS_COLS` here — `AtlasLayout` owns the id→(source,
+## coords) rule for both this file and `map_manager.gd`.
 const MAP_DIR := "res://assets/maps/"
 const ATLAS_DIR := "res://assets/map_atlases/"
 const OUT_DIR := "res://scenes/maps/"
@@ -125,13 +126,16 @@ func _bake(map_name: String) -> bool:
 	for i in range(src.metatile.size()):
 		var mid: int = src.metatile[i]
 		var cell := Vector2i(i % src.width, int(i / src.width))
-		var coords := Vector2i(mid % ATLAS_COLS, int(mid / ATLAS_COLS))
+		# [M27M Part C] Both the coord and the SOURCE now depend on the id, so
+		# both come from AtlasLayout rather than being derived here — see its
+		# header for why a second copy of this rule is specifically dangerous.
+		var coords := AtlasLayout.coords(mid)
 		var lt: int = src.layer_type[i]
 		if not ROUTING.has(lt):
 			continue
 		for pair in ROUTING[lt]:
 			var plane: int = pair[1]
-			layers[plane].set_cell(cell, plane, coords)
+			layers[plane].set_cell(cell, AtlasLayout.source_id(plane, mid), coords)
 
 	_emit_events(root, map_name, ent_low, ent_high)
 
@@ -692,6 +696,14 @@ func _get_or_build_tileset(atlas: String) -> TileSet:
 	return ts
 
 
+## [M27M Part C] SIX sources, not three: planes 0-2 are the SHARED primary and
+## 3-5 are this pair's own secondary — `AtlasLayout.source_id` owns that rule.
+##
+## ⚠️ The primary texture is the same `res://` path for every pair on that
+## primary, which is the whole point: Godot's resource cache hands out ONE
+## `Texture2D` for all of them, so 60 resident copies of the outdoor tileset
+## become one. The tile DEFINITIONS are still per-TileSet — that is M27M-T's
+## job, not this one.
 func _build_tileset(atlas: String) -> TileSet:
 	var ts := TileSet.new()
 	ts.tile_size = Vector2i(CELL, CELL)
@@ -699,8 +711,23 @@ func _build_tileset(atlas: String) -> TileSet:
 	ts.set_custom_data_layer_name(0, "behavior")
 	ts.set_custom_data_layer_type(0, TYPE_INT)
 
-	for sid in range(3):
-		var path := "%s%s_%s.png" % [ATLAS_DIR, atlas, PLANE_NAMES[sid]]
+	var primary := AtlasLayout.primary_of(atlas)
+	for sid in range(6):
+		var plane := sid % 3
+		var path := ""
+		if sid < AtlasLayout.SECONDARY_SOURCE_BASE:
+			# ⚠️ PER-PAIR PRIMARY FIRST, shared second — and the fallback is
+			# the normal case, not the exception. A primary whose metatiles
+			# borrow the secondary's tiles/palettes cannot be shared (56 of
+			# building_frlg's 640 do; general_frlg's do not), so the generator
+			# writes those per pair. Reading only the shared name would draw
+			# 208 real cells region-wide with another building's palette, and
+			# nothing would report it.
+			path = "%s%s_primary_%s.png" % [ATLAS_DIR, atlas, PLANE_NAMES[plane]]
+			if not ResourceLoader.exists(path):
+				path = "%s%s_primary_%s.png" % [ATLAS_DIR, primary, PLANE_NAMES[plane]]
+		else:
+			path = "%s%s_secondary_%s.png" % [ATLAS_DIR, atlas, PLANE_NAMES[plane]]
 		if not ResourceLoader.exists(path):
 			push_error("map_baker: missing atlas %s" % path)
 			return null
