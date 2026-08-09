@@ -127,9 +127,10 @@ They split into four groups by how much work each is:
   (declined by Rob at M27H, so inert by decision), **Escape Rope** (no field
   mechanic), **Dream Mail** (no mail system).
 
-⚠️ **Rob's decision, 2026-08-09: Repel and Escape Rope are stocked as INERT** —
-real price, real purchase, no effect. That needs no new mechanics, but it does
-need the shop to not care whether an item does anything.
+⚠️ **Rob's decision, 2026-08-09: Repel (all three), Escape Rope and REVIVE are
+stocked as INERT** — real price, real purchase, no effect. Five items. That
+needs no new mechanics, but it does need the shop to not care whether an item
+does anything. See §5 decision 1 for why inert Revive is safer than it sounds.
 
 ⚠️ **Escape Rope's price in `items.json` is 0 and its pocket is `key_items`.**
 Both look like data gaps rather than intent — a free item on ten shelves, in a
@@ -154,8 +155,12 @@ shop, awaits its close, and returns; `ScriptDriver` resumes. Nothing to invent.
 ### Menu shape
 
 `MART_TYPE_NORMAL` gets three actions (`sShopMenuActions_BuySellQuit`,
-`shop.c:168`): **Buy / Sell / Quit**. (The two-action Buy/Quit variant is for
-Battle-Frontier-style shops and is out of scope with them.)
+`shop.c:168`): **Buy / Sell / Quit**.
+
+⚠️ **This project ships Buy / Quit instead — §5 decision 2 — and that is a real
+source shape, not a trimmed one.** `sShopMenuActions_BuyQuit` (`shop.c:175`)
+exists precisely for shops that do not buy back. The divergence is only in
+WHICH shops use it, so nothing about the menu is invented.
 
 ### Rules worth porting exactly
 
@@ -204,9 +209,13 @@ Optional, but it is cheap and it is the kind of detail whose absence is noticed.
   Independently testable with no UI at all.
 - **I6b — the item roster.** The 15 heals/balls as data rows, plus Repel and
   Escape Rope as inert stock. Ends with every mart's stock loadable.
-- **I6c — the screen.** Buy/Sell/Quit, the quantity picker, the /4 sell rule,
-  sold-out key items. `WAIT_NATIVE`, no new pause kind.
-- **I6d — optional.** Premier Ball bonus.
+- **I6c — the screen.** **Buy / Quit** (source's own `sShopMenuActions_BuyQuit`
+  — Sell deferred, decision 2 below), the quantity picker capped by money AND
+  bag space, sold-out key items, and the **Premier Ball bonus** folded in
+  rather than split out. `WAIT_NATIVE`, no new pause kind.
+
+(The former I6d is gone — the Premier Ball bonus is a branch on the purchase
+I6c already makes, and splitting it would mean touching one function twice.)
 
 **a and b are independently valuable** — a closes a silent data loss that
 affects 13 lists, and b makes 17 items real for the bag and party screens that
@@ -214,17 +223,48 @@ already exist, whether or not a shop is ever built.
 
 ---
 
-## 5. Open questions for Rob
+## 5. Decisions — resolved by Rob, 2026-08-09
 
-1. **Revive.** Nine marts stock it and nothing in this project can revive a
-   fainted Pokémon. Stock it inert like Repel, omit it from shelves, or build
-   the mechanic?
-2. **Escape Rope's price of 0 and `key_items` pocket** — data gap to correct, or
-   intended? As it stands it is a free key item on ten shelves.
-3. **Sell at all, for now?** Buy alone is most of the value; Sell needs the
-   /4 rule, the key-item refusal, and a second list mode. Splitting it would
-   make I6c materially smaller.
-4. **Premier Ball bonus** — in or out.
+**1. Revive is stocked INERT**, joining Repel/Super Repel/Max Repel and Escape
+Rope. So the inert set is **five items**, and they divide into two kinds that
+should not be conflated later:
+
+- *Designed out* — Repel and its family, declined at `[M27H]` against that
+  session's own recommendation. These are inert permanently unless that call is
+  revisited.
+- *Not yet built* — **Revive**, and Escape Rope's field effect. Real mechanics
+  this project will plausibly want; inert is a waypoint, not a verdict.
+
+⚠️ **A player CAN buy a 2000-money Revive that does nothing, and that is worth
+knowing rather than discovering.** The exposure is smaller than it first looks,
+though, and for a reason already built: `[M27I I5-3]` derives field usability
+from `battle_usage`, so an item with none is **not offered a USE action at
+all** — the party screen shows only CANCEL. So the player keeps the item rather
+than spending it on nothing, and it starts working the day Revive is built.
+The cost is money spent on a held item, not a consumable burned for no effect.
+
+**2. Sell is OUT of scope for now.** Buy only.
+
+⚠️ **This costs no invented UI, which is the useful part.** Source already ships
+a two-action menu — `sShopMenuActions_BuyQuit` (`shop.c:175`) — so
+**Buy / Quit** is a real shape from the reference rather than a trimmed-down
+one. The divergence is only in WHICH shops use it (source reserves it for
+Battle-Frontier-style shops), not in the menu existing. Record that at the site.
+
+It also removes the /4 sell rule and the key-item sell refusal from I6c
+entirely — both stay documented in §3 for whoever adds Sell later, and the /4
+figure in particular should not be re-derived from memory.
+
+**3. Premier Ball bonus is IN.** Fold into I6c rather than keeping I6d as a
+separate tier — it is a branch on the purchase that just landed, and splitting
+it would mean touching the same function twice.
+
+### Still open
+
+**Escape Rope's price of 0 and `key_items` pocket.** Not answered, and it
+matters more now that it is deliberately stocked: as the data stands it is a
+free item on ten shelves. Worth one check against source's own item table
+before I6b, since it is a data correction rather than a design call.
 
 ---
 
