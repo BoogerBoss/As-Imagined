@@ -48,6 +48,28 @@ static func register_all(reg: NativeEventRegistry) -> void:
 	# the shape every cinematic beat wants between two actions, and something
 	# the opcode language cannot express at all (`delay` is a movement action,
 	# not a script command).
+	# [M27R 7a-1] `waitfanfare` / `waitse`. Routed here rather than given their
+	# own pause kinds, the same call `multichoicegrid` and `fadescreen` made.
+	#
+	# ⚠️ **BOTH AWAIT A SIGNAL THAT ALWAYS FIRES, WHICH IS THE G5 RULE AND NOT A
+	# DETAIL.** `FieldAudio` emits `fanfare_finished`/`se_finished` deferred
+	# when a cue could NOT start — an unmapped name, a missing asset, or no
+	# audio device — precisely so a handler can never suspend forever. Four
+	# corridor scripts play `MUS_LEVEL_UP`, which the Essentials pack has no
+	# jingle for; without that guarantee every one of them would hang the scene
+	# on a sound nobody can hear.
+	reg.register("WaitFanfare", func(driver, _args) -> Variant:
+		var a = driver.scene().field_audio()
+		if a == null or not a.is_fanfare_playing():
+			return null
+		await a.fanfare_finished
+		return null)
+	reg.register("WaitSe", func(driver, _args) -> Variant:
+		var a = driver.scene().field_audio()
+		if a == null or not a.is_se_playing():
+			return null
+		await a.se_finished
+		return null)
 	reg.register("Wait", func(driver, args) -> Variant:
 		var seconds := 0.5
 		if args.size() > 0:
@@ -124,6 +146,11 @@ static func register_all(reg: NativeEventRegistry) -> void:
 				SaveManager.build_payload(ow.manager.chunk_owning(ow._cell),
 						ow._cell, ow._facing, ow._elev,
 						OverworldSession.playtime_seconds()))
+		# [M27R 7a-2] The save cue, on SUCCESS only — a failed write reports its
+		# own failure text and must not sound like it worked. Source plays
+		# `SE_SAVE` at the same moment (`hall_of_fame_frlg.c:471` among others).
+		if ok and ow.field_audio() != null:
+			ow.field_audio().play_se("SE_SAVE")
 		return 1 if ok else 0)
 
 

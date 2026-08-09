@@ -260,6 +260,9 @@ var _warping := false
 ## by _spawn_player. Empty on a normal boot.
 var _resume: Dictionary = {}
 
+## [M27R 7a-1] The scene's one audio player. Built in `_setup_scripting`.
+var _audio: FieldAudio = null
+
 ## [M27D D5] The battle overlay's CanvasLayer while a battle is running, else
 ## null. The overworld is not freed during a battle — it is paused underneath.
 var _battle_layer: CanvasLayer = null
@@ -792,6 +795,16 @@ func _process(_delta: float) -> void:
 	# (`FieldPoisonEvents`).
 	# [M27K K-b] The naming screen owns input outright while it is up, above
 	# even the message box — it is a screen, not a prompt over one.
+	# [M27R 7a-2] ⚠️ **ONE HOOK FOR ALL SIX WIDGETS, DELIBERATELY.** The obvious
+	# implementation is a `play_se` inside each widget's own `move`/`confirm`,
+	# which would couple every menu to the audio player and put the same three
+	# lines in six files. Every one of these is driven from the chain directly
+	# below, so reading the SAME input one step earlier covers all of them and
+	# leaves the widgets knowing nothing about sound.
+	#
+	# Gated on a menu actually being open, or walking around pressing A would
+	# blip at nothing.
+	_ui_input_sfx()
 	if _naming != null and _naming.is_open:
 		_drive_naming()
 		return
@@ -889,7 +902,13 @@ func _try_step(dir: int) -> void:
 			and outcome != StepResolver.Outcome.LEDGE_JUMP \
 			and outcome != StepResolver.Outcome.STOP_SURFING:
 		# A blocked step is not necessarily a bump — it is how you open a door.
-		_try_door_warp(dir)
+		# [M27R 7a-2] ⚠️ WHICH IS EXACTLY WHY THE BUMP IS GATED ON THE DOOR
+		# CHECK FAILING. `SE_WALL_HIT` (`field_player_avatar.c:1425`) is the
+		# "you walked into a wall" sound; playing it before `_try_door_warp`
+		# would make every door in Kanto thud as it opened, since a door tile is
+		# solid and reaches this branch on the way in.
+		if not _try_door_warp(dir) and _audio != null:
+			_audio.play_se("SE_WALL_HIT")
 		return
 	var was_in := manager.chunk_owning(_cell)
 	# [M27H H2] Captured BEFORE the move: source's `AllowWildCheckOnNewMetatile`
@@ -943,6 +962,10 @@ func _try_step(dir: int) -> void:
 	# the destination. Latching before the tween is built is what keeps the
 	# duration and the cycle in agreement for the whole tile.
 	_running = _can_run(prev_behavior, outcome)
+	# [M27R 7a-2] The ledge hop. Source: `SE_LEDGE` (songs.h:16 `SE_DANSA`),
+	# `field_player_avatar.c:1347`.
+	if outcome == StepResolver.Outcome.LEDGE_JUMP and _audio != null:
+		_audio.play_se("SE_LEDGE")
 	# [M27E E1d] STOP_SURFING is an ordinary-speed step, not a ledge hop — the
 	# 0.26 is the hop's own arc duration and would read as a stumble ashore.
 	var dur := 0.26 if outcome == StepResolver.Outcome.LEDGE_JUMP \
@@ -1031,6 +1054,34 @@ func _try_step(dir: int) -> void:
 			if not _in_battle and (_box == null or not _box.is_open):
 				_wild_step(prev_behavior)
 	)
+
+
+## [M27R 7a-2] The menu blip layer. See its call site for why it lives there
+## rather than inside each widget.
+##
+## ⚠️ Deliberately does NOT try to know whether the widget accepted the press —
+## a cursor already at the end of a list still blips in source, so "input
+## received" is the right trigger, not "state changed".
+func _ui_input_sfx() -> void:
+	if _audio == null or not _any_menu_open():
+		return
+	if Input.is_action_just_pressed("ui_up") \
+			or Input.is_action_just_pressed("ui_down") \
+			or Input.is_action_just_pressed("ui_left") \
+			or Input.is_action_just_pressed("ui_right"):
+		_audio.play_se("SE_SELECT")
+	elif Input.is_action_just_pressed("ui_accept"):
+		_audio.play_se("SE_CLICK")
+	elif Input.is_action_just_pressed("ui_cancel"):
+		# Source has no distinct back sound — B plays the same blip as a move.
+		_audio.play_se("SE_SELECT")
+
+
+func _any_menu_open() -> bool:
+	return (_naming != null and _naming.is_open) \
+			or (_party_screen != null and _party_screen.is_open) \
+			or (_bag_screen != null and _bag_screen.is_open) \
+			or (_start_menu != null and _start_menu.is_open)
 
 
 ## [M27I I4] START menu input.
@@ -1940,7 +1991,24 @@ func _show_exclamation(t: TrainerNPC) -> void:
 ## Both JSONs are read at boot for the same reason the TileSets are: a first
 ## interaction should not pay an 8.8 MB parse mid-conversation. Measured at
 ## ~200 ms for the scripts, which is boot cost where a pause is expected.
+## [M27R 7a-1] The scene's audio player, for the `ScriptDriver` and for the
+## `WaitFanfare`/`WaitSe` native handlers.
+##
+## Public accessor rather than a public field, matching `scene()`'s own reason:
+## a handler is ordinary Godot code living outside this file and legitimately
+## needs it, so the surface is one named thing. May be null before
+## `_setup_scripting` has run, and every caller treats null as "no audio".
+func field_audio() -> FieldAudio:
+	return _audio
+
+
 func _setup_scripting() -> void:
+	# [M27R 7a-1] BEFORE `_driver.setup`, because `run_script` reads
+	# `field_audio()` when it builds each VM — an audio player created after the
+	# driver would leave the first script of the session silent.
+	_audio = FieldAudio.new()
+	_audio.name = "FieldAudio"
+	add_child(_audio)
 	# [M27G G4] The driver is created FIRST — `_vm` is a forwarding property
 	# onto it, so anything touching `_vm` before this line would silently read
 	# null rather than erroring.
@@ -2226,17 +2294,25 @@ func _try_arrow_warp(dir: int) -> bool:
 ## divergence: this makes 5 solid non-door warps (4 MB_CAVE, 1 MB_OCEAN_WATER)
 ## live where source fires them from nothing. None is in the corridor, and
 ## presence-decides is the same call `triggers` already made.
-func _try_door_warp(dir: int) -> void:
+## [M27R 7a-2] Returns whether a door actually opened. Was `void`; the caller
+## now needs to tell "blocked, and nothing happened" (a bump) from "blocked,
+## because it is a door" — a door tile is SOLID, so both reach the same branch
+## and only the return value separates them.
+func _try_door_warp(dir: int) -> bool:
 	if _warping or dir != StepResolver.Dir.NORTH:
-		return
+		return false
 	var target: Vector2i = _cell + StepResolver.STEP[dir]
 	# Only a tile that CANNOT be entered — anything walkable is the step-on
 	# path's business, and firing here as well would double-trigger it.
 	if manager.collision_at(target) == 0:
-		return
+		return false
 	var w := manager.warp_at(target)
-	if w != null:
-		_do_warp(w)
+	if w == null:
+		return false
+	if _audio != null:
+		_audio.play_se("SE_DOOR")
+	_do_warp(w)
+	return true
 
 
 ## A full-screen black rect on its own CanvasLayer, so it covers the world

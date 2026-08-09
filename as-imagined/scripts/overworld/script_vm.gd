@@ -235,6 +235,16 @@ var buffers := TextBuffers.new()
 ## fresh one; defaults to a private bag so a VM built without one still runs.
 var bag := Bag.new()
 
+## [M27R 7a-1] The overworld's audio player. Injected like `bag`.
+##
+## ⚠️ **DEFAULTS TO null RATHER THAN A PRIVATE INSTANCE, unlike `bag` — and the
+## difference is deliberate.** `FieldAudio` is a `Node`; a default
+## `FieldAudio.new()` here would mint an ORPHAN node for every VM ever
+## constructed, which leaks and reports as a leak in the suites. So null means
+## "no audio", every audio opcode degrades to the no-op it was before this
+## tier, and a test that wants cues creates its own and assigns it.
+var audio: FieldAudio = null
+
 ## [M27G G8] The `native` handler table, injected like `bag`.
 ##
 ## ⚠️ **INJECTED SO THE VM CAN STILL DIAGNOSE AN UNIMPLEMENTED SPECIAL BY
@@ -556,9 +566,59 @@ func step() -> bool:
 		# corridor use is the Pokémon Center Jigglypuff easter egg fading the
 		# lobby music out before its own jingle plays. Same absence, same
 		# reasoning; nothing about this opcode is different from its siblings.
-		"playfanfare", "waitfanfare", "playse", "playbgm", "fadedefaultbgm", \
-		"fadeoutbgm":
+		#
+		# ⚠️ **[M27R 7a-1] NO LONGER A NO-OP — the comment above is kept as the
+		# record of why it was one, not as a description of what happens now.**
+		# `audio` is injected exactly like `bag`, so a bare VM built without one
+		# still runs every script: each case below degrades to the old no-op
+		# rather than halting. **Turning a working silent script into an
+		# UNKNOWN_OP halt would be a regression dressed as a feature**, so every
+		# audio opcode fails soft, by rule.
+		"playse":
+			if audio != null and args.size() > 0:
+				audio.play_se(str(args[0]))
 			return true
+
+		"playfanfare":
+			if audio != null and args.size() > 0:
+				audio.play_fanfare(str(args[0]))
+			return true
+
+		"playbgm":
+			# ⚠️ arg1 is source's own "keep playing after a map change" flag,
+			# parsed and discarded: this project reloads chunks rather than
+			# swapping one live map, so there is no equivalent state to carry.
+			if audio != null and args.size() > 0:
+				audio.play_bgm(str(args[0]))
+			return true
+
+		"fadeoutbgm":
+			if audio != null:
+				audio.fade_out_bgm()
+			return true
+
+		"fadedefaultbgm":
+			if audio != null:
+				audio.fade_default_bgm()
+			return true
+
+		# ⚠️ **ROUTED THROUGH `native`, NOT A NEW PAUSE KIND** — the same call
+		# `multichoicegrid` and `fadescreen` already made, and for the reason
+		# `docs/m27g_scope.md` decision 7 gives: a bespoke `Pause.WAIT_FANFARE`
+		# would cost the four-edit pattern G5 exists to retire.
+		#
+		# ⚠️ **AND IT FALLS THROUGH TO A NO-OP WHENEVER IT CANNOT WAIT** — no
+		# audio, no registry, or no handler. `waitfanfare` was a no-op before
+		# this tier and 13 corridor scripts depend on it not stopping them; the
+		# handler is an upgrade to the beat, never a new precondition for it.
+		"waitfanfare", "waitse":
+			var handler := "WaitFanfare" if current_op == "waitfanfare" else "WaitSe"
+			if audio == null or natives == null or not natives.has(handler):
+				return true
+			pending_native = handler
+			pending_native_args = []
+			pause_reason = Pause.WAIT_NATIVE
+			return false
 
 		# [M27K K-a] The mon picture Oak shows while offering the starter. This
 		# project has no picture layer in the field at all — the front sprites
@@ -911,6 +971,16 @@ func step() -> bool:
 			if fn == "CreateInGameTradePokemon":
 				return _create_ingame_trade_pokemon()
 			if FieldSpecials.run(fn):
+				# [M27R 7a-2] ⚠️ The Pokécentre heal jingle, and it has to hang
+				# off the SPECIAL rather than an opcode for the same reason the
+				# badge one hangs off a flag: **Kanto's nurse script plays no
+				# fanfare.** `MUS_HEAL` appears in the corridor only in
+				# `Common_EventScript_OutOfCenterPartyHeal` and Daisy's grooming
+				# — never on the Pokécentre path, which reaches the heal through
+				# `special HealPlayerParty` and nothing else. Hooked here, so
+				# every caller of that special gets the beat.
+				if fn == FieldSpecials.HEAL_PLAYER_PARTY and audio != null:
+					audio.play_fanfare("MUS_HEAL")
 				return true
 			# [M27G G8] ⚠️ **THE LAST STOP BEFORE THE HALT, AND THE POINT IS THE
 			# COST OF THE *NEXT* ONE.** An async special used to need four
@@ -1024,6 +1094,21 @@ func step() -> bool:
 			if _flags != null and args.size() > 0:
 				if current_op == "setflag":
 					_flags.flag_set(str(args[0]))
+					# [M27R 7a-2] ⚠️ **KEYED ON THE FLAG, BECAUSE KANTO'S GYM
+					# SCRIPTS CARRY NO BADGE FANFARE AT ALL.** Measured:
+					# `PewterCity_Gym_EventScript_DefeatedBrock` is nine plain
+					# flag/var writes and a `goto` — no `playfanfare` anywhere on
+					# the path. Source plays it from
+					# `Common_EventScript_PlayGymBadgeFanfare`, which is Hoenn's
+					# routing and which FRLG's own corpus never calls. So beating
+					# Brock would be silent unless the cue hangs off the one
+					# thing that IS in the script: the badge flag itself.
+					#
+					# `FlagStore.BADGE_FLAGS` is the existing list (moved there
+					# at [M27L L1] for the CONTINUE card's badge count), reused
+					# rather than a second copy.
+					if audio != null and str(args[0]) in FlagStore.BADGE_FLAGS:
+						audio.play_fanfare("MUS_OBTAIN_BADGE")
 				else:
 					_flags.flag_clear(str(args[0]))
 			return true
@@ -1376,9 +1461,22 @@ func step() -> bool:
 				_flags.var_set(str(args[0]), _flags.var_get(str(args[1])))
 			return true
 
-		# [Map scripts] `waitse`/`playmoncry`/`waitmoncry` — the same
-		# audio-does-not-exist no-op class as the `playfanfare` group above.
-		"waitse", "playmoncry", "waitmoncry":
+		# [Map scripts] `playmoncry`/`waitmoncry` — the same audio-does-not-exist
+		# no-op class the `playfanfare` group used to belong to.
+		#
+		# ⚠️ **[M27R 7a-1] `waitse` LEFT THIS GROUP and is handled with
+		# `waitfanfare` above** — a duplicate arm here would be DEAD CODE, since
+		# `match` takes the first, and would read as though this were still the
+		# live handler for it.
+		#
+		# The two cry opcodes stay no-ops on purpose, not by oversight: cries
+		# are their own asset class (655 files, 8-bit 10512 Hz GBA samples,
+		# 384/386 of them matching this project's roster by name) and are scoped
+		# as **[M27R 7c]**. Wiring them needs the two Nidoran aliases
+		# (`NIDORANfE`/`NIDORANmA`) that `gen_trainer_data.normalize()` already
+		# carries for the identical collision — a table, not a mechanism, and
+		# not this tier's.
+		"playmoncry", "waitmoncry":
 			return true
 
 		# [Map scripts] `bufferboxname slot, box` — writes a PC box's name to
@@ -1901,6 +1999,17 @@ func _obtain_item(args: Array) -> bool:
 
 	var ok := bag.add(item_id, qty)
 	_set_result(ok)
+
+	# [M27R 7a-2] ⚠️ A CODE-DRIVEN CUE, because the SCRIPT never asks for one.
+	# `giveitem` is a macro over `callstd STD_OBTAIN_ITEM`, and this project
+	# reproduces that standard script's DECISION STRUCTURE natively rather than
+	# running it (see this function's own precedent) — so its `playfanfare` was
+	# never in the op stream to be wired in 7a-1. Without this, TM39 and every
+	# item ball in the corridor are obtained in silence.
+	#
+	# On the SUCCESS branch only: a bag-full refusal is not a reward.
+	if ok and audio != null:
+		audio.play_fanfare("MUS_OBTAIN_ITEM")
 
 	# STR_VAR_2 is the item, STR_VAR_1 the count, STR_VAR_3 the pocket — the
 	# slots source's own strings read.

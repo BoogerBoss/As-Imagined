@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 291
+const EXPECTED_TOTAL := 309
 
 var _total := 0
 var _failed := 0
@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_m27g_g5_native()
 	_test_m27g_g6_event_script()
 	_test_m27g_g8_g9()
+	_test_m27r_movement_tail()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -2430,3 +2431,89 @@ func _test_m27g_g8_g9() -> void:
 	_run(vmf2)
 	_chk("S.17 with no registry it degrades to the old no-op rather than halting",
 			vmf2.pause_reason == ScriptVM.Pause.DONE)
+
+
+## --- T. [M27R Step 1] The five corridor movement actions ------------------
+##
+## ⚠️ **THE COUNT THAT JUSTIFIED THIS TIER WAS MEASURED WRONG THE FIRST TIME,
+## AND SECTION T EXISTS PARTLY TO PIN THE CORRECTED ONE.** "One use each"
+## counted occurrences INSIDE a movement script; each script is then applied
+## many times — `Common_Movement_FacePlayer` 12 times in the corridor and 108
+## region-wide. So none of the five is the throwaway the first reading implied.
+func _test_m27r_movement_tail() -> void:
+	for n in ["face_player", "face_original_direction", "jump_2_down",
+			"nurse_joy_bow", "emote_exclamation_mark"]:
+		_chk("T.01 %s resolves" % n, not MovementRunner.action(n).is_empty())
+
+	# ⚠️ THE HEADLINE GUARD, and the reason the arc was worth building for one
+	# corridor site: the SAME mechanism serves 56 region-wide uses. A jump built
+	# narrowly for `jump_2_down` would have to be rebuilt for all of them.
+	var fam := 0
+	for d in ["up", "down", "left", "right"]:
+		for p in ["jump_in_place_", "jump_", "jump_2_"]:
+			if not MovementRunner.action(p + d).is_empty():
+				fam += 1
+	_chk("T.02 the arc unlocks the whole jump family, not just the one site",
+			fam == 12)
+
+	# Source's own distances: IN_PLACE 16f/0 tiles, NORMAL 16f/1, FAR 32f/2
+	# (`DoJumpSpriteMovement`'s distanceToTime/distanceToShift).
+	var j2: Dictionary = MovementRunner.action("jump_2_down")
+	_chk("T.03 jump_2 is source's FAR: 32 frames and TWO tiles",
+			int(j2["frames"]) == 32 and int(j2.get("tiles", 1)) == 2)
+	_chk("T.04 a plain jump is ONE tile — the distance is not shared",
+			int(MovementRunner.action("jump_down").get("tiles", 1)) == 1)
+	_chk("T.05 jump_in_place does not displace at all",
+			MovementRunner.action("jump_in_place_down")["moves"] == false)
+	# The arcs are different tables, not one scaled — HIGH peaks at -12,
+	# NORMAL at -10.
+	_chk("T.06 jump types use their OWN arc tables",
+			int(MovementRunner.JUMP_Y_HIGH.min()) == -12
+			and int(MovementRunner.JUMP_Y_NORMAL.min()) == -10)
+
+	# ⚠️ The nurse bow's raw-frame translation. `ANIM_NURSE_BOW` quotes
+	# pic-table index 9 over a FOUR-frame sheet; entry 9 is raw frame 3.
+	# Reading 9 literally would index off the end of the strip.
+	var bow: Array = MovementRunner.action("nurse_joy_bow")["frame_anim"]
+	_chk("T.07 the bow uses RAW frame 3, not pic-table index 9",
+			bow.size() == 3 and int(bow[1][0]) == 3 and int(bow[1][1]) == 32)
+	_chk("T.08 ...and the sheet really has that frame",
+			ObjectEventGraphics.frame_count("OBJ_EVENT_GFX_NURSE_FRLG") > 3)
+
+	# ⚠️ The emote is INSTANT — source starts the field effect and returns in
+	# the same step. Making it block would double every caller's pause, since
+	# each already pairs it with an explicit `delay`.
+	var em: Dictionary = MovementRunner.action("emote_exclamation_mark")
+	_chk("T.09 the emote carries no duration — it does not gate waitmovement",
+			not em.has("frames"))
+
+	# ⚠️ `face_original_direction` is keyed on the MOVEMENT TYPE, and the two
+	# WANDER entries are the discriminator: a spawn-facing or name-derived
+	# implementation gets both of these the same way round, and source does not.
+	_chk("T.10 WANDER_UP_AND_DOWN starts facing NORTH",
+			MovementTypes.initial_facing("MOVEMENT_TYPE_WANDER_UP_AND_DOWN")
+			== Vector2i(0, -1))
+	_chk("T.11 WANDER_DOWN_AND_UP starts facing SOUTH — the same pair of words, "
+			+ "the opposite answer",
+			MovementTypes.initial_facing("MOVEMENT_TYPE_WANDER_DOWN_AND_UP")
+			== Vector2i(0, 1))
+	_chk("T.12 the table is the FULL one, not the 4 drawable types",
+			MovementTypes.INITIAL_FACING.size() > 60)
+	_chk("T.13 an unknown/empty movement type degrades to ZERO, not a crash — "
+			+ "an absent type is real source behaviour (MOVEMENT_TYPE_NONE)",
+			MovementTypes.initial_facing("") == Vector2i.ZERO)
+
+	# ⚠️ Every one of the five was an UNKNOWN halt before this tier, so the
+	# degraded path with no resolver must still be BETTER than what it replaced:
+	# silent, and never a stop.
+	var runner := MovementRunner.new()
+	var node := Node2D.new()
+	add_child(node)
+	runner.start("k", node, [_op("face_player"), _op("face_original_direction"),
+			_op("emote_exclamation_mark"), _op("step_end")],
+			func(_d: int) -> void: pass)
+	for _i in 30:
+		runner.tick(1.0 / 60.0)
+	_chk("T.14 with NO resolver/emote callables the actions still run clean "
+			+ "rather than reporting a coverage gap", runner.last_unknown() == "")
+	node.queue_free()

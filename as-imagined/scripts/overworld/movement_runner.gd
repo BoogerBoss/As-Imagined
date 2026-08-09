@@ -62,6 +62,25 @@ const _DIRS := {
 	"right": StepResolver.Dir.EAST,
 }
 
+## [M27R Step 1] Source's own jump arcs, verbatim (`event_object_movement.c:10876`).
+## Ported rather than fitted to a curve, matching this project's practice for
+## source tables — a sine would look close and be wrong at every frame.
+##
+## ⚠️ `sJumpY_High` is ALSO already inlined in `overworld.gd` for the surf mount
+## arc. That is now two hand-kept copies of one table, which is the drift shape
+## `check_bake_diff` already cost this project once; the surf path should read
+## this constant when someone next touches it.
+## ⚠️ Plain Arrays, not `PackedInt32Array` — a packed array is not a constant
+## expression in GDScript and will not compile as a `const`. Every read below
+## casts explicitly, since indexing an untyped Array yields Variant, which is
+## this project's own documented `:=` inference gotcha.
+const JUMP_Y_HIGH := [
+	-4, -6, -8, -10, -11, -12, -12, -12,
+	-11, -10, -9, -8, -6, -4, 0, 0]
+const JUMP_Y_NORMAL := [
+	-2, -4, -6, -8, -9, -10, -10, -10,
+	-9, -8, -6, -5, -3, -2, 0, 0]
+
 static var _actions: Dictionary = {}
 
 
@@ -83,6 +102,15 @@ class Active extends RefCounted:
 	var rest: Callable        ## rest(facing_dir) -> void, once the whole script ends
 	var anim_ticks := 0       ## cycle-entry length of the CURRENT action, 0 = not animating
 	var anim_dir := -1        ## direction the current action animates in
+	# [M27R Step 1] Optional extras. Each is null/invalid for a caller that does
+	# not supply it, and every consumer degrades to the plain behaviour rather
+	# than failing — a test that stubs only `commit` still runs every action.
+	var resolve_dir: Callable ## resolve_dir(source: String) -> int, or -1
+	var emote: Callable       ## emote(name: String) -> void
+	var show_frame: Callable  ## show_frame(raw_index: int) -> void
+	var jump_table: Array = []      ## per-frame y offset (see JUMP_Y_*)
+	var jump_frames := 0      ## how many frames the arc spans
+	var frames: Array = []    ## [[raw_frame, ticks], ...] for a bespoke anim
 
 
 var _active: Dictionary = {}
@@ -127,6 +155,67 @@ static func _build() -> void:
 	t["unlock_facing_direction"] = {"facing_locked": false}
 	t["set_invisible"] = {"visible": false}
 	t["set_visible"] = {"visible": true}
+
+	# [M27R Step 1] ⚠️ **`face_original_direction` DOES NOT MEAN "WHERE IT
+	# SPAWNED FACING", AND THE OBVIOUS READING IS WRONG IN A WAY THAT LOOKS
+	# RIGHT.** Source is `FaceDirection(objectEvent, sprite,
+	# gInitialMovementTypeFacingDirections[objectEvent->movementType])`
+	# (`event_object_movement.c:8681`) — the facing implied by the entity's
+	# MOVEMENT TYPE, not its spawn cell and not where it last looked.
+	#
+	# Measured across the corridor's 7 users: 6 carry a `MOVEMENT_TYPE_FACE_*`
+	# and so spawn facing exactly where the table says, which is precisely why
+	# a spawn-facing implementation would pass a playtest. Only Daisy
+	# (`WANDER_AROUND` -> SOUTH) diverges, and she wanders off her spawn facing
+	# before you ever talk to her.
+	t["face_player"] = {"dir_from": "player", "frames": 1, "moves": false}
+	t["face_original_direction"] = {"dir_from": "movement_type", "frames": 1,
+			"moves": false}
+
+	# [M27R Step 1] The jump family. Source resolves a jump through TWO
+	# independent axes and this table is the cross-product, which is why it is
+	# generated rather than typed:
+	#
+	#   DISTANCE (`DoJumpSpriteMovement`'s own `distanceToTime`/`distanceToShift`)
+	#     IN_PLACE -> 16 frames, 0 tiles · NORMAL -> 16 frames, 1 tile
+	#     FAR      -> 32 frames, 2 tiles
+	#   TYPE (`sJumpYTable`) — which arc table the height comes from.
+	#
+	# ⚠️ The corridor needs exactly ONE of these (`jump_2_down`, the Viridian
+	# Gym locked-door bounce) but the mechanism is shared by **56 region-wide
+	# uses**, so building it narrowly for one site would mean building it again.
+	for suffix in _DIRS:
+		var jd: int = _DIRS[suffix]
+		# `MovementAction_JumpInPlaceDown_Step0` -> IN_PLACE + HIGH.
+		t["jump_in_place_" + suffix] = {"dir": jd, "frames": 16, "moves": false,
+				"jump": JUMP_Y_HIGH}
+		# `MovementAction_JumpDown_Step0` -> NORMAL + NORMAL.
+		t["jump_" + suffix] = {"dir": jd, "frames": 16, "moves": true,
+				"jump": JUMP_Y_NORMAL}
+		# `MovementAction_Jump2Down_Step0` -> FAR + HIGH. Two tiles, and the
+		# arc table is only 16 entries against 32 frames, so it is sampled at
+		# half rate rather than stretched.
+		t["jump_2_" + suffix] = {"dir": jd, "frames": 32, "moves": true,
+				"tiles": 2, "jump": JUMP_Y_HIGH}
+
+	# [M27R Step 1] The nurse's bow. `ANIM_NURSE_BOW` is
+	# `FRAME(0, 8) FRAME(9, 32) FRAME(0, 8)` (`object_event_anims.h:1000`).
+	#
+	# ⚠️ **INDEX 9 IS A PIC-TABLE INDEX, NOT A SHEET FRAME.** `sPicTable_Nurse`
+	# is ten entries over a FOUR-frame sheet and entry 9 is
+	# `overworld_frame(gObjectEventPic_Nurse, 2, 4, 3)` — raw frame **3**. The
+	# same -N shift `[M27E E2]` hit with the run frames: the anim quotes
+	# stitched indices while the file has raw ones. Reading 9 literally would
+	# index off the end of a 4-frame sheet.
+	t["nurse_joy_bow"] = {"dir": StepResolver.Dir.SOUTH, "frames": 48,
+			"moves": false, "frame_anim": [[0, 8], [3, 32], [0, 8]]}
+
+	# [M27R Step 1] The "!" bubble. ⚠️ **INSTANT, like `set_visible`** —
+	# `MovementAction_EmoteExclamationMark_Step0` starts the field effect and
+	# returns TRUE, so the ACTION does not wait for the icon. The icon then
+	# lives its own 60 frames independently, which is why every real caller
+	# pairs it with a `delay` rather than relying on `waitmovement`.
+	t["emote_exclamation_mark"] = {"emote": "exclamation"}
 	_actions = t
 
 
@@ -140,9 +229,16 @@ static func action(name: String) -> Dictionary:
 ## Begin a movement. Replaces anything already running for `key` — source's own
 ## `ScriptMovement_StartObjectMovementScript` likewise overwrites rather than
 ## queueing, so a second applymovement at the same target supersedes the first.
+## [M27R Step 1] The three trailing Callables are optional and every one
+## degrades to the plain behaviour when absent, so no existing caller or test
+## needs to change: `resolve_dir` -> the action turns nobody, `emote` -> no
+## bubble, `show_frame` -> the bow holds its resting frame. All three were
+## UNKNOWN halts before this tier, so the degraded path is still strictly better
+## than what it replaced.
 func start(key: Variant, node: Node2D, ops: Array, commit: Callable,
 		face: Callable = Callable(), anim: Callable = Callable(),
-		rest: Callable = Callable()) -> void:
+		rest: Callable = Callable(), resolve_dir: Callable = Callable(),
+		emote: Callable = Callable(), show_frame: Callable = Callable()) -> void:
 	if node == null or not is_instance_valid(node):
 		return
 	var a := Active.new()
@@ -152,6 +248,9 @@ func start(key: Variant, node: Node2D, ops: Array, commit: Callable,
 	a.face = face
 	a.anim = anim
 	a.rest = rest
+	a.resolve_dir = resolve_dir
+	a.emote = emote
+	a.show_frame = show_frame
 	if _begin(a):
 		_active[key] = a
 	else:
@@ -204,6 +303,29 @@ func tick(delta: float) -> void:
 			a.anim.call(a.anim_dir, a.anim_ticks, delta)
 		var t := 1.0 if a.duration <= 0.0 else clampf(a.elapsed / a.duration, 0.0, 1.0)
 		a.node.position = a.from_px.lerp(a.to_px, t)
+		# [M27R Step 1] The jump arc rides ON TOP of the same linear travel a
+		# walk uses — source does exactly this too: `Step1` moves the sprite
+		# horizontally every frame and `GetJumpY` only supplies `y2`. So the
+		# ground path is unchanged and this is purely an offset.
+		#
+		# ⚠️ Sampled, not stretched: the arc table is 16 entries and a FAR jump
+		# runs 32 frames, so index = progress * 16 rather than one entry per
+		# frame. Stretching would flatten the peak.
+		if a.jump_frames > 0 and not a.jump_table.is_empty():
+			var ji := clampi(int(t * a.jump_table.size()), 0, a.jump_table.size() - 1)
+			a.node.position.y += float(a.jump_table[ji])
+		# The bespoke frame sequence (the nurse bow). Walks the [frame, ticks]
+		# pairs by elapsed FRAMES, so it keeps time with the action rather than
+		# with the process rate — the same wall-clock rule every stepper here
+		# follows.
+		if not a.frames.is_empty() and a.show_frame.is_valid():
+			var elapsed_frames := int(a.elapsed / FRAME)
+			var acc := 0
+			for pair in a.frames:
+				acc += int(pair[1])
+				if elapsed_frames < acc:
+					a.show_frame.call(int(pair[0]))
+					break
 		if t < 1.0:
 			continue
 		a.node.position = a.to_px
@@ -237,9 +359,36 @@ func _begin(a: Active) -> bool:
 		if spec.has("visible"):
 			a.node.visible = bool(spec["visible"])
 			continue
+		# [M27R Step 1] Instantaneous too — see the action's own note: source
+		# starts the field effect and returns in the same step, so the icon
+		# outlives the action rather than gating it.
+		if spec.has("emote"):
+			if a.emote.is_valid():
+				a.emote.call(str(spec["emote"]))
+			continue
 		a.duration = float(int(spec["frames"])) * FRAME
 		a.elapsed = 0.0
-		var dir := int(spec["dir"])
+		# [M27R Step 1] Reset the per-action extras before each action, or a
+		# jump would leave its arc armed for the plain walk that follows it.
+		a.jump_table = []
+		a.jump_frames = 0
+		a.frames = []
+		if spec.has("jump"):
+			a.jump_table = spec["jump"]
+			a.jump_frames = int(spec["frames"])
+		if spec.has("frame_anim"):
+			a.frames = spec["frame_anim"]
+		# ⚠️ A runtime-resolved direction, for `face_player`/
+		# `face_original_direction`. A caller with no resolver — every test that
+		# stubs one callable, and any consumer predating this tier — gets -1 and
+		# the action degrades to a plain 1-frame beat rather than halting. It
+		# was an UNKNOWN halt before this tier, so silence is still an
+		# improvement and never a regression.
+		var dir := int(spec.get("dir", -1))
+		if spec.has("dir_from"):
+			dir = -1
+			if a.resolve_dir.is_valid():
+				dir = int(a.resolve_dir.call(str(spec["dir_from"])))
 		# A face_* or delay_* action carries no "anim" key, so it parks the
 		# cycle rather than advancing it — turning on the spot is not a step.
 		a.anim_ticks = int(spec.get("anim", 0))
@@ -268,8 +417,12 @@ func _begin(a: Active) -> bool:
 		# straight to the destination.
 		a.from_px = a.node.position
 		a.to_px = a.from_px
-		if bool(spec["moves"]) and a.commit.is_valid():
-			a.commit.call(dir)
+		if bool(spec.get("moves", false)) and a.commit.is_valid() and dir >= 0:
+			# [M27R Step 1] `tiles` is the jump-distance shift — FAR moves TWO
+			# cells, so commit runs twice. Every other action is one cell, and
+			# `get` defaulting to 1 keeps them untouched.
+			for _i in int(spec.get("tiles", 1)):
+				a.commit.call(dir)
 			a.to_px = a.node.position
 			a.node.position = a.from_px
 		return true

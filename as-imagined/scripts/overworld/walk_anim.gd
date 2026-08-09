@@ -231,6 +231,23 @@ func _draw(sprite: Sprite2D, facing: String, frame: int, run := false) -> void:
 	sprite.flip_h = facing == "EAST" and ObjectEventGraphics.EAST_IS_MIRRORED_WEST
 
 
+## [M27R Step 1] Draw one RAW sheet frame directly, bypassing the facing/cycle
+## vocabulary entirely.
+##
+## ⚠️ Clamped to the sheet's real frame count rather than trusted. The bow's own
+## source anim quotes pic-table index 9 against a four-frame sheet, so an
+## un-translated index is exactly the mistake this guards — it would read past
+## the strip and draw empty space, which looks like a sprite that vanished
+## mid-animation rather than like a bad index.
+func show_raw(sprite: Sprite2D, raw_index: int) -> void:
+	if sprite == null or not is_instance_valid(sprite):
+		return
+	var count := ObjectEventGraphics.frame_count(_graphics_id)
+	if count <= 0:
+		return
+	_draw(sprite, "SOUTH", clampi(raw_index, 0, count - 1))
+
+
 ## Direction constant -> the facing name the frame tables are keyed by.
 static func facing_name(dir: int) -> String:
 	match dir:

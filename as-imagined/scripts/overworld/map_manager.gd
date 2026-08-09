@@ -1031,7 +1031,69 @@ func start_entity_movement(map_name: String, e: OverworldEntity, ops: Array) -> 
 		anim = func(dir: int, ticks: int, delta: float) -> void:
 			(e as NPC).step_anim(dir, ticks, delta)
 		rest = func(dir: int) -> void: (e as NPC).set_facing(dir)
-	_runner.start(e, e, ops, commit, face, anim, rest)
+	# [M27R Step 1] Runtime-resolved facing, for `face_player` /
+	# `face_original_direction`. Supplied here rather than baked into the
+	# runner's table because both answers depend on live state the runner has
+	# no business reaching for — where the player is, and what this entity's
+	# movement type is.
+	var resolve := func(source: String) -> int:
+		if source == "player":
+			return _dir_toward_player(e)
+		if source == "movement_type" and e is NPC:
+			return _dir_of_step(MovementTypes.initial_facing(
+					(e as NPC).movement_type))
+		return -1
+	var emote := func(name: String) -> void: spawn_emote(e, name)
+	var show_frame := Callable()
+	if e is NPC:
+		show_frame = func(idx: int) -> void: (e as NPC).show_frame(idx)
+	_runner.start(e, e, ops, commit, face, anim, rest, resolve, emote, show_frame)
+
+
+## [M27R Step 1] Pop an emote bubble above an entity. Parented to the entity's
+## own PARENT rather than to the entity, matching source: the icon is an
+## independent field-effect sprite that merely follows, which is what lets it
+## outlive both the movement action and (harmlessly) a reparent for elevation.
+func spawn_emote(e: OverworldEntity, kind: String) -> void:
+	if e == null or not is_instance_valid(e):
+		return
+	var parent := e.get_parent()
+	if parent == null:
+		return
+	EmoteIcon.spawn(parent, e, kind)
+
+
+## The direction from `e` toward the player, or -1 with no player known.
+##
+## ⚠️ Source's `GetDirectionToFace` picks the axis with the GREATER separation
+## and breaks a tie toward the horizontal — it is not a diagonal and it is not
+## "whichever axis differs". Reproduced rather than approximated, because a
+## tie is the common case for an NPC standing directly beside the player.
+func _dir_toward_player(e: OverworldEntity) -> int:
+	if _player_cell.x == -2147483648 or e == null or not is_instance_valid(e):
+		return -1
+	# `e.cell` is LOCAL to its own chunk; `_player_cell` is GLOBAL. Comparing
+	# them directly is the coordinate-space mistake [M27C C2] introduced the
+	# global space to make impossible, and it reads correct at origin (0, 0).
+	var here: Vector2i = e.cell + origin_of(map_name_of(e))
+	var d: Vector2i = _player_cell - here
+	if absi(d.x) >= absi(d.y):
+		if d.x != 0:
+			return StepResolver.Dir.EAST if d.x > 0 else StepResolver.Dir.WEST
+		return StepResolver.Dir.SOUTH if d.y > 0 else StepResolver.Dir.NORTH
+	return StepResolver.Dir.SOUTH if d.y > 0 else StepResolver.Dir.NORTH
+
+
+static func _dir_of_step(step: Vector2i) -> int:
+	if step == Vector2i(0, -1):
+		return StepResolver.Dir.NORTH
+	if step == Vector2i(0, 1):
+		return StepResolver.Dir.SOUTH
+	if step == Vector2i(-1, 0):
+		return StepResolver.Dir.WEST
+	if step == Vector2i(1, 0):
+		return StepResolver.Dir.EAST
+	return -1
 
 
 ## Find a placed entity by its own `local_id`, across every live chunk.

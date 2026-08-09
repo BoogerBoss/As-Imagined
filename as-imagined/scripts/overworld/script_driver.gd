@@ -137,6 +137,12 @@ func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	vm.bag = OverworldSession.bag
 	vm.respawn = OverworldSession.respawn
 	vm.wallet = OverworldSession.wallet
+	# [M27R 7a-1] The scene's own audio player, not a per-script one — a fanfare
+	# has to outlive the script that started it, and BGM outlives everything.
+	# Null-safe on both sides: a scene without one leaves the VM's audio null,
+	# which is exactly the pre-7a no-op behaviour.
+	if _ow != null and _ow.has_method("field_audio"):
+		vm.audio = _ow.field_audio()
 	# [M27K K-a] The session party, for `givemon` — same reason as the bag.
 	vm.party = OverworldSession.player_party()
 	# [M27G G8] So an unhandled `special` can be routed to a registered handler

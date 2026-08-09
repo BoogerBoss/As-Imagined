@@ -129,6 +129,21 @@ func step_anim(dir: int, ticks: int, delta: float) -> void:
 	_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
 
 
+## [M27R Step 1] Show one RAW sheet frame, for a bespoke animation the
+## facing/walk-cycle vocabulary cannot express — today only the nurse's bow.
+##
+## ⚠️ **RAW, not a pic-table index.** `ANIM_NURSE_BOW` quotes frame 9 of
+## `sPicTable_Nurse`, which is a ten-entry table over a FOUR-frame sheet, and
+## entry 9 resolves to raw frame 3. The caller does that translation (see
+## `MovementRunner`'s own table); this takes the answer.
+func show_frame(raw_index: int) -> void:
+	var spr := get_node_or_null("Sprite") as Sprite2D
+	if spr == null:
+		return
+	_anim.setup(graphics_id)
+	_anim.show_raw(spr, raw_index)
+
+
 ## One frame of this NPC's own movement. Returns the cell it wants to move to,
 ## or its current cell to stay put.
 ##
