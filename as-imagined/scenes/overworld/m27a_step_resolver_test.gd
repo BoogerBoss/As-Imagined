@@ -72,8 +72,8 @@ const MAP_DATA_ASSERTIONS := 8
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
 ## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
 ## BA (M27M5 authored map + edge link, 9), BB (the creator, 12) and
-## BC (the connections view + offset editor, 5).
-const EXPECTED_TOTAL := 602
+## BC (the connections view, offset editor + legend toggle, 6).
+const EXPECTED_TOTAL := 603
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -4440,6 +4440,24 @@ func _test_m27m5_connection_view() -> void:
 			nb != null and recip == -3)
 	_chk("BC.05 the neighbour is queued for saving, not silently left behind",
 			ov._dirty_neighbours.has("XanaduNursery") and ov.has_unsaved_edits())
+
+	# ⚠️ **THIS ASSERTS THE STATE, NOT THE DRAWING, AND CANNOT ASSERT MORE.**
+	# `_draw_legend` needs a live canvas, so a headless run cannot observe
+	# whether the flag is actually honoured — injecting the check out of the
+	# draw path fails NOTHING here. Recorded rather than dressed up: the flag
+	# defaulting on and flipping is all this proves, and Rob's eye is what
+	# confirms the legend disappears. Same standing as the other
+	# fixture-cannot-express-the-negation cases in this project.
+	var was := ov.show_legend
+	ov.show_legend = false
+	_chk("BC.06 the legend defaults ON and the flag flips (DRAW not observable "
+			+ "headlessly — see comment)", was == true and ov.show_legend == false)
+
+	# ⚠️ Never parented, so nothing frees it for us — and `run_overworld_tests.sh`
+	# fails a run on any engine ERROR line, which "N resources still in use at
+	# exit" is. The sibling sections get this for free by freeing their map root;
+	# this one builds a bare overlay and has to say so.
+	ov.free()
 
 
 func _select(ov: MapOverlay, idx: int) -> int:

@@ -24,6 +24,7 @@ extends EditorPlugin
 ## cannot make that mistake.
 var _save_button: Button = null
 var _sync_button: Button = null
+var _legend_button: Button = null
 
 var _target: MapOverlay = null
 
@@ -90,6 +91,18 @@ func _enter_tree() -> void:
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _sync_button)
 	_sync_button.hide()
 
+	# [M27M5] The legend follows the camera, so it covers whatever you are
+	# working on. A toggle beside the other affordances is the cheap fix; the
+	# STATE lives on MapOverlay, as always, and this only presses it.
+	_legend_button = Button.new()
+	_legend_button.text = "Legend"
+	_legend_button.toggle_mode = true
+	_legend_button.button_pressed = true
+	_legend_button.tooltip_text = "Show or hide the overlay's legend and counters."
+	_legend_button.toggled.connect(_on_legend_toggled)
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _legend_button)
+	_legend_button.hide()
+
 	_entity_inspector = preload("res://addons/map_overlay_editor/entity_inspector.gd").new()
 	add_inspector_plugin(_entity_inspector)
 
@@ -134,6 +147,10 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _sync_button)
 		_sync_button.queue_free()
 		_sync_button = null
+	if _legend_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _legend_button)
+		_legend_button.queue_free()
+		_legend_button = null
 	if _entity_inspector != null:
 		remove_inspector_plugin(_entity_inspector)
 		_entity_inspector = null
@@ -268,6 +285,11 @@ func _on_sync_pressed() -> void:
 				% int(report["unresolved"]))
 
 
+func _on_legend_toggled(pressed: bool) -> void:
+	if _target != null and is_instance_valid(_target):
+		_target.show_legend = pressed
+
+
 func _handles(object: Object) -> bool:
 	return object is MapOverlay
 
@@ -282,6 +304,11 @@ func _make_visible(visible: bool) -> void:
 		_save_button.visible = visible
 	if _sync_button != null:
 		_sync_button.visible = visible
+	if _legend_button != null:
+		_legend_button.visible = visible
+		# Reflect the selected overlay's own state rather than assuming ours.
+		if visible and _target != null and is_instance_valid(_target):
+			_legend_button.set_pressed_no_signal(_target.show_legend)
 	if not visible:
 		_flush()
 		_target = null
@@ -348,11 +375,21 @@ func _select_entity_at(event: InputEvent) -> bool:
 	if hit == null:
 		return false
 
-	# Selecting REPLACES the selection rather than adding to it: the overlay is
-	# the edited node right now, and leaving it selected alongside would show
-	# two inspectors and edit the wrong one.
-	sel.clear()
-	sel.add_node(hit)
+	# ⚠️ **INSPECT, DO NOT SELECT — this is the fix for the one plugin defect
+	# that shipped known.** Selecting the entity made it the edited object, so
+	# `_handles()` stopped answering for the MapOverlay, the plugin stopped
+	# receiving viewport input, and `next_in_stack`'s stacked-entity cycling
+	# became unreachable through the UI: the first click worked and the second
+	# never arrived. `inspect_object()` shows the entity's Inspector WITHOUT
+	# changing the scene-tree selection, so the overlay stays the edited node
+	# and clicking again cycles to the next entity on that cell — which is the
+	# entire point of the 22 stacked cells in Kanto.
+	#
+	# The old two lines are kept in the comment because their reasoning was
+	# sound and only their MECHANISM was wrong: the selection genuinely must not
+	# grow a second node (`sel.clear()` + `sel.add_node(hit)`); the mistake was
+	# solving that by moving the selection at all.
+	EditorInterface.inspect_object(hit)
 	return true
 
 

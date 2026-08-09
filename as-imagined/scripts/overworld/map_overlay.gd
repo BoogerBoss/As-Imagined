@@ -986,8 +986,23 @@ func _note_legend(legend: Dictionary, info: Dictionary) -> void:
 			legend[str(LAYER_TYPE_NAMES.get(lt, "layer %d" % lt))] = layer_type_color(lt)
 
 
+## [M27M5] Hide the legend without leaving the mode.
+##
+## ⚠️ The legend is anchored to the VISIBLE area, not the map, so it follows the
+## camera and lands on whatever you are working on rather than sitting in one
+## place you can learn to avoid. Turning it off is the cheap half of the fix;
+## a configurable corner and moving the colour key off-canvas are still open.
+##
+## The counters go with it, deliberately: hiding the key and leaving two banners
+## behind would not clear the space, which is the entire point.
+@export var show_legend: bool = true:
+	set(value):
+		show_legend = value
+		queue_redraw()
+
+
 func _draw_legend(area: Rect2i, legend: Dictionary) -> void:
-	if legend.is_empty():
+	if legend.is_empty() or not show_legend:
 		return
 	# Sorted so the same view always produces the same legend — an arbitrary
 	# row-major-first-seen order would make it shuffle as the camera moves.
