@@ -18,6 +18,281 @@ extends RefCounted
 
 const CELL := 16
 const OUT_DIR := "res://scenes/maps/"
+const TILESET_DIR := "res://assets/map_tilesets/"
+const AUTHORED_MAPS_PATH := "res://scripts/overworld/authored_maps.gd"
+const CONSTANT_PREFIX := "MAP_AUTHORED_"
+
+
+# ------------------------------------------------------------------ [C1] create
+
+## The tileset pairs a new map can actually use.
+##
+## ⚠️ **A PAIR IS USABLE ONLY IF A MAP ON IT HAS BEEN BAKED**, because that is
+## what writes the shared `TileSet`. Measured 2026-08-09: 60 pairs exist
+## region-wide, 22 have rendered atlases, and **16 have a TileSet — exactly the
+## set the 35 baked maps use.** That is the vertical slice, not a defect, but it
+## is the first wall anyone hits, so the caller must be able to say which 16.
+static func usable_pairs() -> Array[String]:
+	var out: Array[String] = []
+	var d := DirAccess.open(TILESET_DIR)
+	if d == null:
+		return out
+	for f in d.get_files():
+		if f.ends_with(".tres"):
+			out.append(f.get_basename())
+	out.sort()
+	return out
+
+
+## A sensible fill metatile for a pair, derived rather than asked for.
+##
+## The most common metatile that is walkable, plain (`MB_NORMAL`) and at
+## elevation 3 across a baked map using this pair. Measured to resolve for all
+## 16 usable pairs, which is what lets a map be created without knowing a single
+## metatile id — the gap M27M6's picker will otherwise leave open.
+##
+## ⚠️ Reads BAKED `_data.tres`, deliberately, not `assets/maps/*.json`. That
+## directory is gitignored regenerable output and may be absent in a fresh
+## checkout; the baked data is tracked. It is also guaranteed to exist here —
+## a pair is only usable BECAUSE a map on it was baked (see `usable_pairs`), so
+## there is always something to measure.
+static func default_fill_for(pair: String) -> int:
+	var counts := {}
+	var d := DirAccess.open(OUT_DIR)
+	if d == null:
+		return -1
+	for f in d.get_files():
+		if not f.ends_with("_data.tres"):
+			continue
+		var md := load(OUT_DIR + f) as MapData
+		if md == null or md.atlas != pair:
+			continue
+		for i in range(md.metatile.size()):
+			if i < md.collision.size() and md.collision[i] == 0 \
+					and i < md.behavior.size() and md.behavior[i] == 0 \
+					and i < md.elevation.size() and md.elevation[i] == 3:
+				var m: int = md.metatile[i]
+				counts[m] = int(counts.get(m, 0)) + 1
+	# ⚠️ EVERY map on the pair, not the first one found. An earlier draft broke
+	# out after one and produced 371 for `general_frlg__viridian_city_frlg`
+	# where the whole-corpus measurement says 8 — a different but individually
+	# valid tile, chosen by directory order. A default that changes depending on
+	# which file `DirAccess` happens to list first is not a default.
+	var best := -1
+	var best_n := 0
+	for m in counts:
+		if int(counts[m]) > best_n:
+			best_n = int(counts[m])
+			best = int(m)
+	return best
+
+
+## `XanaduNursery` -> `MAP_AUTHORED_XANADU_NURSERY`.
+static func constant_for(map_name: String) -> String:
+	var out := ""
+	for i in range(map_name.length()):
+		var c := map_name[i]
+		if c == "_":
+			out += "_"
+			continue
+		if i > 0 and c == c.to_upper() and c != c.to_lower() \
+				and map_name[i - 1] != "_" \
+				and not (map_name[i - 1] == map_name[i - 1].to_upper()
+						and map_name[i - 1] != map_name[i - 1].to_lower()):
+			out += "_"
+		out += c.to_upper()
+	return CONSTANT_PREFIX + out
+
+
+static func map_exists(map_name: String) -> bool:
+	return ResourceLoader.exists(OUT_DIR + map_name + ".tscn")
+
+
+## Add the map to the hand-owned `AuthoredMaps` table.
+##
+## ⚠️ **APPEND-ONLY AND GUARDED — Rob's call, 2026-08-09, and the guard is the
+## load-bearing half.** That file exists precisely because `map_constants.gd` is
+## GENERATED and would erase authored entries; a tool that rewrote it would
+## reintroduce the same erasure by a different hand. So this inserts exactly one
+## line before the closing brace, refuses if the constant is already present,
+## and never reorders or rewrites an existing line.
+##
+## Returns "" on success, or a reason.
+static func register_constant(map_name: String) -> String:
+	var konst := constant_for(map_name)
+	var f := FileAccess.open(AUTHORED_MAPS_PATH, FileAccess.READ)
+	if f == null:
+		return "cannot read %s" % AUTHORED_MAPS_PATH
+	var text := f.get_as_text()
+	f.close()
+	if text.contains('"%s"' % konst):
+		return "%s is already registered" % konst
+	var entry := '\t"%s": "%s",\n' % [konst, map_name]
+	var marker := "}\n"
+	var at := text.find(marker, text.find("const NAME_BY_CONSTANT := {"))
+	if at < 0:
+		return "could not find the end of NAME_BY_CONSTANT"
+	text = text.substr(0, at) + entry + text.substr(at)
+	var w := FileAccess.open(AUTHORED_MAPS_PATH, FileAccess.WRITE)
+	if w == null:
+		return "cannot write %s" % AUTHORED_MAPS_PATH
+	w.store_string(text)
+	w.close()
+	return ""
+
+
+# ----------------------------------------------------------------- [C2] connect
+
+## Which direction answers a given one, so a reciprocal cannot be guessed wrong.
+const OPPOSITE := {
+	MapData.Connection.NORTH: MapData.Connection.SOUTH,
+	MapData.Connection.SOUTH: MapData.Connection.NORTH,
+	MapData.Connection.WEST: MapData.Connection.EAST,
+	MapData.Connection.EAST: MapData.Connection.WEST,
+}
+
+
+## Every map reachable from `origin_map` by connections, and the rect it
+## occupies, with `origin_map` itself at (0, 0).
+##
+## ⚠️ This is what makes an overlap check possible at all. Placement is not a
+## property of one edge — a map two hops away can land on top of you, which is
+## exactly what nearly happened to Xanadu Nursery and Pewter City (Pewter sits
+## at (-12,-40) from Route 2, two hops from nothing obvious).
+static func placed_rects(origin_map: String) -> Dictionary:
+	var out := {}
+	var md := _load_data(origin_map)
+	if md == null:
+		return out
+	out[origin_map] = Rect2i(Vector2i.ZERO, Vector2i(md.width, md.height))
+	var queue: Array = [origin_map]
+	while not queue.is_empty():
+		var host: String = queue.pop_front()
+		var hd := _load_data(host)
+		if hd == null:
+			continue
+		var horigin: Vector2i = (out[host] as Rect2i).position
+		for c in hd.connections:
+			var nb := MapConstants.map_name_for(str(c.get("map", "")))
+			if nb == "" or out.has(nb):
+				continue
+			var nd := _load_data(nb)
+			if nd == null:
+				continue
+			var o := MapManager.neighbour_origin(horigin, hd, c, nd)
+			out[nb] = Rect2i(o, Vector2i(nd.width, nd.height))
+			queue.append(nb)
+	return out
+
+
+## Which already-placed maps a proposed link would land on top of.
+##
+## ⚠️ **PURE, AND EXTRACTED FROM `connect_maps` FOR A REASON THE TESTS FOUND THE
+## HARD WAY.** Break-testing a refusal guard is self-defeating when the guard
+## lives inside the function that performs the write: with the check disabled
+## the call no longer refuses, so it goes ahead and writes — a read-only test
+## silently becomes a writing one, and it corrupted two tracked `.tres` files
+## before this was split out. The decision is now assertable without the act.
+##
+## The guest is deliberately excluded from its own check: re-linking an
+## existing edge is a legitimate offset UPDATE, not a self-collision.
+static func would_overlap(host: String, direction: int, guest: String,
+		offset: int) -> Array:
+	var out: Array = []
+	var hd := _load_data(host)
+	var gd := _load_data(guest)
+	if hd == null or gd == null:
+		return out
+	var rects := placed_rects(host)
+	if not rects.has(host):
+		return out
+	var conn := {"direction": direction, "map": _constant_of(guest), "offset": offset}
+	var origin := MapManager.neighbour_origin(
+			(rects[host] as Rect2i).position, hd, conn, gd)
+	var guest_rect := Rect2i(origin, Vector2i(gd.width, gd.height))
+	for name in rects:
+		if name == guest:
+			continue
+		if (rects[name] as Rect2i).intersects(guest_rect):
+			out.append(name)
+	return out
+
+
+## Link two maps, both ways, refusing an overlap.
+##
+## `direction` is FROM `host` TO `guest`. The reciprocal direction and offset
+## are DERIVED — ⚠️ a hand-written reciprocal is how two maps end up stitched at
+## a slant that looks plausible until you walk it.
+##
+## Returns `{"ok": bool, "reason": String, "overlaps": Array}`.
+static func connect_maps(host: String, direction: int, guest: String,
+		offset: int, force: bool = false) -> Dictionary:
+	var res := {"ok": false, "reason": "", "overlaps": []}
+	if not OPPOSITE.has(direction):
+		res["reason"] = "direction must be NORTH/SOUTH/WEST/EAST"
+		return res
+	var hd := _load_data(host)
+	var gd := _load_data(guest)
+	if hd == null or gd == null:
+		res["reason"] = "no MapData for %s" % (host if hd == null else guest)
+		return res
+
+	if _constant_of(guest) == "":
+		res["reason"] = "%s has no MAP_* constant — register it first" % guest
+		return res
+	res["overlaps"] = would_overlap(host, direction, guest, offset)
+	# ⚠️ REFUSED, not warned. `chunk_owning()` is first-match-wins over an
+	# UNORDERED Dictionary, so two overlapping chunks answer differently run to
+	# run — a bug that reproduces intermittently and points nowhere near itself.
+	if not res["overlaps"].is_empty() and not force:
+		res["reason"] = "would overlap %s" % ", ".join(res["overlaps"])
+		return res
+
+	add_connection(hd, direction, _constant_of(guest), offset)
+	add_connection(gd, OPPOSITE[direction], _constant_of(host), -offset)
+	var e1 := ResourceSaver.save(hd, OUT_DIR + host + "_data.tres")
+	var e2 := ResourceSaver.save(gd, OUT_DIR + guest + "_data.tres")
+	if e1 != OK or e2 != OK:
+		res["reason"] = "save failed (%d / %d)" % [e1, e2]
+		return res
+	res["ok"] = true
+	return res
+
+
+static func _load_data(map_name: String) -> MapData:
+	var p := OUT_DIR + map_name + "_data.tres"
+	return load(p) as MapData if ResourceLoader.exists(p) else null
+
+
+## The MAP_* constant naming a map, from either table. "" when nothing does.
+##
+## ⚠️ **THE THIRD LOOKUP IS NOT BELT-AND-BRACES — WITHOUT IT, CREATING AND
+## CONNECTING A MAP IN ONE RUN IS IMPOSSIBLE.** `AuthoredMaps.NAME_BY_CONSTANT`
+## is a `const`, compiled into the running process, so a line `register_constant`
+## has just WRITTEN TO DISK is invisible to it until the editor rescans. The
+## creator does exactly that sequence, and the symptom was a flat refusal to
+## link a map it had just registered a line earlier.
+##
+## Reading the file back is the authoritative answer to "is this registered",
+## and it is deliberately a text match on the real entry rather than trusting
+## `constant_for()` — deriving the name would happily invent a constant for a
+## map nobody registered, and the connection would then point at something that
+## resolves to "" forever.
+static func _constant_of(map_name: String) -> String:
+	for k in AuthoredMaps.NAME_BY_CONSTANT:
+		if str(AuthoredMaps.NAME_BY_CONSTANT[k]) == map_name:
+			return str(k)
+	for k in MapConstants.NAME_BY_CONSTANT:
+		if str(MapConstants.NAME_BY_CONSTANT[k]) == map_name:
+			return str(k)
+	var f := FileAccess.open(AUTHORED_MAPS_PATH, FileAccess.READ)
+	if f != null:
+		var text := f.get_as_text()
+		f.close()
+		var konst := constant_for(map_name)
+		if text.contains('"%s": "%s",' % [konst, map_name]):
+			return konst
+	return ""
 
 
 ## A new map, filled with one metatile.

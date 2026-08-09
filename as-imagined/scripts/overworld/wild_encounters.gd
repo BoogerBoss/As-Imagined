@@ -87,11 +87,79 @@ static func is_land_encounter_tile(behavior: int) -> bool:
 ## Does this map have a land table at all? Most do not — 192 of 421 region-wide,
 ## and only 5 of the 32 baked corridor maps.
 static func has_table(map_name: String) -> bool:
-	return _load().get("maps", {}).has(map_name)
+	return _load().get("maps", {}).has(map_name) \
+			or _load_authored().has(map_name)
+
+
+## [M27M5 C3] Authored maps' own tables, hand-owned and merged on a MISS.
+##
+## ⚠️ **THE FILE THIS SITS BESIDE IS GENERATED** — `gen_wild_encounters.py`
+## rebuilds `land_encounters.json` from the reference, so an authored map added
+## there would be erased on the next run, silently. Same two-files-two-owners
+## split as `AuthoredMaps` beside the generated `MapConstants`, for the same
+## reason and with the same delegate-on-miss shape.
+##
+## ⚠️ **JSON, not fields on `MapData` — Rob's call, 2026-08-09**, and it follows
+## this project's own two-layer data rule: full dataset in JSON, implemented
+## BEHAVIOUR in `.tres`. An encounter table is dataset, and every other
+## encounter table in the project is already JSON; a second storage shape for
+## one kind of data would be drift arriving disguised as a convenience.
+const AUTHORED_PATH := "res://data/authored_encounters.json"
+
+static var _authored: Dictionary = {}
+static var _authored_loaded := false
+
+
+static func _load_authored() -> Dictionary:
+	if _authored_loaded:
+		return _authored
+	_authored_loaded = true
+	# Absent is the NORMAL state, not an error: a project with no authored map
+	# has no such file, and warning about it every boot would train the eye to
+	# ignore the one time it matters.
+	if not FileAccess.file_exists(AUTHORED_PATH):
+		return _authored
+	var f := FileAccess.open(AUTHORED_PATH, FileAccess.READ)
+	if f == null:
+		return _authored
+	var parsed = JSON.new()
+	var err := parsed.parse(f.get_as_text())
+	f.close()
+	if err != OK or typeof(parsed.data) != TYPE_DICTIONARY:
+		push_error("WildEncounters: %s is malformed — authored encounters "
+				% AUTHORED_PATH + "ignored (line %d)" % parsed.get_error_line())
+		return _authored
+	_authored = parsed.data.get("maps", {})
+	return _authored
+
+
+## Every authored map name that has a table. Used by the integrity guard below
+## and by tests; not a hot path.
+static func authored_map_names() -> Array:
+	return _load_authored().keys()
+
+
+## ⚠️ **THE GUARD THAT MAKES A NAME-KEYED SIDE TABLE SAFE.**
+##
+## An authored map is exactly the kind that gets renamed, and a name-keyed table
+## detaches SILENTLY when it does — the grass simply stops working, with no
+## error and nothing pointing at the cause. This turns that into a named
+## failure: every map named in the authored file must resolve to a real baked
+## map. Returns the names that do not.
+static func unresolved_authored_maps() -> Array:
+	var bad: Array = []
+	for name in _load_authored():
+		if not ResourceLoader.exists("res://scenes/maps/%s.tscn" % str(name)):
+			bad.append(name)
+	return bad
 
 
 static func table_for(map_name: String) -> Dictionary:
-	return _load().get("maps", {}).get(map_name, {})
+	# Generated first, authored second. They are disjoint by construction — an
+	# imported map is never in the authored file and an authored map is never in
+	# the generated one — so this is a fallback, not a precedence rule.
+	var t: Dictionary = _load().get("maps", {}).get(map_name, {})
+	return t if not t.is_empty() else _load_authored().get(map_name, {})
 
 
 static func slot_rates() -> Array:

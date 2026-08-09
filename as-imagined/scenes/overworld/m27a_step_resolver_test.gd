@@ -71,8 +71,8 @@ const MAP_DATA_ASSERTIONS := 8
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
 ## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
-## BA (M27M5 authored map + edge link, 9).
-const EXPECTED_TOTAL := 585
+## BA (M27M5 authored map + edge link, 9) and BB (the creator, 12).
+const EXPECTED_TOTAL := 597
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -264,6 +264,7 @@ func _ready() -> void:
 	_test_m27m4_painted_sync()
 	_test_m27m3_metatile_brush()
 	_test_m27m5_authored_map()
+	_test_m27m5_creator()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4292,6 +4293,107 @@ func _test_m27m5_authored_map() -> void:
 			and xd.elevation_at(19, 4) == 3)
 	_chk("BA.09 ...and its wall is still solid away from the seam",
 			xd.collision_at(19, 0) == 1 and xd.collision_at(0, 9) == 1)
+
+
+## [M27M5 C1/C2/C3] The map creator's rules, and authored encounters.
+##
+## Every assertion here is READ-ONLY on the tracked artifacts. `register_constant`
+## and `connect_maps` WRITE, so only their refusal paths are driven — a test that
+## registered a map would edit a hand-owned file that this suite also asserts on.
+func _test_m27m5_creator() -> void:
+	# --- C1
+	var pairs := MapAuthoring.usable_pairs()
+	var on_disk := 0
+	var d := DirAccess.open("res://assets/map_tilesets/")
+	if d != null:
+		for f in d.get_files():
+			if f.ends_with(".tres"):
+				on_disk += 1
+	_chk("BB.01 usable_pairs is exactly the built TileSets (%d)" % pairs.size(),
+			pairs.size() == on_disk and on_disk > 0)
+
+	# ⚠️ The claim that makes the tool usable before M27M6's picker exists: a
+	# map can be created without knowing any metatile id.
+	var all_resolve := true
+	for p in pairs:
+		if MapAuthoring.default_fill_for(p) < 0:
+			all_resolve = false
+	_chk("BB.02 a fill metatile is derivable for EVERY usable pair", all_resolve)
+	# ⚠️ And it must be STABLE. An earlier draft stopped at the first baked map
+	# it found and answered 371 here where the whole-corpus measurement says 8 —
+	# a valid tile picked by directory order, which is not a default.
+	_chk("BB.03 the derived fill matches the measured corpus answer",
+			MapAuthoring.default_fill_for("general_frlg__viridian_city_frlg") == 8)
+
+	_chk("BB.04 CamelCase becomes the MAP_AUTHORED_ constant",
+			MapAuthoring.constant_for("XanaduNursery") == "MAP_AUTHORED_XANADU_NURSERY"
+			and MapAuthoring.constant_for("Route2House") == "MAP_AUTHORED_ROUTE2_HOUSE")
+
+	# ⚠️ The guard is the load-bearing half of append-only: an append that
+	# silently overwrote a duplicate would reintroduce, by another hand, exactly
+	# the erasure the hand-owned file exists to prevent.
+	_chk("BB.05 registering an already-registered map is REFUSED",
+			MapAuthoring.register_constant("XanaduNursery") != "")
+
+	# --- C2
+	var opp_ok := true
+	for k in MapAuthoring.OPPOSITE:
+		if MapAuthoring.OPPOSITE[MapAuthoring.OPPOSITE[k]] != k:
+			opp_ok = false
+	_chk("BB.06 every direction's opposite is an involution",
+			opp_ok and MapAuthoring.OPPOSITE.size() == 4)
+
+	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres"):
+		_gated += 4
+		return
+
+	# ⚠️ Placement is not a property of ONE edge — a map two hops away can land
+	# on top of you. Pewter is two hops from Xanadu and is the one that nearly
+	# collided; asserting its real rect is what proves the walk works.
+	var rects := MapAuthoring.placed_rects("Route2_Frlg")
+	_chk("BB.07 the placement walk reaches maps TWO hops out, at real origins",
+			rects.has("XanaduNursery") and rects.has("PewterCity_Frlg")
+			and (rects["XanaduNursery"] as Rect2i).position == Vector2i(-20, 0)
+			and (rects["PewterCity_Frlg"] as Rect2i).position == Vector2i(-12, -40))
+
+	# ⚠️ REFUSAL ONLY — and the first draft of this assertion got it wrong in a
+	# way worth recording: it re-linked Route 2 WEST to Xanadu, expecting a
+	# refusal, but that is a legitimate offset UPDATE of an existing edge (the
+	# guest is deliberately excluded from its own overlap check), so it
+	# succeeded and WROTE to a tracked file. The refusal path writes nothing;
+	# the success path does. Pick a case that genuinely refuses.
+	#
+	# Route 2 NORTH would put Xanadu at (0,-18), straight through Pewter City —
+	# a two-hop collision no single edge reveals.
+	# ⚠️ Driven through the PURE `would_overlap`, never `connect_maps`. Breaking
+	# the guard inside the writing function makes the call stop refusing — so
+	# the injection performs the very write the test exists to prevent, which is
+	# exactly how this assertion corrupted two tracked .tres files on its first
+	# draft. Assert the decision, not the act.
+	var clash := MapAuthoring.would_overlap("Route2_Frlg",
+			MapData.Connection.NORTH, "XanaduNursery", 0)
+	_chk("BB.08 a two-hop overlap is detected and NAMES what it would hit",
+			"PewterCity_Frlg" in clash)
+
+	# --- C3
+	var t := WildEncounters.table_for("XanaduNursery")
+	_chk("BB.09 an authored map resolves an encounter table",
+			WildEncounters.has_table("XanaduNursery")
+			and int(t.get("encounter_rate", 0)) > 0
+			and (t.get("slots", []) as Array).size() == 15)
+	# ⚠️ The generated corpus must be untouched by the fallback — they are
+	# disjoint by construction, so this is a fallback, not a precedence rule.
+	_chk("BB.10 an imported map still answers from the GENERATED table",
+			WildEncounters.has_table("Route2_Frlg")
+			and int(WildEncounters.table_for("Route2_Frlg").get(
+					"encounter_rate", 0)) > 0)
+	# ⚠️ The guard that makes a NAME-keyed side table safe: renaming an authored
+	# map would otherwise detach its grass silently.
+	_chk("BB.11 every authored encounter entry resolves to a real map",
+			WildEncounters.unresolved_authored_maps().is_empty())
+	_chk("BB.12 a map in neither table answers empty, not a stray table",
+			WildEncounters.table_for("NoSuchMapAnywhere").is_empty()
+			and not WildEncounters.has_table("NoSuchMapAnywhere"))
 
 
 ## [M27M3] The metatile brush.
