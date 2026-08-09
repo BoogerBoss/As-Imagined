@@ -217,13 +217,118 @@ in the picker rather than leaving in the tail.
 
 ---
 
+## 4b. Part C — atlas deduplication *(Rob's observation, 2026-08-09)*
+
+> *"The tilesets only use 1 shared indoor/outdoor main tileset for each map plus
+> one city specific smaller tileset. Is this represented in our atlases?"*
+
+**The model is exactly right, and the answer is: represented in the NAME, not in
+the STORAGE.**
+
+### What is actually on disk
+
+An atlas is named `<primary>__<secondary>`, so the pairing is visible — but the
+PNG is a **flattened composite of both**, re-rendered per pair. Measured across
+the 20 pairs the corridor has rendered:
+
+| | |
+|---|---|
+| distinct **primaries** | **2** — `general_frlg` (outdoor), `building_frlg` (indoor) |
+| distinct **secondaries** | **20**, one per map/city |
+| primary size | **640 metatiles = 20 rows of 32**, in *every* atlas |
+| secondary size | **2-8 rows** (94 rows across all 20) |
+
+⚠️ **So 81% of all atlas area is the shared primary, stored 20 times over.**
+`building_frlg__generic_building_1` is 21 rows: **20 primary, 1 secondary.**
+
+Corridor totals: **1.28 MB of atlas PNG across 20 pairs / 3 planes**, of which
+400 of 494 rows are duplicated primary.
+
+### What deduplicating would save
+
+Split each atlas into a shared primary texture plus a per-pair secondary:
+
+| | cells (all planes) | |
+|---|---|---|
+| today | 47,424 | 20 pairs × their own full atlas |
+| deduped | 12,864 | 2 primaries + 20 secondaries |
+| | **3.7× fewer** | ~1.28 MB → ~0.35 MB |
+
+Projected region-wide (60 pairs, secondary rows scaled): **~4.6×**. ⚠️ That is a
+projection — only 20 pairs are rendered today, so the other 40 secondaries are
+unmeasured.
+
+**The bigger win is memory, not disk.** Today 20 (eventually 60) copies of the
+same primary texture are resident once `preload_tilesets()` runs. Deduped, there
+are two.
+
+### What it costs
+
+**The change surface is genuinely small** — `source_id == plane` is relied on in
+exactly **two production call sites**, `map_baker.gd:134` and
+`map_manager.gd:887`, both `set_cell(cell, plane, coords)`. Deduping makes it
+six sources (3 planes × primary/secondary) and the mapping becomes
+`mid < 640 ? primary : secondary`, with `coords` re-based by 640 for the
+secondary half.
+
+⚠️ **But it invalidates every baked scene.** `tile_map_data` stores a source id
+per cell, so re-basing source ids means **re-baking all 32 maps** (1.2 MB of
+scenes today).
+
+### ⚠️ Which is precisely why this is a NOW-or-never decision
+
+Re-baking is free today and expensive later, and the reason is already recorded
+in this project: `_scene_divergence` and `check_bake_diff` exist because a
+`--force` re-bake silently overwrites hand-authored content. **Verified this
+session: `check_bake_diff --all` reports 32 of 32 reproducible** — so a re-bake
+right now loses literally nothing.
+
+The moment Part B ships and Rob paints a real map, that stops being true, and
+this reduction goes from "machine time" to "machine time plus a merge nobody
+wants". **The same argument the M27 strategy note already makes for doing the
+full 421-map import late applies here in reverse: do the format change early.**
+
+### How it relates to M27M-T (the trimmed TileSet)
+
+They are **complementary, not alternatives**, and it is worth not conflating
+them:
+
+| | what it removes | measured win |
+|---|---|---|
+| **M27M-T** (trim) | tile DEFINITIONS never placed anywhere — 11,036 real against 132,480 `create_tile()` calls | **8.9× TileSet load** (1.71 ms vs 15.25 ms on a real twin) |
+| **Part C** (dedupe) | duplicated primary PIXELS and textures | **3.7× atlas bytes**, 60 resident textures → 2 |
+
+⚠️ **Dedupe does NOT reduce tile-definition count** — tiles are per-TileSet, so
+each pair still calls `create_tile` for the primary's cells even when the
+texture is shared. That is M27M-T's job, and `[M27D perf]` already measured why
+it matters more: *"PNG decode is not the dominant term — tile construction
+is."* So **M27M-T is the load-time win and Part C is the size/memory win.**
+
+### Recommendation
+
+**Worth doing, and worth doing before Part B** — but it is a *storage format*
+change with no behavioural payoff, so it should be its own tier with its own
+re-bake and its own `check_bake_diff` pass, not folded into the behaviour work.
+
+Sequencing: **Part A → Part C → M27M4 → Part B**, putting both format changes
+(the sidecar and the atlas split) ahead of the first hand-authored map.
+
+⚠️ **If it is not done before real authoring starts, recommend dropping it
+permanently** rather than paying a merge for a 1 MB saving. Half-doing it later
+is the worst outcome.
+
+---
+
 ## 5. Order, and why
 
 1. **Part A** — the sidecar. Independently testable, no UI.
-2. **M27M4** — detection + write-back, which is what makes a painted tile mean
+2. **Part C** — the atlas split, while a re-bake is still free (32 of 32
+   reproducible today). A storage change with no behavioural payoff, so it wants
+   its own tier and its own `check_bake_diff` pass.
+3. **M27M4** — detection + write-back, which is what makes a painted tile mean
    something. (Already scoped: two setters and a comparison; the editing
    apparatus exists.)
-3. **Part B** — the brush, so you can disagree with the default.
+4. **Part B** — the brush, so you can disagree with the default.
 
 ⚠️ **Part B before Part A is the one order to avoid**: the brush would ship with
 no default behind it, which is the silent-failure mode §2 exists to prevent, and
@@ -233,6 +338,9 @@ no default behind it, which is the silent-failure mode §2 exists to prevent, an
 
 ## 6. Open questions
 
+0. **Is Part C in at all?** It is ~1 MB and 58 fewer resident textures for a
+   full re-bake and a source-id convention change. Cheap now, not worth doing
+   later — so the real question is in-before-authoring or dropped.
 1. **Delete the inert `behavior` custom-data layer, or leave it?** Deleting is
    tidier and churns 14 tracked `.tres` (60 at full import).
 2. **Does the brush paint a RANGE or one cell?** Collision and elevation are
