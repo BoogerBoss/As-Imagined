@@ -550,6 +550,9 @@ enum EditMode {
 	## renumbering the existing four would silently change what an open scene is
 	## set to.
 	METATILE,
+	## [Part B] click sets `paint_behavior` and records it as a HUMAN decision,
+	## so a later Sync will not re-derive it from the metatile.
+	BEHAVIOR,
 }
 
 @export var edit_mode: EditMode = EditMode.NONE:
@@ -561,6 +564,20 @@ enum EditMode {
 ## because a pair carries up to 1,024 of them and M27M6 is what turns that into
 ## something browsable — this is the mechanism, not the affordance.
 @export var paint_metatile: int = 0
+
+## [Part B] The behaviour a click writes, as an OVERRIDE.
+##
+## ⚠️ **THE ESCAPE HATCH, NOT THE AUTHORING PATH.** Behaviour follows the
+## metatile automatically and is right by construction for every Kanto tile —
+## measured across all 421 maps, it varies by placement for **0%** of them. This
+## exists for the two cases that cannot work: a tile whose derived meaning is
+## wrong for one particular placement, and M27M7's new art, which has no sidecar
+## entry at all.
+##
+## A NAMED dropdown rather than a raw int (see `_validate_property`) — 240
+## values with no enum hint is the exact complaint M27M6 was opened for, and is
+## now the only part of M27M6 being built.
+@export var paint_behavior: int = 0
 
 
 @export_range(0, 1) var paint_collision: int = 1:
@@ -1305,6 +1322,16 @@ func apply_edit(cell: Vector2i) -> bool:
 				changed = true
 			else:
 				changed = false
+		EditMode.BEHAVIOR:
+			# ⚠️ `changed` must cover the EXPLICIT BIT, not just the value.
+			# Re-asserting a behaviour that already matches still turns a
+			# DERIVED value into a DECIDED one, which is the entire point of the
+			# mode and is invisible to a predicate that only compares numbers —
+			# the same silent-flip this function's own header records for
+			# provenance.
+			changed = (map_data.behavior_at(cell.x, cell.y) != paint_behavior
+					or not map_data.behavior_is_explicit(cell.x, cell.y))
+			map_data.set_behavior_override(cell.x, cell.y, paint_behavior)
 
 	if changed:
 		_unsaved_edits = true
@@ -1406,8 +1433,14 @@ func adopt_cell(cell: Vector2i, metatile_id: int) -> bool:
 	if map_data == null or not map_data.in_bounds(cell.x, cell.y):
 		return false
 	map_data.set_metatile_id(cell.x, cell.y, metatile_id)
+	# ⚠️ **AN OVERRIDDEN BEHAVIOUR SURVIVES A RE-SYNC. THIS IS WHAT THE
+	# BEHAVIOR_EXPLICIT BIT IS FOR, AND WITHOUT IT PART B IS DECORATIVE.**
+	# Sync re-derives behaviour from the metatile on every cell it adopts, so a
+	# hand-set meaning would be silently reverted by the next press of a button
+	# whose whole job is to be pressed often — and the map would look unchanged
+	# while playing differently.
 	var beh := MapManager.behavior_for(map_data.atlas, metatile_id)
-	if beh >= 0:
+	if beh >= 0 and not map_data.behavior_is_explicit(cell.x, cell.y):
 		map_data.set_behavior(cell.x, cell.y, beh)
 	map_data.author_cell_with_defaults(cell.x, cell.y)
 	return beh >= 0
@@ -1446,6 +1479,36 @@ func sync_painted_cells() -> Dictionary:
 		_unsaved_edits = true
 		queue_redraw()
 	return report
+
+
+## Inspector presentation only — no behaviour of its own.
+##
+## ⚠️ **THE METATILE BRUSH IS HIDDEN, NOT REMOVED** (Rob, 2026-08-09). Godot's
+## own tile palette plus `Sync Painted Tiles` covers choosing art, so a numeric
+## metatile field is clutter on the one surface used constantly.
+## `PROPERTY_USAGE_STORAGE` keeps `paint_metatile` SERIALISED and
+## script-reachable, and `METATILE` is merely omitted from the `edit_mode` hint
+## string rather than taken out of the enum — so the whole brush still works,
+## an existing scene set to it keeps working, and a future picker un-hides it
+## by deleting two lines. **Nothing was deleted; this is presentation only.**
+##
+## The behaviour dropdown is built from the GENERATED `NAME_BY_ID` table rather
+## than a hand-typed list, so it cannot drift from source. 240 plain ints with
+## no enum hint is precisely the complaint that opened M27M6.
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "paint_metatile":
+		property.usage = PROPERTY_USAGE_STORAGE
+	elif property.name == "edit_mode":
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = "NONE:0,COLLISION:1,ELEVATION:2,AUTHOR:3,BEHAVIOR:5"
+	elif property.name == "paint_behavior":
+		var parts := PackedStringArray()
+		var ids: Array = MetatileBehavior.NAME_BY_ID.keys()
+		ids.sort()
+		for id in ids:
+			parts.append("%s:%d" % [MetatileBehavior.NAME_BY_ID[id], id])
+		property.hint = PROPERTY_HINT_ENUM
+		property.hint_string = ",".join(parts)
 
 
 ## Cell under a point in this node's own local space.

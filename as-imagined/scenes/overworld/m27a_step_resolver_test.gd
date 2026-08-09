@@ -72,8 +72,9 @@ const MAP_DATA_ASSERTIONS := 8
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
 ## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
 ## BA (M27M5 authored map + edge link, 9), BB (the creator, 12) and
-## BC (the connections view, offset editor + legend toggle, 6).
-const EXPECTED_TOTAL := 603
+## BC (the connections view, offset editor + legend toggle, 6) and
+## BD (Part B behaviour override + hiding the metatile brush, 7).
+const EXPECTED_TOTAL := 610
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -264,6 +265,7 @@ func _ready() -> void:
 	_test_part_c_atlas_split()
 	_test_m27m4_painted_sync()
 	_test_m27m3_metatile_brush()
+	_test_partb_behaviour_override()
 	_test_m27m5_authored_map()
 	_test_m27m5_creator()
 	_test_m27m5_connection_view()
@@ -4561,6 +4563,74 @@ func _test_m27m3_metatile_brush() -> void:
 			and md.metatile_at(cell.x, cell.y) == was)
 
 	root.free()
+
+
+## [Part B] The behaviour override, and hiding the metatile brush.
+func _test_partb_behaviour_override() -> void:
+	# ⚠️ APPENDED after METATILE, so METATILE keeps 4 and no serialised
+	# `edit_mode` is silently re-pointed.
+	_chk("BD.01 BEHAVIOR is appended, leaving METATILE and the first four put",
+			MapOverlay.EditMode.AUTHOR == 3 and MapOverlay.EditMode.METATILE == 4
+			and MapOverlay.EditMode.BEHAVIOR == 5)
+
+	# ⚠️ The bit must NOT join ATTR_ALL_EXPLICIT. `needs_review` is
+	# `AUTHORED and not ATTR_ALL_EXPLICIT`, and behaviour is right by
+	# construction — folding it in would mark every authored cell in the project
+	# as needing review, burying the collision and elevation guesses that
+	# genuinely do.
+	_chk("BD.02 an override does not put the cell on the review list by itself",
+			(MapData.ATTR_ALL_EXPLICIT & MapData.AttrFlag.BEHAVIOR_EXPLICIT) == 0)
+
+	if not ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg_data.tres"):
+		_gated += 5
+		return
+	var md := (load("res://scenes/maps/PalletTown_Frlg_data.tres") as MapData
+			).duplicate(true) as MapData
+	var ov := MapOverlay.new()
+	ov.map_data = md
+	ov.edit_mode = MapOverlay.EditMode.BEHAVIOR
+	ov.paint_behavior = MetatileBehavior.MB_TALL_GRASS
+	var cell := Vector2i(5, 5)
+
+	_chk("BD.03 painting sets the value AND marks it a human decision",
+			ov.apply_edit(cell)
+			and md.behavior_at(cell.x, cell.y) == MetatileBehavior.MB_TALL_GRASS
+			and md.behavior_is_explicit(cell.x, cell.y))
+	# ⚠️ Re-asserting the same value still CHANGES something — a derived value
+	# becomes a decided one — which a predicate comparing only numbers misses.
+	md.set_attr_explicit(cell.x, cell.y, MapData.AttrFlag.BEHAVIOR_EXPLICIT, false)
+	_chk("BD.04 re-painting an already-matching value still reports a change",
+			ov.apply_edit(cell) and md.behavior_is_explicit(cell.x, cell.y))
+
+	# ⚠️ THE INVARIANT PART B EXISTS FOR. Sync re-derives behaviour on every
+	# cell it adopts; an override that did not survive would be reverted by the
+	# next press of a button meant to be pressed often.
+	var mid := md.metatile_at(cell.x, cell.y)
+	ov.adopt_cell(cell, mid)
+	_chk("BD.05 a re-sync does NOT clobber an overridden behaviour",
+			md.behavior_at(cell.x, cell.y) == MetatileBehavior.MB_TALL_GRASS)
+	var plain := Vector2i(6, 5)
+	ov.adopt_cell(plain, mid)
+	_chk("BD.06 ...while a cell with no override still follows its metatile",
+			md.behavior_at(plain.x, plain.y)
+					== MapManager.behavior_for(md.atlas, mid)
+			and not md.behavior_is_explicit(plain.x, plain.y))
+
+	# ⚠️ HIDDEN, NOT REMOVED. The brush must still work from code, or a future
+	# picker would be re-implementing it rather than un-hiding it.
+	var hidden := false
+	var mode_hint := ""
+	for prop in ov.get_property_list():
+		if prop["name"] == "paint_metatile":
+			hidden = int(prop["usage"]) & PROPERTY_USAGE_EDITOR == 0
+		elif prop["name"] == "edit_mode":
+			mode_hint = str(prop["hint_string"])
+	_chk("BD.07 paint_metatile is hidden from the Inspector but still stored, "
+			+ "and METATILE is off the dropdown while the enum keeps it",
+			hidden and not mode_hint.contains("METATILE")
+			and mode_hint.contains("BEHAVIOR:5")
+			and MapOverlay.EditMode.METATILE == 4)
+	ov.free()
 
 
 ## Paint one metatile into every plane of a cell, the way M27M3's brush will —

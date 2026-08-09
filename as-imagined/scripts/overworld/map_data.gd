@@ -73,7 +73,24 @@ enum Provenance { IMPORTED, AUTHORED }
 enum AttrFlag {
 	COLLISION_EXPLICIT = 1,
 	ELEVATION_EXPLICIT = 2,
+	## [Part B] A HUMAN chose this cell's behaviour, overriding the one its
+	## metatile implies.
+	BEHAVIOR_EXPLICIT = 4,
 }
+
+## ⚠️ **BEHAVIOR_EXPLICIT IS DELIBERATELY NOT IN HERE, AND THE REASON IS THE
+## WHOLE DESIGN OF PART B.**
+##
+## `needs_review` is `AUTHORED and not ATTR_ALL_EXPLICIT`. Behaviour is a pure
+## function of the metatile — measured across all 421 maps, it varies by
+## placement for **0%** of them — so a painted cell's derived behaviour is
+## right by construction and there is nothing for a human to confirm. Folding
+## the bit in here would mark every authored cell in the project as needing
+## review the moment this shipped, burying the collision and elevation guesses
+## that genuinely do need looking at.
+##
+## What the bit is FOR is the opposite question: **"has someone overridden this,
+## so a re-sync must leave it alone?"** — see `MapOverlay.adopt_cell`.
 const ATTR_ALL_EXPLICIT := AttrFlag.COLLISION_EXPLICIT | AttrFlag.ELEVATION_EXPLICIT
 
 @export var attr_explicit: PackedByteArray = PackedByteArray()
@@ -257,6 +274,26 @@ func set_metatile_id(x: int, y: int, value: int) -> void:
 ## the room (its own comment says "so behaviour can join later without another
 ## format change") and **Part B is what adds the third bit** — until then a
 ## behaviour written here is trusted, not reviewed.
+## True when a human set this cell's behaviour by hand.
+func behavior_is_explicit(x: int, y: int) -> bool:
+	return (_flags_at(x, y) & AttrFlag.BEHAVIOR_EXPLICIT) != 0
+
+
+## [Part B] Set a behaviour AND record that a human decided it.
+##
+## The pair with `set_behavior` below is the same shape as `set_collision`
+## versus a raw array write: one is a derived value, the other is a decision,
+## and only the decision survives a re-derivation. Marks the cell AUTHORED,
+## because a cell someone has overridden is by definition no longer purely
+## imported.
+func set_behavior_override(x: int, y: int, value: int) -> void:
+	if not in_bounds(x, y):
+		return
+	set_behavior(x, y, value)
+	set_attr_explicit(x, y, AttrFlag.BEHAVIOR_EXPLICIT, true)
+	_mark_authored(x, y)
+
+
 func set_behavior(x: int, y: int, value: int) -> void:
 	if not in_bounds(x, y):
 		return
