@@ -326,3 +326,121 @@ Check the price before I6b, not before I6d.
 are a standing exclusion), the Battle Frontier BP shops (M35), and the
 `ViridianCity_Mart` tutorial clerk, which has its own `OnLoad`/`OnFrame` map
 scripts and is a scripted sequence rather than a shop question.
+
+---
+
+## 8. Build plan — re-measured 2026-08-09, and three corrections
+
+Everything below was measured against the tree today. **Three figures in the
+sections above are wrong or stale and are corrected here rather than edited in
+place**, because the reasoning that produced them is still worth reading.
+
+### 8.1 ⚠️ The pipeline gap is NOT "the label is missing"
+
+`pokemart ViridianCity_Mart_Items` names a label, and that label **is emitted**
+— carrying `[release, end]` and nothing else. The `.2byte ITEM_*` lines are
+dropped silently by `gen_map_scripts.py`, which only understands opcodes.
+
+That is worse than an absent label, and it changes I6a's acceptance test: a
+handler asking for the stock would get an **empty list**, not an error. A shop
+with nothing in it looks like a design decision. **I6a must fail closed** —
+`pokemart` with an empty or unresolvable list must refuse and say so, never
+open an empty shop.
+
+⚠️ **The label is data AND code**, which is the shape to emit for:
+
+```
+ViridianCity_Mart_Items::
+    .2byte ITEM_POKE_BALL      <- stock, ITEM_NONE-terminated
+    ...
+    .2byte ITEM_NONE
+    release                    <- the clerk's own continuation
+    end
+```
+
+So the emitter must keep both halves: the item list AND the trailing ops the
+script resumes into. Dropping the ops would strand every clerk in the region.
+
+**The rest of the clerk compiles correctly today** — `lock`, `faceplayer`, the
+`goto_if_eq`, `message`, then `pokemart`, then `message gText_PleaseComeAgain`
+/ `waitmessage` / `waitbuttonpress` / `release` / `end`. `pokemart` is the only
+halt, so the flow works the moment it is implemented.
+
+### 8.2 ⚠️ The corridor needs SIX new items, not seventeen
+
+Measured across the corridor's only two marts:
+
+| mart | stock |
+|---|---|
+| **Viridian** | Poké Ball · Potion · Antidote · Paralyze Heal |
+| **Pewter** | those four, plus Awakening · Burn Heal · Escape Rope · Repel |
+
+**8 distinct items, of which 2 already have a `.tres`** (Poké Ball, Potion).
+The six missing are **Antidote, Awakening, Burn Heal, Paralyze Heal, Escape
+Rope, Repel** — all present in `items.json` with real prices, so I6b is six
+`gen_items.py` rows, not a roster project. §2's "17 of 20" is a different,
+wider measurement and does not describe the corridor.
+
+⚠️ **Four of those six become field-usable for free, and one is a trap.**
+`[M27I I5-3]` derives field usability from `battle_usage`, so Antidote /
+Awakening / Burn Heal / Paralyze Heal need a real `CURE_STATUS` usage or they
+will be sold and then refuse to work. Repel and Escape Rope stay **inert by
+decision** (§5) and correctly offer no USE action at all.
+
+### 8.3 ⚠️ Escape Rope is wrong in TWO ways, not one
+
+§5's open question undersells it. Measured: `price = 0` **and**
+`pocket = key_items`. A key-item pocket makes it unsellable and unstackable as
+well as free. Source has it as an ordinary priced `items`-pocket consumable.
+**Both fields are a data correction in I6b**, before anything stocks it.
+
+---
+
+## 9. Chrome: generic Godot UI — Rob's call, 2026-08-09
+
+**The screen is built from plain Godot controls. No reference art is pulled.**
+
+⚠️ **THIS OVERRIDES A STANDING RULE, AND SAYING SO IS THE POINT.** CLAUDE.md's
+"pull real reference-game assets/structure first" exists specifically to forbid
+building a generic version and retrofitting authenticity later, and it cites
+the cost that produced it: M25h took **three sessions** to reach one authentic
+element that way. Rob has accepted that trade here. It is a decision, not an
+oversight, and a later session finding a plain `Panel` shop must not treat it
+as an unfinished job to "fix" without asking.
+
+**Two things genuinely lower the usual cost of this trade, and they are why the
+call is defensible rather than merely allowed:**
+
+1. **The upgrade target already exists.** Source's own sell path *is* the bag
+   (`GoToBagMenu(ITEMMENULOCATION_SHOP, ...)`), and `FieldBagScreen` already
+   carries real Emerald UI Pack art (`bg_m.png`, from `[M26E1]`). So the
+   eventual chrome pass is "adopt the sibling's conventions", not a fresh art
+   hunt — which is exactly the retrofit the standing rule warns is expensive,
+   made cheap by a sibling having already paid for it.
+2. **`FieldBagScreen` itself shipped this way** — a plain `Panel` at `[M27I
+   I4]`, real art later at `[M26E1]`. The sequence is established for this
+   family of screens even though the rule prefers otherwise.
+
+**The chrome pass is NOT scoped here** and belongs with M26E's own screen work.
+
+---
+
+## 10. Tiers, with the corrected sizes
+
+- **I6a — the pipeline.** Emit `.2byte` stock lists alongside the trailing
+  opcodes; regenerate the corpus; a guard that every `pokemart` argument
+  resolves to a NON-EMPTY list. ⚠️ Fail closed on an empty one (§8.1).
+  Independently testable with no UI at all.
+- **I6b — the item roster.** Six `gen_items.py` rows, four of them needing a
+  real `CURE_STATUS` usage; the two Escape Rope data fixes (§8.3). Ends with
+  every corridor mart's stock loadable.
+- **I6c — the screen, Buy half.** Generic Godot controls. Clerk menu
+  (Buy/Sell/Quit), the stock list, quantity capped by money AND bag space,
+  sold-out key items, and the Premier Ball bonus. `WAIT_NATIVE`, no new pause
+  kind — the same seam `multichoicegrid` and `fadescreen` already use.
+- **I6d — Sell.** `FieldBagScreen` in a shop context; the /4 price, the
+  price-0-or-importance refusal, the stack-of-1 shortcut, the
+  `MAX_MONEY / sell_price` cap.
+
+**Nothing is open.** The `authored_encounters`-style questions were settled in
+§5, the chrome is settled in §9, and the sizes are measured in §8.
