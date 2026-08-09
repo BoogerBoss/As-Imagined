@@ -542,12 +542,23 @@ enum EditMode {
 	COLLISION,   ## click sets collision to `paint_collision` and confirms it
 	ELEVATION,   ## click sets elevation to `paint_elevation` and confirms it
 	AUTHOR,      ## click marks AUTHORED with INHERITED defaults, left unconfirmed
+	## [M27M3] click paints `paint_metatile` into all three planes and adopts
+	## the cell. Appended, not inserted: `edit_mode` is a serialised @export, so
+	## renumbering the existing four would silently change what an open scene is
+	## set to.
+	METATILE,
 }
 
 @export var edit_mode: EditMode = EditMode.NONE:
 	set(value):
 		edit_mode = value
 		queue_redraw()
+
+## [M27M3] Which metatile the brush draws. A raw id rather than a picker,
+## because a pair carries up to 1,024 of them and M27M6 is what turns that into
+## something browsable — this is the mechanism, not the affordance.
+@export var paint_metatile: int = 0
+
 
 @export_range(0, 1) var paint_collision: int = 1:
 	set(value):
@@ -1071,6 +1082,19 @@ func apply_edit(cell: Vector2i) -> bool:
 			map_data.set_elevation(cell.x, cell.y, paint_elevation)
 		EditMode.AUTHOR:
 			changed = map_data.author_cell_with_defaults(cell.x, cell.y)
+		EditMode.METATILE:
+			# ⚠️ THE TILES AND THE RULES MOVE TOGETHER, and the ordering is the
+			# whole reason this is one arm rather than "paint, then sync".
+			# `MapManager.paint_metatile` refuses an id the pair cannot route,
+			# having drawn nothing — so adopting only after it succeeds keeps
+			# `MapData` from claiming a metatile the map does not show.
+			var root := entity_root() as Node2D
+			if root != null and MapManager.paint_metatile(
+					root, cell, paint_metatile, map_data.atlas):
+				adopt_cell(cell, paint_metatile)
+				changed = true
+			else:
+				changed = false
 
 	if changed:
 		_unsaved_edits = true
@@ -1094,7 +1118,9 @@ func apply_edit(cell: Vector2i) -> bool:
 # fight over one gesture.
 
 ## The three plane layers, in source-id order, as painted by `map_baker`.
-const PLANE_LAYER_NAMES := ["Ground", "Objects", "Overhangs"]
+## Aliased rather than re-listed — `MapManager` owns the paint rule the brush
+## shares, so it owns the plane order too.
+const PLANE_LAYER_NAMES := MapManager.PLANE_LAYER_NAMES
 
 
 ## What the SCENE is currently showing at a cell.
@@ -1154,6 +1180,29 @@ func scan_painted_changes() -> Array[Vector2i]:
 	return out
 
 
+## Record one cell as now showing `metatile_id`: the id itself, the behaviour
+## that follows from it, and a return of its movement rules to the review list.
+##
+## Returns false when the pair has no behaviour for that id — the cell is still
+## adopted, because the metatile is a fact either way; only the behaviour is
+## left alone. ⚠️ -1 is the sidecar saying "this pair does not describe that
+## id", and is NOT the same as `MB_NORMAL` (0), which is 62% of the region and
+## would make a missing table look like perfectly ordinary ground.
+##
+## Shared by the brush (M27M3) and the sync button (M27M4) rather than written
+## twice: they are the same act reached two ways, and the failure of a second
+## copy would be a cell that plays differently depending on how it was painted.
+func adopt_cell(cell: Vector2i, metatile_id: int) -> bool:
+	if map_data == null or not map_data.in_bounds(cell.x, cell.y):
+		return false
+	map_data.set_metatile_id(cell.x, cell.y, metatile_id)
+	var beh := MapManager.behavior_for(map_data.atlas, metatile_id)
+	if beh >= 0:
+		map_data.set_behavior(cell.x, cell.y, beh)
+	map_data.author_cell_with_defaults(cell.x, cell.y)
+	return beh >= 0
+
+
 ## Adopt what has been painted: update the metatile, re-resolve the behaviour
 ## from the pair, and hand the cell's collision/elevation back to the review
 ## backlog.
@@ -1180,19 +1229,8 @@ func sync_painted_cells() -> Dictionary:
 		if bool(got["conflict"]):
 			report["conflicts"] = int(report["conflicts"]) + 1
 			continue
-		var mid := int(got["id"])
-		map_data.set_metatile_id(cell.x, cell.y, mid)
-		# Behaviour follows the metatile. -1 is the sidecar saying "this pair
-		# does not describe that id" — a real answer, and NOT the same as
-		# MB_NORMAL (0), which is 62% of the region and would make a missing
-		# table look like perfectly ordinary ground. Leave the old value and
-		# say so.
-		var beh := MapManager.behavior_for(map_data.atlas, mid)
-		if beh >= 0:
-			map_data.set_behavior(cell.x, cell.y, beh)
-		else:
+		if not adopt_cell(cell, int(got["id"])):
 			report["unresolved"] = int(report["unresolved"]) + 1
-		map_data.author_cell_with_defaults(cell.x, cell.y)
 		report["changed"] = int(report["changed"]) + 1
 	if int(report["changed"]) > 0 or int(report["conflicts"]) > 0:
 		_unsaved_edits = true
@@ -1274,7 +1312,37 @@ func snapshot_cells() -> Dictionary:
 		"attr_explicit": map_data.attr_explicit.duplicate(),
 		"metatile": map_data.metatile.duplicate(),
 		"behavior": map_data.behavior.duplicate(),
+		# ⚠️ **[M27M3] THE TILES TOO — the same half-way undo, one level up.**
+		# The metatile brush is the first edit that changes the SCENE as well as
+		# the data, so a snapshot of the data alone would undo the rules and
+		# leave the picture painted: a cell drawn as grass that the game reads
+		# as whatever was there before. `tile_map_data` is the layer's whole
+		# state as one blob, which keeps this symmetric with the whole-array
+		# approach above rather than inventing a per-cell tile delta.
+		"tiles": _snapshot_tiles(),
 	}
+
+
+func _snapshot_tiles() -> Dictionary:
+	var out := {}
+	var root := entity_root()
+	if root == null or not is_instance_valid(root):
+		return out
+	for name in PLANE_LAYER_NAMES:
+		var layer := root.get_node_or_null(name) as TileMapLayer
+		if layer != null:
+			out[name] = layer.tile_map_data.duplicate()
+	return out
+
+
+func _restore_tiles(tiles: Dictionary) -> void:
+	var root := entity_root()
+	if root == null or not is_instance_valid(root):
+		return
+	for name in tiles:
+		var layer := root.get_node_or_null(str(name)) as TileMapLayer
+		if layer != null:
+			layer.tile_map_data = tiles[name]
 
 
 ## Restores a snapshot and persists it. Called by BOTH sides of the undo
@@ -1298,6 +1366,8 @@ func restore_cells(snap: Dictionary) -> void:
 		map_data.metatile = snap["metatile"]
 	if snap.has("behavior"):
 		map_data.behavior = snap["behavior"]
+	if snap.has("tiles"):
+		_restore_tiles(snap["tiles"])
 	queue_redraw()
 	_unsaved_edits = true
 	# IT NO LONGER SAVES, and the removed line is worth explaining rather than

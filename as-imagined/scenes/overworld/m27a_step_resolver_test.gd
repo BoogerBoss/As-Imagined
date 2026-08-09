@@ -70,8 +70,8 @@ const MAP_DATA_ASSERTIONS := 8
 ## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
-## section AY (M27M4 painted-tile sync, 14).
-const EXPECTED_TOTAL := 567
+## section AY (M27M4 painted-tile sync, 14) and AZ (M27M3 brush, 9).
+const EXPECTED_TOTAL := 576
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -261,6 +261,7 @@ func _ready() -> void:
 	_test_m27m1_behaviour_table()
 	_test_part_c_atlas_split()
 	_test_m27m4_painted_sync()
+	_test_m27m3_metatile_brush()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4215,6 +4216,104 @@ func _test_m27m4_painted_sync() -> void:
 	_chk("AY.13 restore reverts metatile and behaviour too, not just the rules",
 			md.metatile_at(probe.x, probe.y) != newmid
 			and not md.needs_review(probe.x, probe.y))
+
+	root.free()
+
+
+## [M27M3] The metatile brush.
+##
+## The tier is small because the rule was already written: `set_metatile` has
+## routed a metatile into the three planes since the `setmetatile` opcode
+## landed. What is new is a human reaching it, and the two things that only
+## matter once a human does — the tiles and the rules moving TOGETHER, and an
+## undo that reverts both.
+func _test_m27m3_metatile_brush() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += 9
+		return
+	var scene := load("res://scenes/maps/PalletTown_Frlg.tscn") as PackedScene
+	var md := (load("res://scenes/maps/PalletTown_Frlg_data.tres") as MapData
+			).duplicate(true) as MapData
+	var root := scene.instantiate() as Node2D
+	var ov := MapOverlay.new()
+	ov.map_data = md
+	ov.map_root = root
+	root.add_child(ov)
+	ov.edit_mode = MapOverlay.EditMode.METATILE
+
+	# ⚠️ Appended, never inserted: `edit_mode` is a serialised @export, so
+	# renumbering the four that existed would silently change what an already
+	# open scene is set to.
+	_chk("AZ.01 METATILE is APPENDED to EditMode, leaving the first four put",
+			MapOverlay.EditMode.NONE == 0 and MapOverlay.EditMode.COLLISION == 1
+			and MapOverlay.EditMode.ELEVATION == 2 and MapOverlay.EditMode.AUTHOR == 3
+			and MapOverlay.EditMode.METATILE == 4)
+
+	# Pick a target whose routing genuinely differs from what is there, so the
+	# paint has to ERASE a plane as well as fill one — the case a naive
+	# "set all three" brush gets wrong by leaving stale art behind.
+	var cell := Vector2i(12, 10)
+	var was := md.metatile_at(cell.x, cell.y)
+	var want := -1
+	for mid in range(1, 640):
+		if MapManager._layer_type_for(md.atlas, mid) \
+				!= MapManager._layer_type_for(md.atlas, was) \
+				and MapManager._layer_type_for(md.atlas, mid) >= 0:
+			want = mid
+			break
+	if want < 0:
+		_gated += 8
+		root.free()
+		return
+
+	ov.paint_metatile = want
+	var pre := ov.snapshot_cells()
+	var painted := ov.apply_edit(cell)
+	_chk("AZ.02 a brush stroke reports that it changed something", painted)
+	_chk("AZ.03 the SCENE now shows the new metatile",
+			int(ov.read_painted(cell)["id"]) == want)
+	# ⚠️ The point of routing rather than painting all three planes: the plane
+	# the new metatile does not use must be EMPTY, not holding the old art.
+	var routed: Array = MapManager.ROUTING[MapManager._layer_type_for(md.atlas, want)]
+	var erased_ok := true
+	for plane in 3:
+		var layer := root.get_node_or_null(
+				MapManager.PLANE_LAYER_NAMES[plane]) as TileMapLayer
+		if layer == null:
+			continue
+		var has_tile := layer.get_cell_source_id(cell) != -1
+		if has_tile != (plane in routed):
+			erased_ok = false
+	_chk("AZ.04 ...on exactly the routed planes, with the others ERASED",
+			erased_ok)
+
+	# The rules move with the tiles, in the same gesture.
+	_chk("AZ.05 MapData adopted the id and its behaviour",
+			md.metatile_at(cell.x, cell.y) == want
+			and md.behavior_at(cell.x, cell.y)
+					== MapManager.behavior_for(md.atlas, want))
+	_chk("AZ.06 and the cell went onto the review list, not silently settled",
+			md.needs_review(cell.x, cell.y))
+	# Nothing left for the sync button to find — the brush already did it.
+	_chk("AZ.07 a brushed cell leaves NOTHING for Sync Painted Tiles to adopt",
+			ov.scan_painted_changes().is_empty())
+
+	# ⚠️ An id the pair cannot route must draw nothing rather than erase all
+	# three planes, which is what `ROUTING.get(lt, [])` used to do with -1.
+	var other := Vector2i(cell.x + 1, cell.y)
+	var before_other := int(ov.read_painted(other)["id"])
+	ov.paint_metatile = 99999
+	var refused := ov.apply_edit(other)
+	_chk("AZ.08 an unroutable metatile is REFUSED and erases nothing",
+			not refused and int(ov.read_painted(other)["id"]) == before_other)
+
+	# ⚠️ Undo has to take the picture back too, or the map shows grass the game
+	# does not think is grass — the same half-way undo AY.13 guards one level
+	# down, now that a single gesture writes the scene as well as the data.
+	ov.restore_cells(pre)
+	_chk("AZ.09 undo reverts the TILES as well as the rules",
+			int(ov.read_painted(cell)["id"]) == was
+			and md.metatile_at(cell.x, cell.y) == was)
 
 	root.free()
 

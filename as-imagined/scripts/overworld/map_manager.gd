@@ -60,6 +60,11 @@ const ROUTING := {
 ## Entities sit at 2 and 4, straddling Overhangs at 3, preserving the whole
 ## point of the two strata: elevation-4 entities draw above the overhang plane
 ## and everything else below it.
+## The three tile planes in SOURCE-ID order, which is not the same thing as
+## `PLANE_Z`'s draw order — that one interleaves the two entity strata. Kept
+## separate so a change to draw order can never silently re-route a paint.
+const PLANE_LAYER_NAMES := ["Ground", "Objects", "Overhangs"]
+
 const PLANE_Z := {
 	"Ground": 0,
 	"Objects": 1,
@@ -914,18 +919,38 @@ func set_metatile(gcell: Vector2i, metatile_id: int, impassable: bool) -> bool:
 		return false
 
 	d.collision[idx] = 1 if impassable else 0
+	return paint_metatile(root, local, metatile_id, d.atlas)
 
-	var lt := _layer_type_for(d.atlas, metatile_id)
-	var routed: Array = ROUTING.get(lt, [])
+
+## Draw one metatile into a map root's three plane layers. Returns false when
+## the pair does not describe the id, having changed nothing.
+##
+## ⚠️ **SHARED WITH THE EDITOR BRUSH ON PURPOSE (M27M3).** The runtime
+## `setmetatile` opcode and a human with a brush are the same act, and this
+## project has already paid once for one rule kept by hand in two places —
+## `check_bake_diff`'s normalisation drifted from `map_baker`'s and produced a
+## permanent false positive. A brush that routed differently from the opcode
+## would be that again, in a place where the symptom is a map that looks right.
+##
+## ⚠️ **AN UNKNOWN LAYER TYPE REFUSES RATHER THAN ERASING.** `_layer_type_for`
+## answers -1 for a pair it has no table for, and the old inline version fed
+## that straight into `ROUTING.get(lt, [])` — an empty route, which erases all
+## three planes. Silent, and it deletes art. Refusing is the only honest
+## answer: nothing here can know where an unroutable metatile belongs.
+static func paint_metatile(root: Node2D, local: Vector2i, metatile_id: int,
+		pair: String) -> bool:
+	if root == null or not is_instance_valid(root):
+		return false
+	var lt := _layer_type_for(pair, metatile_id)
+	if not ROUTING.has(lt):
+		return false
+	var routed: Array = ROUTING[lt]
 	# [M27M Part C] The source is no longer just the plane — a secondary id
 	# lives in a different TileSet source and at a re-based coord. Both come
 	# from `AtlasLayout` so the baker and the manager cannot drift apart.
 	var coords := AtlasLayout.coords(metatile_id)
-	var planes := [root.get_node_or_null("Ground") as TileMapLayer,
-			root.get_node_or_null("Objects") as TileMapLayer,
-			root.get_node_or_null("Overhangs") as TileMapLayer]
-	for plane in range(planes.size()):
-		var layer: TileMapLayer = planes[plane]
+	for plane in range(PLANE_LAYER_NAMES.size()):
+		var layer := root.get_node_or_null(PLANE_LAYER_NAMES[plane]) as TileMapLayer
 		if layer == null:
 			continue
 		if plane in routed:
