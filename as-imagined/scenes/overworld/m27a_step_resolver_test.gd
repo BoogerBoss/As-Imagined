@@ -70,8 +70,9 @@ const MAP_DATA_ASSERTIONS := 8
 ## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
 ## Then section AX (the M27M Part C split-atlas coverage proof, 5) and
-## section AY (M27M4 painted-tile sync, 14) and AZ (M27M3 brush, 9).
-const EXPECTED_TOTAL := 576
+## section AY (M27M4 painted-tile sync, 14), AZ (M27M3 brush, 9) and
+## BA (M27M5 authored map + edge link, 9).
+const EXPECTED_TOTAL := 585
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -262,6 +263,7 @@ func _ready() -> void:
 	_test_part_c_atlas_split()
 	_test_m27m4_painted_sync()
 	_test_m27m3_metatile_brush()
+	_test_m27m5_authored_map()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4218,6 +4220,78 @@ func _test_m27m4_painted_sync() -> void:
 			and not md.needs_review(probe.x, probe.y))
 
 	root.free()
+
+
+## [M27M5] A map this project authored, and its edge link to an imported one.
+func _test_m27m5_authored_map() -> void:
+	# ⚠️ The namespace claim, asserted rather than assumed: the whole reason a
+	# `MAP_AUTHORED_` prefix is safe is that the reference uses none.
+	var clash := false
+	for k in MapConstants.NAME_BY_CONSTANT:
+		if str(k).begins_with("MAP_AUTHORED_"):
+			clash = true
+	_chk("BA.01 no reference constant uses the MAP_AUTHORED_ prefix", not clash)
+
+	# ⚠️ The generated table must DELEGATE, not contain it. If a future
+	# regeneration inlined authored maps into map_constants.gd they would be
+	# erased by the run after that — the metatile_behavior.gd failure exactly.
+	_chk("BA.02 an authored constant resolves through MapConstants but is NOT "
+			+ "in its generated table",
+			MapConstants.map_name_for("MAP_AUTHORED_XANADU_NURSERY") == "XanaduNursery"
+			and not MapConstants.NAME_BY_CONSTANT.has("MAP_AUTHORED_XANADU_NURSERY"))
+	_chk("BA.03 an unknown constant still answers empty, not a stray name",
+			MapConstants.map_name_for("MAP_AUTHORED_NO_SUCH_MAP") == "")
+
+	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres") \
+			or not ResourceLoader.exists("res://scenes/maps/Route2_Frlg_data.tres"):
+		_gated += 6
+		return
+	var xd := load("res://scenes/maps/XanaduNursery_data.tres") as MapData
+	var r2 := load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
+
+	_chk("BA.04 the authored map is baked and reachable by its constant",
+			MapConstants.is_baked("MAP_AUTHORED_XANADU_NURSERY")
+			and xd.width == 20 and xd.height == 18)
+
+	# ⚠️ Every cell AUTHORED is what makes the baker's re-import guard protect
+	# it — a map it would otherwise happily overwrite.
+	var all_authored := true
+	for i in range(xd.metatile.size()):
+		if xd.provenance[i] != MapData.Provenance.AUTHORED:
+			all_authored = false
+	_chk("BA.05 every cell is AUTHORED, so a re-bake cannot silently claim it",
+			all_authored and xd.has_authored_cells())
+
+	# The reciprocal pair. A link recorded on one side only loads one way, and
+	# walking back would drop the player into an unloaded chunk.
+	var west := {}
+	for c in r2.connections:
+		if str(c.get("map", "")) == "MAP_AUTHORED_XANADU_NURSERY":
+			west = c
+	var east := {}
+	for c in xd.connections:
+		if str(c.get("map", "")) == "MAP_ROUTE2":
+			east = c
+	_chk("BA.06 Route 2 links WEST to it and it links EAST back, offsets agreeing",
+			int(west.get("direction", -1)) == MapData.Connection.WEST
+			and int(east.get("direction", -1)) == MapData.Connection.EAST
+			and int(west.get("offset", 99)) == -int(east.get("offset", 99)))
+
+	# ⚠️ The geometry, computed through the real placement rule rather than
+	# eyeballed: the authored map's EAST column must land exactly one cell west
+	# of Route 2's own x=0, or the two render adjacent and do not join.
+	var origin := MapManager.neighbour_origin(Vector2i.ZERO, r2, west, xd)
+	_chk("BA.07 its east edge sits directly against Route 2's west edge",
+			origin == Vector2i(-xd.width, 0)
+			and origin.x + xd.width - 1 == -1)
+
+	# The doorway is on the authored side already; Route 2's wall is not cut,
+	# which is a deliberate hand-off, not an oversight.
+	_chk("BA.08 the seam rows are walkable on the authored side",
+			xd.collision_at(19, 4) == 0 and xd.collision_at(19, 5) == 0
+			and xd.elevation_at(19, 4) == 3)
+	_chk("BA.09 ...and its wall is still solid away from the seam",
+			xd.collision_at(19, 0) == 1 and xd.collision_at(0, 9) == 1)
 
 
 ## [M27M3] The metatile brush.

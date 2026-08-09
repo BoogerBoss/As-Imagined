@@ -98,44 +98,9 @@ func _bake(map_name: String) -> bool:
 	if ts == null:
 		return false
 
-	var root := Node2D.new()
-	root.name = map_name
-
-	var layers: Array[TileMapLayer] = []
-	for nm in ["Ground", "Objects"]:
-		layers.append(_add_layer(root, nm, ts))
-
-	# Entity strata, ordered by source's own sElevationToPriority: lower value
-	# draws on top. Priority-2 entities (elevation 0/1/3/5) sit BELOW the
-	# overhang plane; priority-1 entities (elevation 4) sit ABOVE it. This is
-	# why the split cannot be a simple "upper vs lower" — elevation 5 returns
-	# to ground priority.
-	var ent_low := Node2D.new()
-	ent_low.name = "Entities_P2"
-	ent_low.y_sort_enabled = true
-	root.add_child(ent_low)
-
-	layers.append(_add_layer(root, "Overhangs", ts))
-
-	var ent_high := Node2D.new()
-	ent_high.name = "Entities_P1"
-	ent_high.y_sort_enabled = true
-	root.add_child(ent_high)
-
-	# paint
-	for i in range(src.metatile.size()):
-		var mid: int = src.metatile[i]
-		var cell := Vector2i(i % src.width, int(i / src.width))
-		# [M27M Part C] Both the coord and the SOURCE now depend on the id, so
-		# both come from AtlasLayout rather than being derived here — see its
-		# header for why a second copy of this rule is specifically dangerous.
-		var coords := AtlasLayout.coords(mid)
-		var lt: int = src.layer_type[i]
-		if not ROUTING.has(lt):
-			continue
-		for pair in ROUTING[lt]:
-			var plane: int = pair[1]
-			layers[plane].set_cell(cell, AtlasLayout.source_id(plane, mid), coords)
+	var root := build_map_scene(src, ts, map_name)
+	var ent_low := root.get_node("Entities_P2") as Node2D
+	var ent_high := root.get_node("Entities_P1") as Node2D
 
 	_emit_events(root, map_name, ent_low, ent_high)
 
@@ -649,11 +614,58 @@ func _node_name(e: Dictionary, node: OverworldEntity) -> String:
 
 
 func _add_layer(root: Node2D, nm: String, ts: TileSet) -> TileMapLayer:
+	return _add_layer_static(root, nm, ts)
+
+
+static func _add_layer_static(root: Node2D, nm: String, ts: TileSet) -> TileMapLayer:
 	var l := TileMapLayer.new()
 	l.name = nm
 	l.tile_set = ts
 	root.add_child(l)
 	return l
+
+
+## Build a map's node tree and paint its tiles. NO events — those are the
+## caller's, because only a baked map has an events array to emit.
+##
+## ⚠️ **EXTRACTED SO M27M5 CAN AUTHOR A MAP WITHOUT A SECOND COPY OF THIS.**
+## The five-node layout is not decoration: `MapManager` finds planes by NAME,
+## `z_index` comes from `PLANE_Z`, and the two entity strata straddle the
+## overhang plane because source's own `sElevationToPriority` puts elevation-4
+## entities above it and everything else below. A hand-authored map that got
+## any of that subtly wrong would load, render, and misorder its sprites — so
+## there is exactly one builder and both callers use it.
+static func build_map_scene(src: MapData, ts: TileSet, map_name: String) -> Node2D:
+	var root := Node2D.new()
+	root.name = map_name
+
+	var layers: Array[TileMapLayer] = []
+	for nm in ["Ground", "Objects"]:
+		layers.append(_add_layer_static(root, nm, ts))
+
+	var ent_low := Node2D.new()
+	ent_low.name = "Entities_P2"
+	ent_low.y_sort_enabled = true
+	root.add_child(ent_low)
+
+	layers.append(_add_layer_static(root, "Overhangs", ts))
+
+	var ent_high := Node2D.new()
+	ent_high.name = "Entities_P1"
+	ent_high.y_sort_enabled = true
+	root.add_child(ent_high)
+
+	for i in range(src.metatile.size()):
+		var mid: int = src.metatile[i]
+		var cell := Vector2i(i % src.width, int(i / src.width))
+		var coords := AtlasLayout.coords(mid)
+		var lt: int = src.layer_type[i] if i < src.layer_type.size() else -1
+		if not ROUTING.has(lt):
+			continue
+		for pair in ROUTING[lt]:
+			var plane: int = pair[1]
+			layers[plane].set_cell(cell, AtlasLayout.source_id(plane, mid), coords)
+	return root
 
 
 ## One TileSet, three atlas sources, shared per tileset PAIR — 421 Kanto maps

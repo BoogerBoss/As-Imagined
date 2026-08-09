@@ -955,8 +955,14 @@ const NAME_BY_CONSTANT := {
 
 ## Empty when source defines no such constant — which is an IMPORTER
 ## bug, not a missing bake. Callers must keep the two apart.
+## ⚠️ Falls back to AuthoredMaps, which is HAND-OWNED and lives in its
+## own file. Maps this project invents have no MAP_* constant in the
+## reference, so without this every connection and warp to one would
+## resolve to "" and be silently dropped. Do NOT add authored maps to
+## the table above -- this file is regenerated and would erase them.
 static func map_name_for(map_constant: String) -> String:
-	return NAME_BY_CONSTANT.get(map_constant, "")
+	var n: String = NAME_BY_CONSTANT.get(map_constant, "")
+	return n if n != "" else AuthoredMaps.map_name_for(map_constant)
 
 
 ## Path the baker WOULD write for this destination. Empty for an

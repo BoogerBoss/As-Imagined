@@ -174,6 +174,30 @@ def main():
     if missing:
         raise SystemExit("check_bake_diff: no baked scene for %s" % ", ".join(missing))
 
+    # [M27M5] AUTHORED maps have no importer input, so "would a re-bake lose
+    # anything" is not a question that applies to them -- there is nothing to
+    # re-bake FROM.
+    #
+    # This is not cosmetic. Before this split the baker simply failed on such a
+    # map, left the tracked scene untouched, and the diff found no drift -- so
+    # an authored map was reported REPRODUCIBLE, which is the opposite of true
+    # and exactly the kind of silently-passing guard this tool exists to be.
+    # They are still uid-checked, because a missing uid is a real defect for
+    # any scene however it was made.
+    authored = [n for n in names if not os.path.exists(
+        os.path.join(PROJECT, "assets", "maps", n + ".json"))]
+    names = [n for n in names if n not in authored]
+    if authored:
+        print("check_bake_diff: %d authored map(s) skipped — no importer input, "
+              "so not reproducible BY DESIGN: %s" % (len(authored), ", ".join(authored)))
+    if not names:
+        missing_uid = check_uids(authored)
+        if missing_uid:
+            print("check_bake_diff: authored scene(s) carry NO uid: %s"
+                  % ", ".join(missing_uid))
+            return 1
+        return 0
+
     stash = tempfile.mkdtemp(prefix="bakecheck_")
     try:
         before = {}
@@ -198,7 +222,7 @@ def main():
             if os.path.exists(stashed_data):
                 shutil.copy(stashed_data, data_path(n))
 
-        missing_uid = check_uids(names)
+        missing_uid = check_uids(names + authored)
         if missing_uid:
             print("check_bake_diff: %d scene(s) carry NO uid — invisible to the "
                   "editor's resource pickers:" % len(missing_uid))
