@@ -69,7 +69,7 @@ const MAP_DATA_ASSERTIONS := 8
 ## [M27Q Q4] 525 -> 536 -> 541. Section AU (NameUsage: the name-collision
 ## checker, 11) and section AV (the overlay toggle cannot bake into a map, 5).
 ## Both read off real runs — `536 + 0 gated == 525`, then `541 + 0 gated == 536`.
-const EXPECTED_TOTAL := 541
+const EXPECTED_TOTAL := 548
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -250,6 +250,7 @@ func _ready() -> void:
 	_test_write_half()
 	_test_author_save_reload()
 	_test_undo_symmetry()
+	_test_m27m1_behaviour_table()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -3914,3 +3915,79 @@ func _test_overlay_toggle_never_bakes() -> void:
 	DirAccess.remove_absolute(
 			ProjectSettings.globalize_path("user://_m27a_overlay_bake_check.tscn"))
 	root.free()
+
+
+## --- AW. [M27M1] The per-pair behaviour table -----------------------------
+##
+## The default a painted tile brings with it. Per-TILE, not per-cell, because
+## behaviour has 0% placement variance while collision and elevation vary 52%
+## — so behaviour belongs to the tile and those two belong to the square.
+func _test_m27m1_behaviour_table() -> void:
+	var pair := "general_frlg__pallet_town_frlg"
+	if not FileAccess.file_exists(
+			"res://assets/map_atlases/%s_behaviors.json" % pair):
+		_gated += 7
+		return
+
+	# MB_TALL_GRASS is 2 and MB_NORMAL is 0 — a pair chosen because they are the
+	# two most common values in the corridor (88.8% / 7.0%), so a table that
+	# resolved everything to one of them would still look plausible.
+	_chk("AW.01 a real pair resolves SOME metatile to tall grass",
+			_any_metatile_with(pair, MetatileBehavior.MB_TALL_GRASS))
+
+	# ⚠️ THE POINT OF THE WHOLE TIER: ids the maps never place still resolve.
+	# The per-cell arrays cannot answer for these, and they are exactly the
+	# tiles authoring reaches for.
+	var placed := {}
+	var md := load("res://scenes/maps/PalletTown_Frlg_data.tres") as MapData
+	if md == null:
+		_gated += 6
+		return
+	for m in md.metatile:
+		placed[m] = true
+	var unplaced_ok := 0
+	for mid in 640:
+		if not placed.has(mid) and MapManager.behavior_for(pair, mid) >= 0:
+			unplaced_ok += 1
+	_chk("AW.02 metatiles NO map in this pair places still resolve (%d of them)"
+			% unplaced_ok, unplaced_ok > 100)
+
+	# ⚠️ -1 IS "UNKNOWN", NEVER MB_NORMAL. MB_NORMAL is 0 and is 62.3% of the
+	# region, so collapsing the two would make a missing table look like a
+	# perfectly ordinary map — the silent-failure shape this project keeps
+	# paying for.
+	_chk("AW.03 an unknown PAIR answers -1, not 0",
+			MapManager.behavior_for("no_such_pair__at_all", 5) == -1)
+	_chk("AW.04 a negative id answers -1", MapManager.behavior_for(pair, -1) == -1)
+
+	# ⚠️ A REAL EDGE CASE, found by measuring rather than predicted: the atlas is
+	# padded to whole rows of 32, so a pair whose metatile count is not a
+	# multiple of 32 has trailing atlas cells with NO metatile behind them.
+	# `building_frlg__viridian_gym_frlg` is 724 metatiles in a 736-cell atlas.
+	# Those 12 must answer -1 rather than a stale or defaulted value.
+	var gym := "building_frlg__viridian_gym_frlg"
+	if FileAccess.file_exists("res://assets/map_atlases/%s_behaviors.json" % gym):
+		_chk("AW.05 the last real metatile of a row-padded pair resolves",
+				MapManager.behavior_for(gym, 723) >= 0)
+		_chk("AW.06 ...and the atlas PADDING past it answers -1, not a value",
+				MapManager.behavior_for(gym, 730) == -1)
+	else:
+		_gated += 2
+
+	# The sidecar must agree with what the importer already wrote per cell —
+	# they come from one `ts.behavior(mid)` and a divergence would mean two
+	# hand-kept copies of the same rule, which is the drift this project has
+	# already paid for once with check_bake_diff.
+	var mismatches := 0
+	for i in md.metatile.size():
+		if MapManager.behavior_for(md.atlas, md.metatile[i]) != md.behavior[i]:
+			mismatches += 1
+	_chk("AW.07 the table agrees with every imported cell of a real map (%d cells)"
+			% md.metatile.size(), mismatches == 0)
+
+
+func _any_metatile_with(pair: String, behaviour: int) -> bool:
+	for mid in 1024:
+		if MapManager.behavior_for(pair, mid) == behaviour:
+			return true
+	return false

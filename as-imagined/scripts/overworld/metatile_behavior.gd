@@ -247,66 +247,6 @@ const MB_DOWN_LEFT_STAIR_WARP := 238
 const MB_ROCK_CLIMB := 239
 
 ## id -> MB_* name. Generated with the constants above; see StepResolver.is_untagged_behavior().
-
-## [M27E E1] The behaviours you can SURF on — source's own `TILE_FLAG_SURFABLE`
-## set, extracted verbatim from `sTileBitAttributes` (`metatile_behavior.c:25+`)
-## rather than reasoned from the names.
-##
-## ⚠️ **`MB_SHALLOW_WATER` IS DELIBERATELY ABSENT, AND IT LOOKS LIKE AN OMISSION.**
-## It is water you WADE through on foot — source does not flag it surfable, so
-## adding it "for consistency" would let the player mount a blob in a puddle and,
-## worse, make 747 already-walkable cells across 16 Kanto maps stop working on
-## foot the moment the surfing rule treats non-surfable tiles as exits.
-##
-## Of these 18, **Kanto uses 8**: OCEAN_WATER (31,501 cells), FAST_WATER (2,831),
-## POND_WATER (635), WATERFALL (80), NORTHWARD/SOUTHWARD/EASTWARD_CURRENT (229
-## between them) and CYCLING_ROAD_WATER (751). The other 10 are Hoenn's, and
-## `MB_DEEP_WATER`/`MB_NO_SURFACING`/`MB_SEAWEED*` are the ones M27E measured at
-## zero — the same absence that makes Dive siteless here.
-const SURFABLE := [
-	MB_POND_WATER, MB_INTERIOR_DEEP_WATER, MB_DEEP_WATER, MB_WATERFALL,
-	MB_SOOTOPOLIS_DEEP_WATER, MB_OCEAN_WATER, MB_NO_SURFACING, MB_SEAWEED,
-	MB_SEAWEED_NO_SURFACING, MB_EASTWARD_CURRENT, MB_WESTWARD_CURRENT,
-	MB_NORTHWARD_CURRENT, MB_SOUTHWARD_CURRENT, MB_WATER_DOOR,
-	MB_WATER_SOUTH_ARROW_WARP, MB_FAST_WATER, MB_CYCLING_ROAD_WATER,
-]
-
-
-## Source: `MetatileBehavior_IsSurfableWaterOrUnderwater`.
-static func is_surfable(behavior: int) -> bool:
-	return behavior in SURFABLE
-
-
-## [M27E E2] Tiles you cannot RUN on — source's `MetatileBehavior_IsRunningDisallowed`
-## (`metatile_behavior.c`), which is 3 named behaviours plus the Pacifidlog logs.
-##
-## ⚠️ **THE MAP-HEADER HALF OF SOURCE'S GATE IS DEAD AT THIS PROJECT'S CONFIG AND
-## IS DELIBERATELY NOT MODELLED.** `IsRunningDisallowed` (`bike.c:1370`) is
-## `(OW_RUNNING_INDOORS == GEN_3 && !gMapHeader.allowRunning) || <this>`, and
-## `OW_RUNNING_INDOORS` is **GEN_LATEST** (`include/config/overworld.h:5`, whose
-## own comment reads "In Gen4+, players are allowed to run indoors") — so that
-## first clause can never be true and running indoors is simply allowed. Worth
-## stating plainly because the obvious reading is that a per-map `allowRunning`
-## flag has to be imported: it does not, and `gen_map_import.py` needed no change.
-##
-## Long grass is the one entry that reads like an oversight and is not — source
-## really does stop you running through it, and `MB_LONG_GRASS_SOUTH_EDGE` is a
-## SEPARATE behaviour that is NOT listed, so the edge tile stays runnable.
-static func is_running_disallowed(behavior: int) -> bool:
-	return behavior == MB_NO_RUNNING \
-			or behavior == MB_LONG_GRASS \
-			or behavior == MB_HOT_SPRINGS \
-			or is_pacifidlog_log(behavior)
-
-
-## Source: `MetatileBehavior_IsPacifidlogLog` — all four log halves.
-static func is_pacifidlog_log(behavior: int) -> bool:
-	return behavior == MB_PACIFIDLOG_VERTICAL_LOG_TOP \
-			or behavior == MB_PACIFIDLOG_VERTICAL_LOG_BOTTOM \
-			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_LEFT \
-			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_RIGHT
-
-
 const NAME_BY_ID := {
 	0: "MB_NORMAL",
 	1: "MB_SECRET_BASE_WALL",
@@ -549,6 +489,64 @@ const NAME_BY_ID := {
 	238: "MB_DOWN_LEFT_STAIR_WARP",
 	239: "MB_ROCK_CLIMB",
 }
+
+## [M27E E1] The behaviours you can SURF on — source's own `TILE_FLAG_SURFABLE`
+## set, extracted verbatim from `sTileBitAttributes` (`metatile_behavior.c:25+`)
+## rather than reasoned from the names.
+##
+## ⚠️ **`MB_SHALLOW_WATER` IS DELIBERATELY ABSENT, AND IT LOOKS LIKE AN OMISSION.**
+## It is water you WADE through on foot — source does not flag it surfable, so
+## adding it "for consistency" would let the player mount a blob in a puddle and,
+## worse, make 747 already-walkable cells across 16 Kanto maps stop working on
+## foot the moment the surfing rule treats non-surfable tiles as exits.
+##
+## Of these 18, **Kanto uses 8**: OCEAN_WATER (31,501 cells), FAST_WATER (2,831),
+## POND_WATER (635), WATERFALL (80), NORTHWARD/SOUTHWARD/EASTWARD_CURRENT (229
+## between them) and CYCLING_ROAD_WATER (751). The other 10 are Hoenn's, and
+## `MB_DEEP_WATER`/`MB_NO_SURFACING`/`MB_SEAWEED*` are the ones M27E measured at
+## zero — the same absence that makes Dive siteless here.
+const SURFABLE := [
+	MB_POND_WATER, MB_INTERIOR_DEEP_WATER, MB_DEEP_WATER, MB_WATERFALL,
+	MB_SOOTOPOLIS_DEEP_WATER, MB_OCEAN_WATER, MB_NO_SURFACING, MB_SEAWEED,
+	MB_SEAWEED_NO_SURFACING, MB_EASTWARD_CURRENT, MB_WESTWARD_CURRENT,
+	MB_NORTHWARD_CURRENT, MB_SOUTHWARD_CURRENT, MB_WATER_DOOR,
+	MB_WATER_SOUTH_ARROW_WARP, MB_FAST_WATER, MB_CYCLING_ROAD_WATER,
+]
+
+
+## Source: `MetatileBehavior_IsSurfableWaterOrUnderwater`.
+static func is_surfable(behavior: int) -> bool:
+	return behavior in SURFABLE
+
+
+## [M27E E2] Tiles you cannot RUN on — source's `MetatileBehavior_IsRunningDisallowed`
+## (`metatile_behavior.c`), which is 3 named behaviours plus the Pacifidlog logs.
+##
+## ⚠️ **THE MAP-HEADER HALF OF SOURCE'S GATE IS DEAD AT THIS PROJECT'S CONFIG AND
+## IS DELIBERATELY NOT MODELLED.** `IsRunningDisallowed` (`bike.c:1370`) is
+## `(OW_RUNNING_INDOORS == GEN_3 && !gMapHeader.allowRunning) || <this>`, and
+## `OW_RUNNING_INDOORS` is **GEN_LATEST** (`include/config/overworld.h:5`, whose
+## own comment reads "In Gen4+, players are allowed to run indoors") — so that
+## first clause can never be true and running indoors is simply allowed. Worth
+## stating plainly because the obvious reading is that a per-map `allowRunning`
+## flag has to be imported: it does not, and `gen_map_import.py` needed no change.
+##
+## Long grass is the one entry that reads like an oversight and is not — source
+## really does stop you running through it, and `MB_LONG_GRASS_SOUTH_EDGE` is a
+## SEPARATE behaviour that is NOT listed, so the edge tile stays runnable.
+static func is_running_disallowed(behavior: int) -> bool:
+	return behavior == MB_NO_RUNNING \
+			or behavior == MB_LONG_GRASS \
+			or behavior == MB_HOT_SPRINGS \
+			or is_pacifidlog_log(behavior)
+
+
+## Source: `MetatileBehavior_IsPacifidlogLog` — all four log halves.
+static func is_pacifidlog_log(behavior: int) -> bool:
+	return behavior == MB_PACIFIDLOG_VERTICAL_LOG_TOP \
+			or behavior == MB_PACIFIDLOG_VERTICAL_LOG_BOTTOM \
+			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_LEFT \
+			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_RIGHT
 
 # §1.7 — directional blocking is TWO-SIDED: the exit rule is applied to
 # the tile being left, the entry rule to the tile being entered, and the

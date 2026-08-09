@@ -304,6 +304,30 @@ texture is shared. That is M27M-T's job, and `[M27D perf]` already measured why
 it matters more: *"PNG decode is not the dominant term — tile construction
 is."* So **M27M-T is the load-time win and Part C is the size/memory win.**
 
+### ⚠️ Correction: this option was already evaluated and REJECTED
+
+`docs/m27m_trimmed_tileset_recon.md` §2 (2026-07-30) considered the
+primary/secondary split and turned it down: *"worth 6.8x on paper, but needs a
+re-key of `source_id`, a re-bake of all 421 maps, and a new atlas layout.
+Trimming is worth 4.0x with no re-bake at all."*
+
+**Part C was re-proposed today without reading that recon first** — a Step 0
+miss, recorded rather than quietly dropped. Two things have changed since and
+both favour Part C:
+
+- **"A re-bake of all 421 maps" describes a world that does not exist.** Only
+  **32** are baked and all 32 are reproducible (verified 2026-08-09), so the
+  headline objection costs a fraction of what it assumed.
+- The recon's own figure is **6.8x**, better than the 3.7-4.6x measured here.
+
+The recon's real advantage over Part C stands and should not be forgotten:
+**trimming needs no re-bake at all**, because M27M2 made the TileSet an
+`ext_resource`.
+
+**Rob's call, 2026-08-09: Part C is IN. Trimming (M27M-T) is revisited at the
+END of M27 work** — which also resolves the §5.3 authoring conflict cleanly,
+since by then the authoring shape will be settled rather than speculative.
+
 ### Recommendation
 
 **Worth doing, and worth doing before Part B** — but it is a *storage format*

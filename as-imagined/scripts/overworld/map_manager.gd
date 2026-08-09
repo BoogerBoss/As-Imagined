@@ -812,20 +812,62 @@ const ATLAS_JSON_DIR := "res://assets/map_atlases/"
 ## and today that is a single tileset pair across the whole corridor.
 static var _layer_types: Dictionary = {}
 
+## [M27M1] The same, for `<pair>_behaviors.json`. Separate cache rather than one
+## dictionary of dictionaries: the two are read by different callers at
+## different times (`set_metatile` needs routing, authoring needs meaning) and
+## neither should pay for the other's file.
+static var _behaviors: Dictionary = {}
+
 
 ## The layer_type (0 NORMAL / 1 COVERED / 2 SPLIT) of `metatile_id` within
 ## `pair`'s own atlas, or -1 if the pair's table hasn't been generated (an
 ## unregenerated checkout) or the id is out of range.
 static func _layer_type_for(pair: String, metatile_id: int) -> int:
-	if not _layer_types.has(pair):
+	return _table_lookup(_layer_types, "_layer_types.json", pair, metatile_id)
+
+
+## [M27M1] The metatile BEHAVIOUR (an `MB_*` id — see `MetatileBehavior`) of
+## `metatile_id` within `pair`'s own atlas, or **-1** when the table has not been
+## generated or the id is out of range.
+##
+## ⚠️ **THIS IS THE DEFAULT A PAINTED TILE BRINGS WITH IT, and it is per-TILE
+## rather than per-CELL on purpose.** Behaviour has **0% placement variance**
+## (measured across all 421 maps: 11,031 distinct (atlas, metatile) pairs, zero
+## conflicts), unlike collision and elevation which vary by placement 52.0% and
+## 52.1% of the time and so genuinely belong to the square rather than the tile.
+##
+## That difference is why `author_cell_with_defaults` seeds collision/elevation
+## from the NEAREST NEIGHBOUR and must seed behaviour from HERE instead —
+## inheriting a neighbour's behaviour would give a newly painted grass tile the
+## `MB_NORMAL` of the path beside it, which is wrong in exactly the case
+## authoring cares about.
+##
+## ⚠️ **-1 IS "UNKNOWN", NEVER "MB_NORMAL".** `MB_NORMAL` is 0 and is 62.3% of
+## the region, so collapsing the two would make a missing table look like a
+## perfectly ordinary map — the silent-failure shape this project keeps paying
+## for. A caller that cannot get an answer must be able to tell.
+static func behavior_for(pair: String, metatile_id: int) -> int:
+	return _table_lookup(_behaviors, "_behaviors.json", pair, metatile_id)
+
+
+## Shared body for both per-pair sidecar tables. Extracted rather than copied:
+## `[M27M-T]` §5.4 already records that this project has TWO hand-kept copies of
+## the routing rule and should not grow a third of anything — the same argument
+## applies to the lookup itself.
+##
+## Loaded lazily and cached per pair, including the EMPTY result: a missing file
+## is a stable answer, not something to retry on every cell of a paint stroke.
+static func _table_lookup(cache: Dictionary, suffix: String, pair: String,
+		metatile_id: int) -> int:
+	if not cache.has(pair):
 		var arr: Array = []
-		var f := FileAccess.open(ATLAS_JSON_DIR + pair + "_layer_types.json", FileAccess.READ)
+		var f := FileAccess.open(ATLAS_JSON_DIR + pair + suffix, FileAccess.READ)
 		if f != null:
 			var parsed = JSON.parse_string(f.get_as_text())
 			if parsed is Array:
 				arr = parsed
-		_layer_types[pair] = arr
-	var table: Array = _layer_types[pair]
+		cache[pair] = arr
+	var table: Array = cache[pair]
 	if metatile_id < 0 or metatile_id >= table.size():
 		return -1
 	return int(table[metatile_id])
