@@ -157,7 +157,26 @@ the imported cells cannot disagree — 11,031 real comparisons available.
 
 ---
 
-## 4. Part B — the brush (M27M6, widened)
+## 4. Part B — the behaviour OVERRIDE (absorbs M27M6)
+
+⚠️ **RE-SCOPED 2026-08-09, Rob's call: *"I don't need the picker if I have the
+sync button and then later have a behavior overwrite ability."*** Two changes
+to what follows, and the section is kept because its mechanism is unchanged —
+only its PURPOSE and its urgency moved.
+
+**No metatile picker will be built.** Godot's own tile palette is already a
+visual picker, and `Sync Painted Tiles` (M27M4) makes what you paint with it
+real. M27M6 therefore keeps only its narrow half — a named dropdown for
+choosing a BEHAVIOUR — and merges here, because a dropdown with nothing to
+paint into and a brush that takes raw ints are each useless alone.
+
+**And this is an OVERRIDE, not an authoring path.** Behaviour follows the
+metatile automatically and is correct by construction for every Kanto tile, so
+this is the escape hatch for when the derived answer is wrong — and the only
+way to tag behaviour at all on M27M7's new art, which has no sidecar entry.
+Smaller than "the behaviour brush" sounds, and the reason it now sits after
+`pokemart`.
+
 
 ### Deliverable
 
