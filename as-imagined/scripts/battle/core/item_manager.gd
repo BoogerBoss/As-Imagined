@@ -1388,12 +1388,33 @@ static func bag_item_cure_status(target: BattlePokemon, item: ItemData) -> bool:
 	if item == null or item.battle_usage != BATTLE_USE_CURE_STATUS:
 		return false
 	var cured := false
-	if target.status != BattlePokemon.STATUS_NONE:
-		target.status = BattlePokemon.STATUS_NONE
-		cured = true
-	if target.confusion_turns > 0:
-		target.confusion_turns = 0
-		cured = true
+	# [M27I I6b] -1 = cures everything, which is Full Heal and the default, so
+	# nothing that predates this field changes behaviour.
+	#
+	# ⚠️ **A NARROW HEAL MUST NOT TOUCH CONFUSION.** Source clears status2 only
+	# on the cure-all path; Antidote and friends resolve to a single STATUS1
+	# mask via GetItemStatus1Mask and leave confusion alone. Clearing it here
+	# would quietly make every 200-cost status heal a partial Full Heal.
+	if item.cures_status < 0:
+		if target.status != BattlePokemon.STATUS_NONE:
+			target.status = BattlePokemon.STATUS_NONE
+			cured = true
+		if target.confusion_turns > 0:
+			target.confusion_turns = 0
+			cured = true
+	else:
+		# ⚠️ POISON COVERS TOXIC. Source's ITEM3_POISON is
+		# `STATUS1_PSN_ANY | STATUS1_TOXIC_COUNTER`, so an Antidote cures badly
+		# poisoned as well as poisoned — and must reset the escalation counter,
+		# or a re-poisoned Pokemon resumes mid-ramp.
+		var hit := target.status == item.cures_status
+		if item.cures_status == BattlePokemon.STATUS_POISON \
+				and target.status == BattlePokemon.STATUS_TOXIC:
+			hit = true
+		if hit:
+			target.status = BattlePokemon.STATUS_NONE
+			target.toxic_counter = 0
+			cured = true
 	if target.infatuated_by != null:
 		target.infatuated_by = null
 		cured = true

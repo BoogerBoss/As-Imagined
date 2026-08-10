@@ -64,6 +64,7 @@ POCKET_BERRIES = 3
 # ItemData.pocket's own schema default, so this is set explicitly below
 # for documentation/intent, not because leaving it unset would be wrong.
 POCKET_ITEMS = 0
+POCKET_KEY_ITEMS = 4
 
 # ── HOLD_EFFECT_* constants (must match scripts/battle/core/item_manager.gd) ──
 HOLD_EFFECT_RESTORE_HP      = 1   # Oran Berry — flat heal (M18b)
@@ -302,6 +303,12 @@ TYPE_FAIRY    = 19
 # reused to carry the TYPE instead (the same deviation [M17n-4] established for
 # HOLD_EFFECT_PLATE's Multitype read, extended uniformly to HOLD_EFFECT_TYPE_POWER
 # too — see item_data.gd and item_manager.gd's own doc comments).
+
+# BattlePokemon.STATUS_* -- mirrored here so a row can name the status it cures.
+STATUS_BURN = 1
+STATUS_PARALYSIS = 3
+STATUS_POISON = 4
+STATUS_SLEEP = 6
 
 ITEMS = [
     # ── Charcoal family (16, Gen II) — HOLD_EFFECT_TYPE_POWER ────────────────
@@ -686,6 +693,33 @@ ITEMS = [
     {"id": 48, "name": "Full Heal", "battle_usage": BATTLE_USE_CURE_STATUS,
         "pocket": POCKET_ITEMS},
 
+    # [M27I I6b] The corridor's two marts stock these. Four are NARROW status
+    # heals -- `cures_status` names the one they cure, where Full Heal above
+    # leaves it at its -1 "everything" default. Without that field they would
+    # every one of them behave like a Full Heal at a fifth of the price.
+    # Source: src/data/items.h, and GetItemStatus1Mask for the mask each maps to.
+    {"id": 43, "name": "Antidote", "battle_usage": BATTLE_USE_CURE_STATUS,
+        "cures_status": STATUS_POISON, "pocket": POCKET_ITEMS},
+    {"id": 44, "name": "Paralyze Heal", "battle_usage": BATTLE_USE_CURE_STATUS,
+        "cures_status": STATUS_PARALYSIS, "pocket": POCKET_ITEMS},
+    {"id": 45, "name": "Burn Heal", "battle_usage": BATTLE_USE_CURE_STATUS,
+        "cures_status": STATUS_BURN, "pocket": POCKET_ITEMS},
+    {"id": 47, "name": "Awakening", "battle_usage": BATTLE_USE_CURE_STATUS,
+        "cures_status": STATUS_SLEEP, "pocket": POCKET_ITEMS},
+    # ⚠️ INERT BY DECISION (Rob, 2026-08-09), not by omission: real price, real
+    # purchase, no effect. Repel needs an encounter-suppression system this
+    # project deliberately does not have (M27H), and Escape Rope needs a field
+    # warp-out. Both carry NO battle_usage, so `[M27I I5-3]`'s derived field
+    # usability offers them no USE action at all -- the player keeps the item
+    # rather than spending it on nothing.
+    {"id": 114, "name": "Repel", "pocket": POCKET_ITEMS},
+    # ⚠️ Escape Rope's price of 0 and KEY_ITEMS pocket are CORRECT, not a gap:
+    # at I_KEY_ESCAPE_ROPE = GEN_LATEST source takes its own `>= GEN_8` branch
+    # (src/data/items.h), whose config comment even predicts the consequence --
+    # "this will make it free to buy in marts". Do not "fix" them.
+    {"id": 120, "name": "Escape Rope", "pocket": POCKET_KEY_ITEMS,
+        "importance": 1},
+
     # X Attack: +2 stages at this project's GEN_LATEST config (X_ITEM_STAGES,
     # B_X_ITEMS_BUFF>=GEN_7 -- see item_manager.gd's own X_ITEM_STAGES
     # constant). stat_boost_stage=STAGE_ATK (0), NOT ev_boost_stat's own
@@ -735,6 +769,7 @@ DEFAULTS = {
     "importance":         0,
     "not_consumed":       False,
     "battle_usage":       0,
+    "cures_status":      -1,   # M27I I6b: -1 = every status (Full Heal)
     "fling_power":        0,
     "price":              0,
     "required_species":   0,  # M18g: species-gated items — 0 = unrestricted
@@ -757,7 +792,7 @@ DEFAULTS = {
 # item-action-queue mechanism's one proof-of-concept item.
 FIELD_ORDER = [
     "hold_effect", "hold_effect_param",
-    "description", "pocket", "importance", "not_consumed", "battle_usage",
+    "description", "pocket", "importance", "not_consumed", "battle_usage", "cures_status",
     "fling_power", "price", "required_species", "required_species2",
     "ev_boost_stat", "stat_boost_stage",
 ]

@@ -311,6 +311,10 @@ matters more now that it is deliberately stocked: as the data stands it is a
 free item on ten shelves. Worth one check against source's own item table
 before I6b, since it is a data correction rather than a design call.
 
+⚠️ **RESOLVED 2026-08-09 — see §8.3: the price and pocket are CORRECT for this
+project's `GEN_LATEST` config and must not be changed. What follows was written
+before that was checked, and its conclusion is retracted.**
+
 ⚠️ **Sell being back in scope gives that price a SECOND consequence, and the
 two point opposite ways.** `Task_ItemContext_Sell` refuses any item whose price
 is 0, so as the data stands Escape Rope is free to buy and impossible to sell —
@@ -387,12 +391,43 @@ Awakening / Burn Heal / Paralyze Heal need a real `CURE_STATUS` usage or they
 will be sold and then refuse to work. Repel and Escape Rope stay **inert by
 decision** (§5) and correctly offer no USE action at all.
 
-### 8.3 ⚠️ Escape Rope is wrong in TWO ways, not one
+### 8.3 ⚠️ RETRACTED — Escape Rope is CORRECT, and "fixing" it would have broken it
 
-§5's open question undersells it. Measured: `price = 0` **and**
-`pocket = key_items`. A key-item pocket makes it unsellable and unstackable as
-well as free. Source has it as an ordinary priced `items`-pocket consumable.
-**Both fields are a data correction in I6b**, before anything stocks it.
+**This section previously claimed `price = 0` and `pocket = key_items` were two
+data gaps to correct in I6b. Both claims are wrong.** Rob flagged it before any
+change was made — *"I think the change might be on purpose"* — and source
+settles it (`src/data/items.h`, `[ITEM_ESCAPE_ROPE]`):
+
+```c
+#if I_KEY_ESCAPE_ROPE >= GEN_8
+    .price = 0,
+    .importance = 1,
+    .pocket = POCKET_KEY_ITEMS,
+#else
+    .price = (I_PRICE >= GEN_7) ? 1000 : 550,
+    .pocket = POCKET_ITEMS,
+#endif
+```
+
+`I_KEY_ESCAPE_ROPE` is `GEN_LATEST`, and `GEN_LATEST` is `GEN_9`
+(`include/config/general.h:73`). So the importer took the `>= GEN_8` branch and
+this project's data is **exactly what its configured generation specifies**.
+
+⚠️ **THE REFERENCE'S OWN CONFIG COMMENT PREDICTS THE CONSEQUENCE THAT LOOKED
+LIKE A BUG**: *"In Gen8, Escape Rope became a Key Item. Keep in mind, this will
+make it free to buy in marts."* Free-in-marts is a documented upstream
+consequence of the chosen generation, not a data gap.
+
+**Nothing to change in I6b.** What it does change is I6c: Escape Rope carries
+`importance`, so the shop must handle it the way source already does — a key
+item the player already holds prints **SOLD OUT** rather than being hidden
+(`shop.c:660, 1024`), and `importance` is one of the two conditions that refuse
+a SELL (§3). Both rules were already scoped; this is simply the corridor's own
+worked example of them, which is useful rather than inconvenient.
+
+**The lesson, recorded because it nearly cost real data:** a value that looks
+wrong in a project tracking `GEN_LATEST` is a config branch until proven
+otherwise. Read the `#if` before calling it a gap.
 
 ---
 
@@ -432,8 +467,8 @@ call is defensible rather than merely allowed:**
   resolves to a NON-EMPTY list. ⚠️ Fail closed on an empty one (§8.1).
   Independently testable with no UI at all.
 - **I6b — the item roster.** Six `gen_items.py` rows, four of them needing a
-  real `CURE_STATUS` usage; the two Escape Rope data fixes (§8.3). Ends with
-  every corridor mart's stock loadable.
+  real `CURE_STATUS` usage. ⚠️ **No Escape Rope data fix — §8.3 retracts it.**
+  Ends with every corridor mart's stock loadable.
 - **I6c — the screen, Buy half.** Generic Godot controls. Clerk menu
   (Buy/Sell/Quit), the stock list, quantity capped by money AND bag space,
   sold-out key items, and the Premier Ball bonus. `WAIT_NATIVE`, no new pause

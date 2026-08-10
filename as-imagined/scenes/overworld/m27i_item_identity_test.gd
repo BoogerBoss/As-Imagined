@@ -6,7 +6,7 @@ extends Node
 ## suite guards the bridge, and specifically the two things that make it more
 ## than a table lookup: ALIAS spellings, and the TM/HM gap in items.json.
 
-const EXPECTED_TOTAL := 30
+const EXPECTED_TOTAL := 38  # +8: F, the I6b mart roster
 
 var _total := 0
 var _failed := 0
@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_tmhm_bridge()
 	_test_identity()
 	_test_corpus_coverage()
+	_test_i6b_mart_roster()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -170,3 +171,84 @@ func _test_corpus_coverage() -> void:
 			no_identity.append(str(c))
 	_chk("E.03 and every one of them has a real identity record (%d without: %s)"
 			% [no_identity.size(), str(no_identity.slice(0, 5))], no_identity.is_empty())
+
+
+## [M27I I6b] The corridor's mart stock, as real items.
+func _test_i6b_mart_roster() -> void:
+	var ids := {}
+	for name in ["ITEM_POKE_BALL", "ITEM_POTION", "ITEM_ANTIDOTE",
+			"ITEM_PARALYZE_HEAL", "ITEM_AWAKENING", "ITEM_BURN_HEAL",
+			"ITEM_ESCAPE_ROPE", "ITEM_REPEL"]:
+		ids[name] = PokemonRegistry.item_id_of(name)
+	var loaded := 0
+	for name in ids:
+		if ResourceLoader.exists("res://data/items/item_%04d.tres" % int(ids[name])):
+			loaded += 1
+	_chk("F.01 all 8 items the corridor's marts stock now have a .tres (%d/8)"
+			% loaded, loaded == 8)
+
+	var anti := ItemRegistry.get_item(int(ids["ITEM_ANTIDOTE"]))
+	var full := ItemRegistry.get_item(PokemonRegistry.item_id_of("ITEM_FULL_HEAL"))
+	# ⚠️ WITHOUT `cures_status` EVERY ONE OF THESE IS A FULL HEAL AT A FIFTH OF
+	# THE PRICE — `bag_item_cure_status` was written for Full Heal and cures
+	# everything. -1 is "all" and is Full Heal's own untouched default.
+	_chk("F.02 the narrow heals name the ONE status they cure; Full Heal does not",
+			anti.cures_status == BattlePokemon.STATUS_POISON
+			and ItemRegistry.get_item(int(ids["ITEM_BURN_HEAL"])).cures_status
+					== BattlePokemon.STATUS_BURN
+			and ItemRegistry.get_item(int(ids["ITEM_AWAKENING"])).cures_status
+					== BattlePokemon.STATUS_SLEEP
+			and full.cures_status == -1)
+
+	var mon := _mon()
+	mon.status = BattlePokemon.STATUS_POISON
+	_chk("F.03 an Antidote cures poison", ItemManager.bag_item_cure_status(mon, anti)
+			and mon.status == BattlePokemon.STATUS_NONE)
+	# ⚠️ The discriminator. A cure-everything implementation passes F.03 too.
+	mon.status = BattlePokemon.STATUS_BURN
+	_chk("F.04 ...and does NOTHING to a burn",
+			not ItemManager.bag_item_cure_status(mon, anti)
+			and mon.status == BattlePokemon.STATUS_BURN)
+
+	# ⚠️ Source's ITEM3_POISON is `STATUS1_PSN_ANY | STATUS1_TOXIC_COUNTER`, so
+	# an Antidote cures badly poisoned too — and must reset the ramp, or a
+	# re-poisoned Pokemon resumes mid-escalation.
+	mon.status = BattlePokemon.STATUS_TOXIC
+	mon.toxic_counter = 4
+	_chk("F.05 an Antidote also cures TOXIC and resets the counter",
+			ItemManager.bag_item_cure_status(mon, anti)
+			and mon.status == BattlePokemon.STATUS_NONE and mon.toxic_counter == 0)
+
+	# ⚠️ A narrow heal must not clear confusion; only the cure-all path does.
+	mon.status = BattlePokemon.STATUS_POISON
+	mon.confusion_turns = 3
+	ItemManager.bag_item_cure_status(mon, anti)
+	var narrow_kept := mon.confusion_turns == 3
+	mon.status = BattlePokemon.STATUS_POISON
+	ItemManager.bag_item_cure_status(mon, full)
+	_chk("F.06 a narrow heal leaves confusion alone; Full Heal clears it",
+			narrow_kept and mon.confusion_turns == 0)
+
+	# Inert BY DECISION: no battle_usage, so I5-3's derived field usability
+	# offers no USE action and the player keeps the item.
+	_chk("F.07 Repel and Escape Rope are stocked but inert",
+			ItemRegistry.get_item(int(ids["ITEM_REPEL"])).battle_usage == 0
+			and ItemRegistry.get_item(int(ids["ITEM_ESCAPE_ROPE"])).battle_usage == 0)
+
+	# ⚠️ REGRESSION GUARD, not a description. Escape Rope's price of 0 and
+	# KEY_ITEMS pocket look like data gaps and are CORRECT: at
+	# I_KEY_ESCAPE_ROPE = GEN_LATEST source takes its own `>= GEN_8` branch,
+	# whose config comment predicts "this will make it free to buy in marts".
+	# A future session must not "fix" them.
+	var rope := ItemRegistry.get_item(int(ids["ITEM_ESCAPE_ROPE"]))
+	_chk("F.08 Escape Rope stays a free KEY ITEM — correct for GEN_LATEST",
+			rope.pocket == ItemManager.POCKET_KEY_ITEMS and rope.importance == 1
+			and int(PokemonRegistry.get_item_identity(
+					int(ids["ITEM_ESCAPE_ROPE"])).get("price", -1)) == 0)
+
+
+func _mon() -> BattlePokemon:
+	var m := BattlePokemon.new()
+	m.max_hp = 50
+	m.current_hp = 50
+	return m

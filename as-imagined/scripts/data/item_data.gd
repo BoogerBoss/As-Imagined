@@ -26,6 +26,19 @@ extends Resource
 @export var importance: int = 0        # 0 = normal, 1 = important, 2 = key item
 @export var not_consumed: bool = false
 @export var battle_usage: int = 0      # BATTLE_USE_* constant id
+
+## [M27I I6b] Which status a CURE_STATUS item actually cures.
+##
+## ⚠️ **-1 MEANS ALL, AND IT IS THE DEFAULT SO FULL HEAL IS UNCHANGED.** Source
+## keeps this as `effect[3]` (`ITEM3_PARALYSIS`, `ITEM3_POISON`, ...) resolved by
+## `GetItemStatus1Mask` into a STATUS1 bitmask; this project stores status as a
+## single enum, so the mask becomes "the one status, or all of them".
+##
+## Without it, `bag_item_cure_status` is a cure-everything written for Full Heal
+## — so an Antidote would cure sleep, a burn and paralysis too. That is the shape
+## of the bug this field exists to prevent, not a hypothetical: four of the six
+## items the corridor's marts stock are narrow status heals.
+@export var cures_status: int = -1
 @export var fling_power: int = 0
 @export var price: int = 0
 
