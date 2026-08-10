@@ -207,6 +207,10 @@ static func register_all(reg: NativeEventRegistry) -> void:
 		var label: String = str(args[0]) if args.size() > 0 else ""
 		var shop = driver.scene()._shop_screen
 		shop.open(MartStock.stock_for(label))
+		# ⚠️ SELL re-enters the BAG and comes back, so the handler cannot simply
+		# await `closed` once: the shop stays open across a sale, and only QUIT
+		# ends it. `driver.scene()` owns the bag hand-off because only it holds
+		# the screens; this waits for the shop itself to finish either way.
 		await shop.closed
 		return null)
 

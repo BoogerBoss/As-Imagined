@@ -18,6 +18,16 @@ extends CanvasLayer
 
 signal closed()
 
+## [M27I I6d] Raised when the clerk's SELL action is chosen.
+##
+## ⚠️ **SELL DOES NOT BUILD A LIST — IT OPENS THE BAG.**
+## `Task_HandleShopMenuSell` hands off to `CB2_GoToSellMenu`, which is one line:
+## `GoToBagMenu(ITEMMENULOCATION_SHOP, POCKETS_COUNT, CB2_ExitSellMenu)`
+## (`item_menu.c:622-624`). So selling is the ordinary bag across ALL pockets in
+## a shop CONTEXT, and `FieldBagScreen` is already that screen. This screen
+## therefore asks for it rather than growing a second list widget.
+signal sell_requested()
+
 const MARGIN := 40
 const ROW_HEIGHT := 22
 
@@ -163,6 +173,22 @@ func cancel() -> void:
 			closed.emit()
 			return
 	_refresh()
+
+
+## [M27I I6d] Sell what the bag context chose. Returns the message to show.
+##
+## ⚠️ A stack of ONE skips the quantity picker entirely (`tQuantity == 1`,
+## `item_menu.c:2189`) — the caller decides that, but the rule lives here so the
+## count is never invented by a screen.
+func sell_from_bag(item_id: int, count: int) -> String:
+	var res := Shop.sell(_bag, _wallet, item_id, count)
+	var name := str(PokemonRegistry.get_item_identity(item_id).get("name", "?"))
+	if not bool(res["ok"]):
+		# Source's own refusal string is confusingly named gText_CantBuyKeyItem
+		# and IS the sell refusal.
+		return "%s can't be sold here." % name
+	_refresh()
+	return "Sold %s x%d for $%d." % [name, count, int(res["earned"])]
 
 
 func _current_item() -> int:

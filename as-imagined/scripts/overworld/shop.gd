@@ -73,6 +73,78 @@ static func premier_bonus(item_id: int, count: int, bag: Bag) -> int:
 	return mini(award, bag.free_space_for(premier))
 
 
+## What a shop pays for one `item_id`. 0 when it will not buy it at all.
+##
+## ⚠️ **A QUARTER, NOT A HALF.** `GetItemSellPrice` is
+## `GetItemPrice(itemId) / ITEM_SELL_FACTOR` (`item.c:965`), and
+## `ITEM_SELL_FACTOR` is `(I_SELL_VALUE_FRACTION >= GEN_9) ? 4 : 2`
+## (`constants/item.h:21`). This project is `GEN_LATEST`, so the factor is **4**.
+## "Half price" is the thing everyone knows and it is wrong here; getting it
+## wrong doubles every sale.
+static func sell_price(item_id: int) -> int:
+	if not can_sell(item_id):
+		return 0
+	var identity := PokemonRegistry.get_item_identity(item_id)
+	return int(int(identity.get("price", 0)) / 4)
+
+
+## ⚠️ **THE REFUSAL TESTS TWO THINGS, AND PRICE IS ONE OF THEM.**
+## `Task_ItemContext_Sell` (`item_menu.c:2179`) refuses on
+## `GetItemPrice(item) == 0 || GetItemImportance(item)`. Note the upstream
+## string is named `gText_CantBuyKeyItem` and is the SELL refusal — do not go
+## looking for a separate one.
+##
+## A price of 0 being unsellable is why Escape Rope needs no special case: at
+## `GEN_LATEST` it is a free key item, so BOTH clauses refuse it.
+static func can_sell(item_id: int) -> bool:
+	var identity := PokemonRegistry.get_item_identity(item_id)
+	if identity.is_empty():
+		return false
+	if int(identity.get("price", 0)) <= 0:
+		return false
+	return not is_key_item(item_id)
+
+
+## The most of `item_id` the player could sell in one go.
+##
+## ⚠️ Capped by `MAX_MONEY / sell_price` — source's own
+## `u32 maxQuantity = MAX_MONEY / GetItemSellPrice(...)` — and by the stack
+## actually held. NOT by bag space; that is the buy side.
+static func max_sellable(item_id: int, bag: Bag) -> int:
+	if bag == null or not can_sell(item_id):
+		return 0
+	var each := sell_price(item_id)
+	if each <= 0:
+		return 0
+	return mini(bag.count_of(item_id), int(Wallet.MAX_MONEY / each))
+
+
+## Sell `count` of `item_id`. Returns
+## `{"ok": bool, "reason": String, "earned": int}`.
+##
+## Order is source's own `SellItem`: remove, then pay. `Bag.remove` is
+## all-or-nothing, so a partial sale cannot bank money for goods still held.
+static func sell(bag: Bag, wallet: Wallet, item_id: int, count: int) -> Dictionary:
+	var res := {"ok": false, "reason": "", "earned": 0}
+	if bag == null or wallet == null or count <= 0:
+		res["reason"] = "nothing to sell"
+		return res
+	if not can_sell(item_id):
+		res["reason"] = "cannot sell that"
+		return res
+	if bag.count_of(item_id) < count:
+		res["reason"] = "you do not have that many"
+		return res
+	if not bag.remove(item_id, count):
+		res["reason"] = "you do not have that many"
+		return res
+	var earned := sell_price(item_id) * count
+	wallet.earn(earned)
+	res["ok"] = true
+	res["earned"] = earned
+	return res
+
+
 ## Buy `count` of `item_id`. Returns
 ## `{"ok": bool, "reason": String, "spent": int, "premier": int}`.
 ##
@@ -111,6 +183,9 @@ static func purchase(bag: Bag, wallet: Wallet, item_id: int, count: int) -> Dict
 	if not bag.has_space(item_id, count):
 		res["reason"] = "no room"
 		return res
+	# ⚠️ Space is checked before the money moves, because `Bag.add` is
+	# all-or-nothing and a purchase that took payment and delivered nothing is
+	# the one failure a shop must never have.
 	# The bonus is computed BEFORE the purchase lands, so its own space check
 	# sees the bag as the player does when deciding — but it is added after, so
 	# a failed purchase never awards one.
@@ -118,7 +193,10 @@ static func purchase(bag: Bag, wallet: Wallet, item_id: int, count: int) -> Dict
 	if not bag.add(item_id, count):
 		res["reason"] = "no room"
 		return res
-	wallet.spend(cost)
+	# `try_spend`, not `spend`: the guarded half of the pair. The affordability
+	# check above already passed, so this cannot fail — using it anyway means a
+	# future edit that removes the check still refuses rather than clamping.
+	wallet.try_spend(cost)
 	if bonus > 0:
 		bag.add(PokemonRegistry.item_id_of("ITEM_PREMIER_BALL"), bonus)
 	res["ok"] = true

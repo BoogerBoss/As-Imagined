@@ -51,6 +51,24 @@ func spend(amount: int) -> void:
 	money = maxi(0, money - amount)
 
 
+## Take money away ONLY if it is all there. Returns false and changes nothing
+## otherwise.
+##
+## ⚠️ **THE SAFE HALF OF A DELIBERATELY SHARP PAIR.** `spend` above clamps and
+## can never fail, which is exactly right for the whiteout payout and exactly
+## wrong for a purchase — a shop calling it unguarded takes every coin the
+## player has AND hands over the goods. That is not a bug in `spend`; it is an
+## API that lets a caller be wrong silently, so the guarded form lives here
+## rather than in each caller's head. New spenders should reach for this one.
+func try_spend(amount: int) -> bool:
+	if amount < 0:
+		return false
+	if not can_afford(amount):
+		return false
+	money -= amount
+	return true
+
+
 ## Add coins. Returns false when already at the cap and nothing changed —
 ## source returns FALSE from `AddCoins` in that one case, before any clamping.
 func add_coins(amount: int) -> bool:

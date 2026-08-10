@@ -2044,6 +2044,8 @@ func _setup_scripting() -> void:
 	_start_menu.save_selected.connect(_on_start_menu_save)
 	_start_menu.pokemon_selected.connect(_on_start_menu_pokemon)
 	_bag_screen.item_use_requested.connect(_on_bag_item_use)
+	# [M27I I6d] SELL opens the bag in a shop context and reports back.
+	_shop_screen.sell_requested.connect(_on_shop_sell_requested)
 	_party_screen.mon_chosen.connect(_on_party_mon_chosen)
 	_party_screen.cancelled.connect(_on_party_cancelled)
 
@@ -2946,3 +2948,28 @@ func _surf_shore_adjacent(gcell: Vector2i) -> bool:
 		if manager.elevation_at(gcell + Vector2i(StepResolver.STEP[d])) == 3:
 			return true
 	return false
+
+
+## [M27I I6d] The clerk's SELL action: open the bag across ALL pockets, in a
+## shop context, exactly as `CB2_GoToSellMenu` does.
+##
+## ⚠️ The shop stays OPEN underneath — leaving the bag returns to the clerk
+## rather than ending the shop, matching `Task_GoToBuyOrSellMenu`'s own
+## "Anything else I can help with?" So the script stays parked on WAIT_NATIVE
+## throughout, and only QUIT releases it.
+var _selling := false
+
+func _on_shop_sell_requested() -> void:
+	_selling = true
+	_bag_screen.open(OverworldSession.bag)
+
+
+func _on_shop_sell_chosen(item_id: int) -> void:
+	if not _selling:
+		return
+	# A stack of one skips the picker; anything more sells one at a time here,
+	# which is the honest shape until a real quantity prompt lands.
+	var msg := _shop_screen.sell_from_bag(item_id, 1)
+	_bag_screen.close()
+	_selling = false
+	_box.open([msg])

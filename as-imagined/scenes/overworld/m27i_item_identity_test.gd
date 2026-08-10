@@ -6,7 +6,7 @@ extends Node
 ## suite guards the bridge, and specifically the two things that make it more
 ## than a table lookup: ALIAS spellings, and the TM/HM gap in items.json.
 
-const EXPECTED_TOTAL := 50  # +8 F (I6b roster), +12 G (I6c shop rules)
+const EXPECTED_TOTAL := 60  # F I6b roster 8, G I6c buy 12, H I6d sell 10
 
 var _total := 0
 var _failed := 0
@@ -28,6 +28,7 @@ func _ready() -> void:
 	_test_corpus_coverage()
 	_test_i6b_mart_roster()
 	_test_i6c_shop_rules()
+	_test_i6d_selling()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -341,3 +342,68 @@ func _test_i6c_shop_rules() -> void:
 	_chk("G.12 ...and is SOLD OUT thereafter, not silently sold twice",
 			str(Shop.purchase(b5, w5, rope, 1)["reason"]) == "sold out"
 			and b5.count_of(rope) == 1)
+
+
+## [M27I I6d] Selling.
+func _test_i6d_selling() -> void:
+	var potion := PokemonRegistry.item_id_of("ITEM_POTION")
+	var rope := PokemonRegistry.item_id_of("ITEM_ESCAPE_ROPE")
+	var ball := PokemonRegistry.item_id_of("ITEM_POKE_BALL")
+
+	# ⚠️ A QUARTER, NOT A HALF. ITEM_SELL_FACTOR is 4 at GEN_9 (this project's
+	# GEN_LATEST); "half price" is the thing everyone knows and would double
+	# every sale.
+	_chk("H.01 the sell price is a QUARTER of the buy price",
+			Shop.sell_price(potion) == 50
+			and int(PokemonRegistry.get_item_identity(potion).get("price", 0)) == 200)
+
+	# ⚠️ The refusal tests TWO things. Escape Rope trips BOTH at GEN_LATEST —
+	# free and a key item — which is why it needs no special case.
+	_chk("H.02 a key item cannot be sold", not Shop.can_sell(rope))
+	# ⚠️ **A DIFFERENT ITEM, BECAUSE ESCAPE ROPE TRIPS BOTH CLAUSES.** The first
+	# draft asserted this on the rope and was vacuous: it is free AND a key
+	# item, so `is_key_item` refused it whether or not the price clause existed
+	# — proved by injection, which deleted the price check and failed nothing.
+	# Master Ball is price 0 and NOT a key item, so only the price clause can
+	# refuse it. A fixture where two rules agree cannot tell them apart.
+	var master := PokemonRegistry.item_id_of("ITEM_MASTER_BALL")
+	_chk("H.03 ...and a price of 0 cannot either, independently of importance",
+			not Shop.is_key_item(master) and not Shop.can_sell(master)
+			and Shop.sell_price(master) == 0)
+	_chk("H.04 an ordinary item can be sold", Shop.can_sell(potion))
+
+	var bag := Bag.new()
+	var w := Wallet.new()
+	bag.add(potion, 5)
+	var r := Shop.sell(bag, w, potion, 3)
+	_chk("H.05 selling removes the items and pays price/4 each",
+			bool(r["ok"]) and bag.count_of(potion) == 2
+			and int(r["earned"]) == 150 and w.money == 150)
+	# ⚠️ All-or-nothing: a partial sale must never bank money for goods still
+	# held, which is why the removal happens before the payment.
+	_chk("H.06 selling more than you hold is refused and changes nothing",
+			not bool(Shop.sell(bag, w, potion, 99)["ok"])
+			and bag.count_of(potion) == 2 and w.money == 150)
+	var b2 := Bag.new()
+	b2.add(rope, 1)
+	_chk("H.07 a key item in the bag still cannot be sold",
+			not bool(Shop.sell(b2, w, rope, 1)["ok"]) and b2.count_of(rope) == 1)
+
+	# ⚠️ The cap is MAX_MONEY / sell_price and the STACK — not bag space, which
+	# is the buy side's cap.
+	var b3 := Bag.new()
+	b3.add(potion, 7)
+	_chk("H.08 the sell cap is the stack you actually hold",
+			Shop.max_sellable(potion, b3) == 7)
+	_chk("H.09 an unsellable item caps at zero",
+			Shop.max_sellable(rope, b3) == 0)
+
+	# --- the try_spend pair, since it answers the clamp question directly
+	var w2 := Wallet.new()
+	w2.earn(100)
+	var refused := not w2.try_spend(500)
+	var kept := w2.money == 100
+	w2.spend(500)
+	_chk("H.10 try_spend REFUSES what spend would clamp — both are correct, "
+			+ "for different callers",
+			refused and kept and w2.money == 0)
