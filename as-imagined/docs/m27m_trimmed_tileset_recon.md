@@ -1,6 +1,72 @@
 # M27M — Trimmed TileSet recon
 
-**Status:** recon only. Nothing implemented. Rev 1, 2026-07-30.
+**Status:** recon only. Nothing implemented. **Rev 2, 2026-08-09** — re-measured
+after Part C. Rev 1's headline numbers are WRONG in three ways and the
+correction makes trimming *more* valuable, not less. §0 is the correction; the
+rest of the document is Rev 1 and its reasoning still holds where the arithmetic
+does not.
+
+---
+
+## 0. Rev 2 — what changed, and what Rev 1 got wrong
+
+### 0.1 ⚠️ Rev 1 multiplied by THREE planes. A metatile routes to exactly TWO.
+
+`ROUTING` is `{NORMAL: [objects, overhangs], COVERED: [ground, objects],
+SPLIT: [ground, overhangs]}` — **always exactly two of three, never three.**
+Rev 1's §2 computed `11,036 definitions x3 planes = 33,108 calls`. The true
+figure, measured across all 421 maps by counting distinct `(pair, plane,
+metatile)` triples including border blocks, is **22,072** — exactly 2x 11,036,
+which is how the error was spotted.
+
+**That understated the trim by 50%**, because the "needed" side was inflated.
+
+### 0.2 ⚠️ Part C moved the baseline UP, not down
+
+Part C split each atlas into a shared primary and a per-pair secondary, so a
+pair's TileSet now has **six** sources instead of three — and the primary half
+is always a **full 640 metatiles** regardless of how few the pair uses, where
+the old composite was sized to the pair's own metatile count.
+
+| | Rev 1 (pre-Part C) | Rev 2 (measured today) |
+|---|---|---|
+| tiles created, typical pair | 2,208 | **2,417 avg** (silph_co **3,072**) |
+| region-wide `create_tile` calls | 132,480 | **~145,000** |
+
+**So Part C made this tier worth more.** It also did NOT reduce load time,
+exactly as its own note predicted — measured **21.25 ms/pair** today against
+~20.4 ms/pair before it (16 pairs, cold process, 340 ms total).
+
+### 0.3 The real numbers, from trimmed twins built and timed today
+
+Not extrapolated. A trimmed `TileSet` was constructed from the **region-wide**
+placed set for every built pair, saved, and cold-loaded against the full one:
+
+| | full | trimmed | gain |
+|---|---|---|---|
+| tile definitions (16 built pairs) | 37,824 | **6,216** | **6.1x** |
+| load time, same 16 pairs | 219.8 ms | **21.9 ms** | **10.0x** |
+
+Rev 1 claimed 4.0x and 8.9x. Both were low.
+
+Building a trimmed set costs **0.3–1.0 ms per pair**, so the transform itself is
+free next to what it saves.
+
+### 0.4 ⚠️ Rev 1's hazard #1 is confirmed real, and now quantified
+
+Rev 1 warned the trim set must be computed **region-wide per pair**, not from
+whichever maps happen to be baked. Measured, that warning is worth a lot:
+
+| pair | corridor-only trim | region-wide trim |
+|---|---|---|
+| `building_frlg__silph_co_frlg` | **16.5x** | **3.9x** |
+| `building_frlg__pokemon_center_frlg` | 9.8x | 7.2x |
+
+A corridor-derived trim looks up to **four times better than it is** — and the
+maps it silently breaks are the ones not yet baked, so nothing would report it
+until someone walked into Saffron. **6.1x is the honest, shippable figure.**
+
+---
 
 Scope: stop calling `create_tile()` for every cell of every atlas and create
 only the tiles maps actually place. This is the M27M sub-tier that closes the
