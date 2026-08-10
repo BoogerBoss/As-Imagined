@@ -37,6 +37,9 @@ func _ready() -> void:
 	_test_confirm_fires_pressed_during_move_selection()
 	_test_confirm_does_not_fire_disabled_button()
 	_test_confirm_does_not_fire_invisible_button()
+	_test_confirm_does_not_fire_button_under_hidden_parent()
+	_test_confirm_refused_while_pacing()
+	_test_cursor_does_not_move_while_pacing()
 
 	_test_item_screen_keyboard_down_then_accept_picks_second_row()
 	_test_item_screen_keyboard_reaches_cancel_and_confirms()
@@ -141,11 +144,29 @@ func _make_item_overlay(bs: BattleScreenShared) -> ItemSelectScreen:
 
 # ── A. _move_cursor -- 2x2 grid math (TOP/FIGHT's own shape) ─────────────
 
+## ⚠️ **THE BUTTONS ARE PARENTED INTO A REAL, IN-TREE CONTAINER, AND THAT IS
+## LOAD-BEARING.** They used to be orphans, which is a state production never
+## has — `_cursor_buttons` are always real children of `_new_button_grid` /
+## `_top_action_hbox` / `_fight_action_hbox`. Orphan buttons made
+## `_confirm_cursor_selection`'s visibility guard untestable in its real shape:
+## the guard has to ask `is_visible_in_tree()` (a hidden PARENT is exactly how
+## message mode hides the menu), and that is false for anything not in the
+## tree at all, so an orphan fixture cannot distinguish "hidden" from "not
+## parented". See `_test_confirm_does_not_fire_button_under_hidden_parent`.
+##
+## The container is returned via `_last_button_parent` so a caller can hide it.
+var _last_button_parent: Control = null
+
+
 func _make_4_buttons() -> Array[Button]:
+	var parent := Control.new()
+	add_child(parent)
+	_last_button_parent = parent
 	var out: Array[Button] = []
 	for i in range(4):
 		var b := Button.new()
 		b.text = "b%d" % i
+		parent.add_child(b)
 		out.append(b)
 	return out
 
@@ -572,3 +593,106 @@ func _test_physical_keycode_event_matches_ui_action() -> void:
 			_key_event(KEY_ENTER).is_action_pressed("ui_accept"))
 	_chk("a physical Escape key event matches ui_cancel",
 			_key_event(KEY_ESCAPE).is_action_pressed("ui_cancel"))
+
+
+# ── D. Input must not reach the menu while the screen replays a turn ──────
+#
+# Reported from play, 2026-08-10: "if I press enter during a move animation it
+# selects the next move and the turns string together with no stop and no
+# option to select anything. If I click enter 5 times its basically
+# autobattle."
+#
+# TWO independent causes, so two independent guards and two tests.
+
+# CAUSE 1 — `.visible` is the node's OWN flag and says nothing about its
+# parent. `_enter_message_mode()` hides the CONTAINERS, never the individual
+# buttons, so the old `not btn.visible` guard inspected a flag message mode
+# never touches.
+#
+# ⚠️ **THE PRE-EXISTING `_test_confirm_does_not_fire_invisible_button` DID NOT
+# COVER THIS AND COULD NOT HAVE.** It sets the BUTTON's own `visible = false`
+# — the one case that already worked. This sets the PARENT's, which is what
+# production actually does.
+func _test_confirm_does_not_fire_button_under_hidden_parent() -> void:
+	var mon := _make_mon("HiddenParentMon")
+	mon.add_move(_load_move(33))
+	var opp := _make_mon("HiddenParentOpp")
+	opp.add_move(_load_move(33))
+	var bm := _make_battle_manager_paused_singles(mon, opp)
+
+	var bs := BattleScreenShared.new()
+	bs._bm = bm
+	var buttons := _make_4_buttons()
+	bs._wire_cursor_group(buttons, 2)
+	var fired := [false]
+	buttons[0].pressed.connect(func(): fired[0] = true)
+
+	# Exactly what _enter_message_mode() does: hide the CONTAINER. Every
+	# button's own `visible` stays true.
+	_last_button_parent.visible = false
+	_chk("D.01 setup discriminator: the button's OWN visible flag is still true, "
+			+ "so a `.visible` guard would wave this straight through",
+			buttons[0].visible == true)
+
+	bs._confirm_cursor_selection()
+	_chk("D.02 confirm is refused for a button whose PARENT is hidden",
+			fired[0] == false)
+	bs.free()
+	bm.queue_free()
+
+
+# CAUSE 2 — the phase check cannot see that the SCREEN is busy. `advance()`
+# resolves a whole turn synchronously, so while the screen is still draining
+# that turn's queued beats the BattleManager has already returned to
+# MOVE_SELECTION. Every guard passed and the press submitted the next move.
+func _test_confirm_refused_while_pacing() -> void:
+	var mon := _make_mon("PacingMon")
+	mon.add_move(_load_move(33))
+	var opp := _make_mon("PacingOpp")
+	opp.add_move(_load_move(33))
+	var bm := _make_battle_manager_paused_singles(mon, opp)
+
+	var bs := BattleScreenShared.new()
+	bs._bm = bm
+	var buttons := _make_4_buttons()
+	bs._wire_cursor_group(buttons, 2)
+	var fired := [false]
+	buttons[0].pressed.connect(func(): fired[0] = true)
+
+	# ⚠️ Everything else is deliberately VALID here — real MOVE_SELECTION
+	# phase, button enabled, parent visible. `_pacing_active` is the only
+	# thing standing between the press and a submitted move, which is what
+	# makes this a discriminator rather than a restatement of D.02.
+	bs._pacing_active = true
+	bs._confirm_cursor_selection()
+	_chk("D.03 confirm is refused while the screen is replaying a turn, even "
+			+ "though the BattleManager is already back at MOVE_SELECTION",
+			fired[0] == false)
+
+	# And released again once the replay finishes — a gate that never opened
+	# would be indistinguishable from a broken menu.
+	bs._pacing_active = false
+	bs._confirm_cursor_selection()
+	_chk("D.04 discriminator: the SAME press fires once pacing is over, so the "
+			+ "gate opens rather than merely being closed forever",
+			fired[0] == true)
+	bs.free()
+	bm.queue_free()
+
+
+func _test_cursor_does_not_move_while_pacing() -> void:
+	var bs := BattleScreenShared.new()
+	var buttons := _make_4_buttons()
+	bs._wire_cursor_group(buttons, 2)
+	bs._set_cursor_selected(buttons, 0)
+
+	bs._pacing_active = true
+	bs._move_cursor(0, 1)
+	_chk("D.05 the cursor does not move while the menu is hidden mid-replay",
+			bs._cursor_index == 0)
+
+	bs._pacing_active = false
+	bs._move_cursor(0, 1)
+	_chk("D.06 discriminator: the same movement lands once pacing is over",
+			bs._cursor_index == 1)
+	bs.free()

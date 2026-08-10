@@ -1628,6 +1628,12 @@ func _set_cursor_selected(buttons: Array[Button], selected_index: int) -> void:
 # call site. CLAMPED at the grid edge, not wrapped -- matches source's own
 # bit-math cursor exactly (see _wire_cursor_group's own doc comment).
 func _move_cursor(delta_row: int, delta_col: int) -> void:
+	# Same reasoning as `_confirm_cursor_selection`'s own `_pacing_active`
+	# guard: while the screen is replaying a turn the menu is hidden, so
+	# silently moving an invisible cursor underneath the animation just means
+	# the selection has quietly changed by the time it reappears.
+	if _pacing_active:
+		return
 	var count := _cursor_buttons.size()
 	if count == 0:
 		return
@@ -1667,6 +1673,18 @@ func _move_cursor(delta_row: int, delta_col: int) -> void:
 func _confirm_cursor_selection() -> void:
 	if _bm == null:
 		return
+	# ⚠️ **THE SCREEN BEING BUSY IS NOT THE SAME AS THE BATTLE BEING BUSY, AND
+	# THIS GUARD EXISTS BECAUSE THE PHASE CHECK BELOW CANNOT SEE THE
+	# DIFFERENCE.** `advance()` runs a whole turn synchronously, so by the time
+	# the screen is still replaying that turn's queued beats (animations, HP
+	# drains, text) the BattleManager has ALREADY returned to MOVE_SELECTION
+	# awaiting the next input. Without this, pressing Enter mid-animation
+	# passed every check below and fired the cursored button — selecting the
+	# next move and chaining another turn. Holding Enter turned the battle into
+	# an autobattle with no chance to intervene (reported from play,
+	# 2026-08-10).
+	if _pacing_active:
+		return
 	var phase := _bm.get_phase()
 	if phase != BattleManager.BattlePhase.MOVE_SELECTION \
 			and phase != BattleManager.BattlePhase.SWITCH_PROMPT:
@@ -1674,7 +1692,14 @@ func _confirm_cursor_selection() -> void:
 	if _cursor_index < 0 or _cursor_index >= _cursor_buttons.size():
 		return
 	var btn: Button = _cursor_buttons[_cursor_index]
-	if btn.disabled or not btn.visible:
+	# ⚠️ **`is_visible_in_tree()`, NOT `.visible` — and the difference is the
+	# whole bug.** `.visible` is the node's OWN flag; a Button whose PARENT was
+	# hidden still reports `visible == true` (verified directly in Godot 4.7).
+	# `_enter_message_mode()` hides the CONTAINERS (`_new_button_grid`,
+	# `_top_action_hbox`, `_fight_action_hbox`), never the individual buttons,
+	# so this guard was inspecting a flag that message mode never touches and
+	# waving every press straight through.
+	if btn.disabled or not btn.is_visible_in_tree():
 		return
 	btn.pressed.emit()
 
