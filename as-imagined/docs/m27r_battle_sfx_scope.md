@@ -81,7 +81,7 @@ rather than beside the field code.
 
 ## 3. Decisions
 
-### D1 — ⚠️ Where does the audio player live? *(the one that needs answering first)*
+### D1 — ⚠️ Where does the audio player live? **DECIDED: rename and reuse (Rob, 2026-08-09).**
 
 There is no player on the battle side. `FieldAudio` is a plain `Node` with an SE
 pool and a cue log — nothing in it is overworld-specific except its **name** and
@@ -98,10 +98,13 @@ a BGM stub it need not use.
    two lifetimes is the two-hand-kept-copies shape this project has paid for
    repeatedly.
 
-**Recommendation: 2.** The rename is cheap now and permanent; option 1's cost
-compounds every time someone reads the battle screen.
+✅ **CHOSEN: option 2.** `FieldAudio` is renamed to a neutral `GameAudio` and
+reused by both. ⚠️ The rename touches `overworld.gd`, `script_vm.gd`,
+`field_native_events.gd` and `m27r_audio_test.gd` — **including the audio suite
+that is currently the only proof any of this works**, so the suite must be green
+before and after with the same assertion count, or the rename hid something.
 
-### D2 — Does the capture sequence wait for M26B7?
+### D2 — Does the capture sequence wait for M26B7? **DECIDED: split (Rob, 2026-08-09).**
 
 `catch_sequence()` returns an ordered list, but the *timing between* its
 entries is the ball animation's — and **M26B7 (catch UI) is scoped, not built**.
@@ -111,19 +114,21 @@ entries is the ball animation's — and **M26B7 (catch UI) is scoped, not built*
    ~0.6 s). Audible immediately; ⚠️ the delays are invented and would be
    re-tuned once there is something to sync to, so they are guessed twice.
 
-**Recommendation: 1 for the capture sounds specifically, 2 for everything
-else.** Damage, recall, send-out and flee all have real visual beats to attach
-to *today*; only the ball sequence does not. Splitting them is what lets the
-other eight ship without inventing timings.
+✅ **CHOSEN: split.** The eight sounds with real visual beats — damage x3,
+recall, send-out, flee, and the faint/KO — ship now. The four ball sounds wait
+for M26B7 and get timed once, alongside the animation they describe, rather
+than being guessed and then re-tuned.
 
-### D3 — Volume, and whether the simulator wants sound at all
+### D3 — Volume. **DECIDED: one bus, constant level (Rob, 2026-08-09).**
 
-Not investigated: this project has no audio bus configuration, no master
-volume, and no options screen (`OPTION` is deliberately absent from the start
-menu). A battle that suddenly makes noise with no way to turn it down is a real
-complaint. ⚠️ **Worth deciding before shipping, not after** — it may be one
-`AudioServer` bus and a constant, or it may be the first piece of an options
-screen, which is a different size of job.
+This project has no audio bus configuration, no master volume, and no options
+screen (`OPTION` is deliberately absent from the start menu).
+
+✅ **CHOSEN: a named SFX bus at a fixed level.** ⚠️ **The point of the bus is
+that it is the ONLY place volume ever has to be touched** — every play site
+routes through it, so a later options screen or a persisted setting changes one
+value rather than auditing every `play_se` call. A constant now, controllable
+whenever someone wants to control it.
 
 ---
 
@@ -142,9 +147,7 @@ ordering, not volume of code.
 
 ---
 
-## 5. Open questions for Rob
+## 5. Open questions
 
-1. **D1** — rename `FieldAudio`, or reuse it under its current name?
-2. **D2** — hold the capture sounds for M26B7, or ship them now with invented
-   delays?
-3. **D3** — does anything exist for volume control, or is that a new job?
+**None — all three answered 2026-08-09.** Rename and reuse; split the capture
+sounds out to M26B7; one SFX bus at a constant level.
