@@ -45,6 +45,19 @@ func _ready() -> void:
 	_test_exit_message_mode_held_during_intro_then_released()
 	_test_battle_start_beats_stash_and_restore()
 	_test_real_battle_beat_ordering_end_to_end()
+	# [M27R 7a-3b] The battle SFX wiring. Every one of these asserts the
+	# QUEUE, never playback -- _run_message_pacing() returns early for
+	# --autoplay and for off-tree instances, which is exactly the condition
+	# a headless suite runs in, so asserting a sound PLAYED would be
+	# asserting through a path that is deliberately switched off here.
+	_test_queue_sfx_appends_a_beat()
+	_test_queue_sfx_ignores_an_empty_name()
+	_test_damage_sfx_queued_before_the_hp_drain_beat()
+	_test_damage_sfx_variant_follows_effectiveness()
+	_test_no_damage_sfx_when_the_hit_did_nothing()
+	_test_faint_queues_recall_sfx_before_the_recall_beat()
+	_test_switch_out_queues_recall_sfx()
+	_test_switch_in_queues_send_out_sfx_before_the_reveal()
 
 	var total := _pass + _fail
 	print("message_pacing_test: %d/%d passed" % [_pass, total])
@@ -509,3 +522,175 @@ func _test_real_battle_beat_ordering_end_to_end() -> void:
 			bs._pending_beats.any(func(b): return b.get("kind") == "text" and "super effective" in b.get("text")))
 
 	bm.queue_free()
+
+
+# ---------------------------------------------------------------------------
+# [M27R 7a-3b] Battle SFX
+# ---------------------------------------------------------------------------
+
+
+func _test_queue_sfx_appends_a_beat() -> void:
+	var bs := BattleScreenShared.new()
+	bs._queue_sfx("SE_RECALL")
+	_chk("_queue_sfx pushes exactly one beat", bs._pending_beats.size() == 1)
+	_chk("the beat is of kind 'sfx'", bs._pending_beats[0].get("kind") == "sfx")
+	_chk("the beat carries the sound name", bs._pending_beats[0].get("se") == "SE_RECALL")
+
+
+func _test_queue_sfx_ignores_an_empty_name() -> void:
+	# ⚠️ AudioMap.damage_se() returns "" for an immune hit -- which did no
+	# damage and so makes no damage sound. An empty name must queue NOTHING
+	# rather than a beat the pacing loop then hands to the player.
+	var bs := BattleScreenShared.new()
+	bs._queue_sfx("")
+	_chk("an empty sound name queues no beat at all", bs._pending_beats.is_empty())
+
+
+func _test_damage_sfx_queued_before_the_hp_drain_beat() -> void:
+	# ⚠️ ORDER IS THE POINT: the hit must be heard as the bar STARTS moving,
+	# not after it settles, so the sfx beat sits strictly before hp_drain.
+	var bs := BattleScreenShared.new()
+	var opp_panel := HealthGroupPanel.new()
+	opp_panel._hp_fill = TextureProgressBar.new()
+	bs._opp_panels = [opp_panel]
+	var defender := _make_typed_mon("Target", TypeChart.TYPE_NORMAL, 100)
+	bs._opp_party = _singles_party(defender)
+	bs._player_party = _singles_party(_make_typed_mon("SomeoneElse", TypeChart.TYPE_NORMAL))
+	defender.current_hp = 40
+	bs._pending_hit_effectiveness = 1.0
+	bs._on_log_move_executed(null, defender, null, 20)
+	var kinds: Array = []
+	for beat: Dictionary in bs._pending_beats:
+		kinds.append(beat.get("kind"))
+	var sfx_idx: int = kinds.find("sfx")
+	var drain_idx: int = kinds.find("hp_drain")
+	_chk("a damage sfx beat was queued", sfx_idx != -1)
+	_chk("an hp_drain beat was queued", drain_idx != -1)
+	_chk("the sfx beat comes strictly BEFORE the hp_drain beat",
+			sfx_idx != -1 and drain_idx != -1 and sfx_idx < drain_idx)
+
+
+func _test_damage_sfx_variant_follows_effectiveness() -> void:
+	# ⚠️ THE DISCRIMINATOR. A super-effective hit that sounds resisted is the
+	# most audible mistake a battle can make, and a hook that queued one
+	# fixed sound would pass every assertion above. Two runs, one variable.
+	var supereff := _damage_se_for(2.0)
+	var weak := _damage_se_for(0.5)
+	var normal := _damage_se_for(1.0)
+	_chk("a super-effective hit queues the super-effective sound",
+			supereff == AudioMap.damage_se(2.0))
+	_chk("a resisted hit queues the weak sound", weak == AudioMap.damage_se(0.5))
+	_chk("super-effective and resisted queue DIFFERENT sounds", supereff != weak)
+	_chk("a neutral hit queues neither of them", normal != supereff and normal != weak)
+
+
+func _test_no_damage_sfx_when_the_hit_did_nothing() -> void:
+	# ⚠️ EFFECTIVENESS IS DELIBERATELY NEUTRAL, NOT ZERO. An immune hit is
+	# refused twice over — `damage_se()` returns "" AND the drain block is
+	# skipped for zero damage — and a fixture where two competing rules agree
+	# cannot tell them apart. A neutral effectiveness names a REAL sound, so
+	# only the no-damage gate can suppress it here.
+	var bs := BattleScreenShared.new()
+	var opp_panel := HealthGroupPanel.new()
+	opp_panel._hp_fill = TextureProgressBar.new()
+	bs._opp_panels = [opp_panel]
+	var defender := _make_typed_mon("Target", TypeChart.TYPE_NORMAL, 100)
+	bs._opp_party = _singles_party(defender)
+	bs._player_party = _singles_party(_make_typed_mon("SomeoneElse", TypeChart.TYPE_NORMAL))
+	bs._pending_hit_effectiveness = 1.0
+	bs._on_log_move_executed(null, defender, null, 0)
+	var sfx_beats: Array = bs._pending_beats.filter(func(b): return b.get("kind") == "sfx")
+	_chk("no damage sfx beat on a hit that dealt no damage", sfx_beats.is_empty())
+	# The other half of the pair, asserted where it IS the deciding rule: an
+	# immune hit has no damage sound to queue in the first place.
+	_chk("an immune hit names no damage sound at all", AudioMap.damage_se(0.0) == "")
+
+
+## Runs the real damage hook at one effectiveness and reports the sound name
+## its queued sfx beat carries ("" if none was queued).
+func _damage_se_for(effectiveness: float) -> String:
+	var bs := BattleScreenShared.new()
+	var opp_panel := HealthGroupPanel.new()
+	opp_panel._hp_fill = TextureProgressBar.new()
+	bs._opp_panels = [opp_panel]
+	var defender := _make_typed_mon("Target", TypeChart.TYPE_NORMAL, 100)
+	bs._opp_party = _singles_party(defender)
+	bs._player_party = _singles_party(_make_typed_mon("SomeoneElse", TypeChart.TYPE_NORMAL))
+	defender.current_hp = 40
+	bs._pending_hit_effectiveness = effectiveness
+	bs._on_log_move_executed(null, defender, null, 20)
+	for beat: Dictionary in bs._pending_beats:
+		if beat.get("kind") == "sfx":
+			return str(beat.get("se", ""))
+	return ""
+
+
+func _test_faint_queues_recall_sfx_before_the_recall_beat() -> void:
+	var bs := _wired_screen()
+	var mon: BattlePokemon = bs._player_party.members[0]
+	bs._bm.pokemon_fainted.emit(mon)
+	var kinds := _kinds_of(bs)
+	var sfx_idx: int = kinds.find("sfx")
+	var recall_idx: int = kinds.find("recall")
+	_chk("fainting queues a recall sfx beat", sfx_idx != -1)
+	_chk("fainting queues the recall animation beat", recall_idx != -1)
+	_chk("the faint recall sound is SE_RECALL", _first_se(bs) == "SE_RECALL")
+	_chk("the sound is queued before the recall animation",
+			sfx_idx != -1 and recall_idx != -1 and sfx_idx < recall_idx)
+	bs._bm.queue_free()
+
+
+func _test_switch_out_queues_recall_sfx() -> void:
+	# The source-accurate case: ReturnMonToBall fires for a LIVING switch-out,
+	# which until M27R played nothing at all.
+	var bs := _wired_screen()
+	var mon: BattlePokemon = bs._player_party.members[0]
+	bs._bm.pokemon_switched_out.emit(mon, 0)
+	_chk("a living switch-out queues a recall sound", _first_se(bs) == "SE_RECALL")
+	_chk("it also queues the recall animation beat", _kinds_of(bs).has("recall"))
+	bs._bm.queue_free()
+
+
+func _test_switch_in_queues_send_out_sfx_before_the_reveal() -> void:
+	var bs := _wired_screen()
+	var mon: BattlePokemon = bs._player_party.members[0]
+	bs._bm.pokemon_switched_in.emit(mon, 0, 0)
+	var kinds := _kinds_of(bs)
+	var sfx_idx: int = kinds.find("sfx")
+	var reveal_idx: int = kinds.find("switch_reveal")
+	_chk("a switch-in queues a send-out sound", _first_se(bs) == "SE_SEND_OUT")
+	_chk("a switch-in queues the sprite-reveal beat", reveal_idx != -1)
+	_chk("the sound is queued before the reveal",
+			sfx_idx != -1 and reveal_idx != -1 and sfx_idx < reveal_idx)
+	bs._bm.queue_free()
+
+
+## A bare screen with real parties and _wire_log_signals() run against a real
+## BattleManager, so the faint/switch handlers under test are the REAL ones
+## rather than hand-called functions.
+func _wired_screen() -> BattleScreenShared:
+	var mine := _make_typed_mon("Mine", TypeChart.TYPE_NORMAL)
+	var theirs := _make_typed_mon("Theirs", TypeChart.TYPE_NORMAL)
+	var bm := BattleManager.new()
+	var bs := BattleScreenShared.new()
+	bs._player_party = _singles_party(mine)
+	bs._opp_party = _singles_party(theirs)
+	bs._bm = bm
+	bs._wire_log_signals()
+	bs._pending_beats.clear()
+	return bs
+
+
+func _kinds_of(bs: BattleScreenShared) -> Array:
+	var kinds: Array = []
+	for beat: Dictionary in bs._pending_beats:
+		kinds.append(beat.get("kind"))
+	return kinds
+
+
+func _first_se(bs: BattleScreenShared) -> String:
+	for beat: Dictionary in bs._pending_beats:
+		if beat.get("kind") == "sfx":
+			return str(beat.get("se", ""))
+	return ""
+

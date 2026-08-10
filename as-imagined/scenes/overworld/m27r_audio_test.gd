@@ -6,7 +6,7 @@ extends Node
 ## ⚠️ **THE THING THIS SUITE CANNOT TEST IS WHETHER ANYTHING SOUNDS RIGHT**, and
 ## every assertion below is shaped around that. What IS checkable is *which cue
 ## fired, what it resolved to, and whether a script kept running* — so the
-## guards are on `FieldAudio.cues`, on `AudioMap`'s resolution, and on scripts
+## guards are on `GameAudio.cues`, on `AudioMap`'s resolution, and on scripts
 ## reaching DONE. The listen pass is Rob's and is the real acceptance test.
 ##
 ## Three failure modes drive the shape:
@@ -125,9 +125,9 @@ func _test_bgm_stub() -> void:
 			AudioMap.bgm_path("MUS_POKE_CENTER") == "")
 
 
-## --- C. FieldAudio records, and always releases its waiters ----------------
+## --- C. GameAudio records, and always releases its waiters ----------------
 func _test_player() -> void:
-	var a := FieldAudio.new()
+	var a := GameAudio.new()
 	add_child(a)
 
 	a.play_se("SE_CLICK")
@@ -202,7 +202,7 @@ func _test_vm_opcodes() -> void:
 
 	# Now with audio but STILL no natives registry — `waitfanfare` must fall
 	# through rather than demand a handler it cannot reach.
-	var a := FieldAudio.new()
+	var a := GameAudio.new()
 	add_child(a)
 	var vm := ScriptVM.new(_src({"T": [
 			_op("playse", ["SE_CLICK"]),
@@ -329,7 +329,7 @@ func _test_code_driven_cues() -> void:
 			+ "from source's single SE_SELECT — a merge would silently undo it)",
 			AudioMap.se_path("SE_SELECT") != AudioMap.se_path("SE_CLICK"))
 
-	var a := FieldAudio.new()
+	var a := GameAudio.new()
 	add_child(a)
 
 	# G. A badge flag plays the badge fanfare; an ordinary flag does not.
@@ -479,14 +479,14 @@ func _test_door_vs_bump() -> void:
 
 # --- helpers ----------------------------------------------------------------
 
-func _last_cue(a: FieldAudio, kind: String) -> String:
+func _last_cue(a: GameAudio, kind: String) -> String:
 	for i in range(a.cues.size() - 1, -1, -1):
 		if a.cues[i]["kind"] == kind:
 			return str(a.cues[i]["name"])
 	return ""
 
 
-func _cue_names(a: FieldAudio) -> Array:
+func _cue_names(a: GameAudio) -> Array:
 	var out := []
 	for c in a.cues:
 		out.append(str(c["name"]))
@@ -519,7 +519,7 @@ func _run(vm: ScriptVM, limit: int = 200) -> void:
 		break
 
 
-func _runs_clean(ops: Array, a: FieldAudio) -> bool:
+func _runs_clean(ops: Array, a: GameAudio) -> bool:
 	var vm := ScriptVM.new(_src({"T": ops}), FlagStore.new())
 	vm.audio = a
 	vm.start("T")
@@ -574,7 +574,7 @@ func _test_7c_cries() -> void:
 			head.size() >= 12 and head.slice(0, 4).get_string_from_ascii() == "RIFF"
 			and head.slice(8, 12).get_string_from_ascii() == "WAVE")
 
-	var audio := FieldAudio.new()
+	var audio := GameAudio.new()
 	add_child(audio)
 	audio.cues.clear()
 	_chk("G.05 playing a cry records a cue even with no audio device",

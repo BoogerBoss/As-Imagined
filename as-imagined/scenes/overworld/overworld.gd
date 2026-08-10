@@ -261,7 +261,7 @@ var _warping := false
 var _resume: Dictionary = {}
 
 ## [M27R 7a-1] The scene's one audio player. Built in `_setup_scripting`.
-var _audio: FieldAudio = null
+var _audio: GameAudio = null
 
 ## [M27D D5] The battle overlay's CanvasLayer while a battle is running, else
 ## null. The overworld is not freed during a battle — it is paused underneath.
@@ -2001,7 +2001,7 @@ func _show_exclamation(t: TrainerNPC) -> void:
 ## a handler is ordinary Godot code living outside this file and legitimately
 ## needs it, so the surface is one named thing. May be null before
 ## `_setup_scripting` has run, and every caller treats null as "no audio".
-func field_audio() -> FieldAudio:
+func field_audio() -> GameAudio:
 	return _audio
 
 
@@ -2009,8 +2009,8 @@ func _setup_scripting() -> void:
 	# [M27R 7a-1] BEFORE `_driver.setup`, because `run_script` reads
 	# `field_audio()` when it builds each VM — an audio player created after the
 	# driver would leave the first script of the session silent.
-	_audio = FieldAudio.new()
-	_audio.name = "FieldAudio"
+	_audio = GameAudio.new()
+	_audio.name = "GameAudio"
 	add_child(_audio)
 	# [M27G G4] The driver is created FIRST — `_vm` is a forwarding property
 	# onto it, so anything touching `_vm` before this line would silently read

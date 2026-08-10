@@ -1179,6 +1179,32 @@ const _TRAINER_SLIDE_OUT_SECONDS := 0.58
 # {"kind":"hp_drain","bar":TextureProgressBar,"from_frac":float,"to_frac":float,"color":Color}.
 var _pending_beats: Array[Dictionary] = []
 
+## [M27R 7a-3b] The battle's own sound player.
+##
+## ⚠️ `GameAudio`, renamed from `FieldAudio` for exactly this — it was never
+## field-specific, and a second SE pool for battle would be two lifetimes for
+## one job. Created lazily and only when in the tree, because a bare test
+## instance and an `--autoplay` run both skip the pacing this feeds.
+var _audio: GameAudio = null
+
+
+## Queue a sound as a BEAT, never play it now.
+##
+## ⚠️ **THIS IS THE WHOLE SHAPE OF THE TIER, AND PLAYING DIRECTLY IS THE BUG IT
+## AVOIDS.** A turn is not rendered as it happens: handlers append to
+## `_pending_beats` and `_run_message_pacing()` drains them sequentially with
+## awaits, so text reveals a character at a time and HP bars drain over a tween.
+## A sound played from the signal handler fires SECONDS before the damage it
+## belongs to is drawn, and every sound in a turn stacks up at the front while
+## the visuals play out after.
+##
+## An empty name queues nothing — `AudioMap.damage_se()` returns "" for an
+## immune hit, which did no damage and so makes no damage sound.
+func _queue_sfx(se_name: String) -> void:
+	if se_name == "":
+		return
+	_pending_beats.append({"kind": "sfx", "se": se_name})
+
 # [Intro menu-artifact fix] True from the moment _ready()'s intro block
 # starts until right before its final _refresh_ui(). While true,
 # _exit_message_mode() refuses to leave message mode, so the .tscn's own
@@ -2438,6 +2464,7 @@ func _wire_log_signals() -> void:
 		# pokemon_fainted (the M26o party-summary re-show). Sequencing the
 		# recall through _pending_beats keeps it ordered against the summary
 		# and every other beat instead of racing them.
+		_queue_sfx("SE_RECALL")
 		_pending_beats.append({"kind": "recall", "mon": mon,
 			"slot": _find_mon_slot(mon)}))
 	_bm.pokemon_switched_out.connect(func(mon: BattlePokemon, _side: int):
@@ -2452,6 +2479,7 @@ func _wire_log_signals() -> void:
 		# ordering against the party summary and the text beats rather
 		# than racing them off the signal.
 		var out_slot: Dictionary = _find_mon_slot(mon)
+		_queue_sfx("SE_RECALL")
 		_pending_beats.append({"kind": "recall", "mon": mon, "slot": out_slot})
 		# Source names ONE battler (`drawpartystatussummary BS_ATTACKER`),
 		# so mid-battle only the switching side's row is drawn -- unlike
@@ -2472,6 +2500,7 @@ func _wire_log_signals() -> void:
 		# correct point in the sequence, before any later beat plays.
 		var is_player: bool = _player_party.members.has(mon)
 		var party: BattleParty = _player_party if is_player else _opp_party
+		_queue_sfx("SE_SEND_OUT")
 		_pending_beats.append({"kind": "switch_reveal", "party": party,
 				"is_player": is_player, "mon": mon}))
 	_bm.stat_stage_changed.connect(_on_log_stat_stage_changed)
@@ -3034,6 +3063,11 @@ func _on_log_move_executed(_attacker: BattlePokemon, defender: BattlePokemon,
 		if bar != null and defender.max_hp > 0:
 			var to_frac: float = float(defender.current_hp) / float(defender.max_hp)
 			var from_frac: float = min(1.0, float(defender.current_hp + damage) / float(defender.max_hp))
+			# ⚠️ QUEUED BEFORE the drain, so the hit is heard as the bar starts
+			# moving rather than after it settles. `_pending_hit_effectiveness`
+			# is already set by `_on_hit_effectiveness_computed`, which runs
+			# ahead of this handler.
+			_queue_sfx(AudioMap.damage_se(_pending_hit_effectiveness))
 			_pending_beats.append({
 				"kind": "hp_drain", "bar": bar,
 				"from_frac": from_frac, "to_frac": to_frac,
@@ -5006,6 +5040,16 @@ func _run_message_pacing() -> void:
 				var run: Callable = beat.get("start", Callable())
 				if run.is_valid():
 					await run.call()
+			# [M27R 7a-3b] ⚠️ FIRE AND FORGET, deliberately — unlike "anim",
+			# this is NOT awaited. A damage sound is ~0.3 s and the hit
+			# animation it accompanies is shorter still; awaiting it would
+			# insert a pause between every beat of every turn, which source
+			# never does. The sound rides over the beats that follow.
+			"sfx":
+				if _audio == null:
+					_audio = GameAudio.new()
+					add_child(_audio)
+				_audio.play_se(str(beat.get("se", "")))
 			"ability_popup":
 				# [M26B6-4] The banner launches fire-and-forget — source's
 				# own script continues while the popup holds (a
@@ -7898,6 +7942,10 @@ func _on_run_pressed() -> void:
 			var me: BattlePokemon = _bm.get_active_player_mon()
 			var foe: BattlePokemon = _bm.get_active_opponent_mon()
 			if _bm.try_flee(me, foe):
+				# ⚠️ Only on a SUCCESSFUL escape. A failed flee is a real
+				# outcome that costs the turn in source, and sounding the
+				# escape jingle for it would say the opposite of what happened.
+				_queue_sfx("SE_FLEE")
 				_log("Got away safely!")
 				_return_to_overworld_if_pending(BattleOutcome.RAN)
 			else:

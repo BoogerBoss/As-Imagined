@@ -52,7 +52,7 @@ static func register_all(reg: NativeEventRegistry) -> void:
 	# own pause kinds, the same call `multichoicegrid` and `fadescreen` made.
 	#
 	# ⚠️ **BOTH AWAIT A SIGNAL THAT ALWAYS FIRES, WHICH IS THE G5 RULE AND NOT A
-	# DETAIL.** `FieldAudio` emits `fanfare_finished`/`se_finished` deferred
+	# DETAIL.** `GameAudio` emits `fanfare_finished`/`se_finished` deferred
 	# when a cue could NOT start — an unmapped name, a missing asset, or no
 	# audio device — precisely so a handler can never suspend forever. Four
 	# corridor scripts play `MUS_LEVEL_UP`, which the Essentials pack has no

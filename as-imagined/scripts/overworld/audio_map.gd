@@ -3,7 +3,7 @@ extends RefCounted
 
 ## [M27R 7a-1] Source audio constant -> real asset on disk, in one place.
 ##
-## The counterpart to `FieldAudio`: that file is the PLAYER, this one is the
+## The counterpart to `GameAudio`: that file is the PLAYER, this one is the
 ## CONTENT. Kept apart for the same reason `FieldSpecials` is kept out of
 ## `ScriptVM` — the mechanism should not know the catalogue, and a new sound is
 ## then a one-line edit here rather than a change to playback code.
@@ -29,7 +29,7 @@ const SE_DIR := "res://assets/Essentials_v19.1/Audio/SE/"
 const ME_DIR := "res://assets/Essentials_v19.1/Audio/ME/"
 
 ## ⚠️ **DOES NOT EXIST YET, BY DESIGN — this is the stub seam.** Rob supplies a
-## BGM folder later; until then `FieldAudio` resolves a track, finds no file,
+## BGM folder later; until then `GameAudio` resolves a track, finds no file,
 ## records the cue and plays silence. Nothing here needs changing when the
 ## folder arrives, provided the stems below match the filenames in it.
 ##
@@ -150,7 +150,7 @@ const ME := {
 ## `playbgm` — source constant -> a FILE STEM in `BGM_DIR`.
 ##
 ## ⚠️ **STEMS, NOT FILENAMES, because the extension is Rob's to choose.**
-## `FieldAudio` tries each of `BGM_EXTS` in order, so an `.ogg` or a `.wav`
+## `GameAudio` tries each of `BGM_EXTS` in order, so an `.ogg` or a `.wav`
 ## folder both work with no edit here.
 ##
 ## The six below are every `playbgm` argument the 32-map corridor actually

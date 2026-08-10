@@ -1,6 +1,13 @@
-class_name FieldAudio
+class_name GameAudio
 extends Node
 
+## ⚠️ **RENAMED FROM `FieldAudio` 2026-08-09 (M27R 7a-3b, Rob's call).** It was
+## never field-specific — an SE pool, a fanfare channel and a BGM stub — and the
+## battle screen needs the same player. A second pool for battle would have been
+## two lifetimes for one job, the shape this project has repeatedly paid for.
+## Commit history and older CLAUDE.md entries still say `FieldAudio`; they mean
+## this file.
+##
 ## [M27R 7a-1] The one audio player for the overworld — SE, fanfares, and the
 ## BGM stub seam.
 ##
@@ -72,10 +79,39 @@ var _default_bgm := ""
 var _live := false
 
 
+## [M27R 7a-3b] Every voice routes through one named bus.
+##
+## ⚠️ **THE BUS IS THE POINT, NOT THE LEVEL.** There is no options screen and no
+## master volume, so the level is a constant today — but routing everything
+## through a single bus means the day someone wants to turn the game down, that
+## is ONE value, not an audit of every `play_se` call in two products. Created
+## at runtime rather than in `project.godot` because this project has no bus
+## layout at all, and adding one file to own three lines of config is a worse
+## trade than making it here where the reason can be written down.
+const BUS_NAME := "SFX"
+const BUS_DB := 0.0
+
+
+static func _ensure_bus() -> int:
+	var idx := AudioServer.get_bus_index(BUS_NAME)
+	if idx != -1:
+		return idx
+	idx = AudioServer.bus_count
+	AudioServer.add_bus(idx)
+	AudioServer.set_bus_name(idx, BUS_NAME)
+	AudioServer.set_bus_volume_db(idx, BUS_DB)
+	# Master is always bus 0; sending there keeps the mix unchanged while giving
+	# a single place to attenuate.
+	AudioServer.set_bus_send(idx, "Master")
+	return idx
+
+
 func _ready() -> void:
+	_ensure_bus()
 	for i in SE_VOICES:
 		var p := AudioStreamPlayer.new()
 		p.name = "Se%d" % i
+		p.bus = BUS_NAME
 		add_child(p)
 		# ⚠️ Every voice reports, not just the newest. `waitse` releases on the
 		# first SE to end rather than on a specific one — source's own
@@ -84,10 +120,12 @@ func _ready() -> void:
 		_se_pool.append(p)
 	_me = AudioStreamPlayer.new()
 	_me.name = "Fanfare"
+	_me.bus = BUS_NAME
 	add_child(_me)
 	_me.finished.connect(_on_fanfare_finished)
 	_bgm = AudioStreamPlayer.new()
 	_bgm.name = "Bgm"
+	_bgm.bus = BUS_NAME
 	add_child(_bgm)
 	_live = true
 

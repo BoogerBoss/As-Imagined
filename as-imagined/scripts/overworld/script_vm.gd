@@ -238,12 +238,12 @@ var bag := Bag.new()
 ## [M27R 7a-1] The overworld's audio player. Injected like `bag`.
 ##
 ## ⚠️ **DEFAULTS TO null RATHER THAN A PRIVATE INSTANCE, unlike `bag` — and the
-## difference is deliberate.** `FieldAudio` is a `Node`; a default
-## `FieldAudio.new()` here would mint an ORPHAN node for every VM ever
+## difference is deliberate.** `GameAudio` is a `Node`; a default
+## `GameAudio.new()` here would mint an ORPHAN node for every VM ever
 ## constructed, which leaks and reports as a leak in the suites. So null means
 ## "no audio", every audio opcode degrades to the no-op it was before this
 ## tier, and a test that wants cues creates its own and assigns it.
-var audio: FieldAudio = null
+var audio: GameAudio = null
 
 ## [M27G G8] The `native` handler table, injected like `bag`.
 ##

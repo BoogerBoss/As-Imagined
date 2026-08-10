@@ -151,3 +151,61 @@ ordering, not volume of code.
 
 **None — all three answered 2026-08-09.** Rename and reuse; split the capture
 sounds out to M26B7; one SFX bus at a constant level.
+
+---
+
+## 6. Built — 2026-08-10
+
+**7a-3b is done.** Six hooks, one new beat kind, one renamed player, one SFX
+bus. 21 new assertions in `message_pacing_test` (70 → 92), six injections run.
+
+| | |
+|---|---|
+| `FieldAudio` → `GameAudio` | `git mv` + rename across 6 files; `m27r_audio_test` **57/57 before and after**, which is D1's own acceptance check |
+| SFX bus | `GameAudio.BUS_NAME = "SFX"` at `BUS_DB = 0.0`, created at runtime by `_ensure_bus()` and routed to Master; every SE voice, the ME player and the BGM player set `.bus` |
+| the `"sfx"` beat kind | in `_run_message_pacing()`, **fire-and-forget — deliberately NOT awaited** |
+| hooks | damage (×1 site, all three variants), faint recall, switch-out recall, send-out, successful flee |
+
+### What the tests assert, and what they cannot
+
+Per §2.2, every assertion is on the **queue**. The pacing loop returns early
+and clears the queue for `--autoplay` and for off-tree instances — exactly the
+conditions a headless suite runs in — so asserting that a sound PLAYED would be
+asserting through a path that is switched off here.
+
+⚠️ **THE ORDERING IS AN ASSERTION, NOT A COMMENT.** The damage sound is queued
+BEFORE the `hp_drain` beat so the hit is heard as the bar starts moving rather
+than after it settles. Injecting the swap fails `the sfx beat comes strictly
+BEFORE the hp_drain beat` — and also breaks a pre-existing end-to-end ordering
+assertion, which is the stronger signal.
+
+⚠️ **THE VARIANT DISCRIMINATOR IS THE ONE THAT MATTERS.** A hook that queued
+one fixed sound would satisfy every "a sound was queued" check. Two runs, one
+variable: super-effective and resisted must queue DIFFERENT sounds, and neutral
+must be neither. Injecting a hardcoded `SE_DAMAGE_NORMAL` fails all four.
+
+⚠️ **ONE ASSERTION WAS FOUND VACUOUS BY ITS OWN INJECTION — rule 13 again.**
+The no-damage test originally used an IMMUNE hit (damage 0 AND effectiveness
+0), which is refused twice over: `damage_se()` returns `""` **and** the drain
+block is skipped. Removing the empty-name guard failed nothing. Rebuilt on a
+NEUTRAL effectiveness, which names a real sound, so only the no-damage gate can
+suppress it — and the empty-name half is now asserted where it is actually the
+deciding rule. Re-injected: moving the call outside the `damage > 0` gate now
+fails it.
+
+**Injections run, and what each failed:** empty name accepted → 1 (the
+empty-name assertion alone); sound after the drain → 2; one fixed damage sound
+→ 4; no send-out sound → 2; no faint recall → 3; damage sound outside the
+`damage > 0` gate → 2.
+
+### Not covered, stated rather than implied
+
+- ⚠️ **THE FLEE HOOK HAS NO TEST.** It sits inside the Run button's own
+  handler behind `_bm.try_flee()`, which needs a real wild battle to reach; the
+  suite drives bare instances. The rule it encodes — sound only on a SUCCESSFUL
+  escape, because a failed flee costs the turn and the jingle would say the
+  opposite of what happened — is recorded at the call site.
+- ⚠️ **NOTHING HAS BEEN HEARD.** Every assertion is on beat records. No sound
+  has been played through a device, in battle or anywhere else.
+- The four ball sounds stay with **M26B7**, per D2.
+
