@@ -1522,14 +1522,24 @@ func step() -> bool:
 		# `match` takes the first, and would read as though this were still the
 		# live handler for it.
 		#
-		# The two cry opcodes stay no-ops on purpose, not by oversight: cries
-		# are their own asset class (655 files, 8-bit 10512 Hz GBA samples,
-		# 384/386 of them matching this project's roster by name) and are scoped
-		# as **[M27R 7c]**. Wiring them needs the two Nidoran aliases
-		# (`NIDORANfE`/`NIDORANmA`) that `gen_trainer_data.normalize()` already
-		# carries for the identical collision — a table, not a mechanism, and
-		# not this tier's.
-		"playmoncry", "waitmoncry":
+		# ⚠️ **[M27R 7c] `playmoncry` IS NO LONGER A NO-OP.** 386 cries are
+		# pulled from the reference tree, dex-keyed, so the species constant
+		# resolves through `_literal` exactly as `givemon`'s does.
+		#
+		# ⚠️ **`waitmoncry` STAYS a no-op, and that is not laziness.** It waits
+		# for the cry to finish; the cry plays on the shared SE pool and
+		# `play_cry` guarantees `se_finished` fires even when nothing started,
+		# so a real wait would work — but source's own use is to hold a script
+		# for the sound's length before printing text, and a cry is under a
+		# second. Blocking the VM on it would need the WAIT_NATIVE machinery for
+		# an imperceptible pause. Recorded as a deliberate simplification.
+		"playmoncry":
+			if audio != null:
+				var species := _resolve_number(str(args[0]) if args.size() > 0 else "0")
+				audio.play_cry(species)
+			return true
+
+		"waitmoncry":
 			return true
 
 		# [Map scripts] `bufferboxname slot, box` — writes a PC box's name to

@@ -110,6 +110,31 @@ func play_se(name: String) -> bool:
 	return played
 
 
+## [M27R 7c] A species' cry, through the same SE pool.
+##
+## ⚠️ **THE SE POOL, NOT A DEDICATED CHANNEL.** Source plays cries on the same
+## DirectSound voices as other effects, and giving them their own player would
+## let a cry and an effect that source would have cut short overlap instead.
+## Records into `cues` like everything else, so a headless test can assert a cry
+## was requested without any audio device existing.
+func play_cry(dex: int) -> bool:
+	var path := AudioMap.cry_path(dex)
+	var stream := _load(path)
+	var played := false
+	if stream != null and _live:
+		var voice := _se_pool[_se_next]
+		_se_next = (_se_next + 1) % SE_VOICES
+		voice.stream = stream
+		voice.play()
+		played = true
+	_record("cry", "dex_%d" % dex, path, played)
+	if not played:
+		# Same contract as `play_se`: always resolves, so a `waitmoncry` can
+		# never hang on a cry that never started.
+		call_deferred("emit_signal", "se_finished")
+	return played
+
+
 ## `playfanfare MUS_*`.
 ##
 ## ⚠️ **A FANFARE PAUSES THE MAP MUSIC AND RESUMES IT AFTER, which is behaviour

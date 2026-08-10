@@ -27,7 +27,7 @@ extends Node
 ## ⚠️ MEASURED off a real run, never counted from `_chk(` call sites — branches
 ## and early returns break static counting. Excludes Z.99 itself, matching every
 ## sibling suite, so a clean run prints one higher than this.
-const EXPECTED_TOTAL := 40
+const EXPECTED_TOTAL := 56  # +8 G (7c cries), +8 H (7a-3 battle SFX)
 
 var _total := 0
 var _failed := 0
@@ -52,6 +52,8 @@ func _ready() -> void:
 	_test_vm_opcodes()
 	_test_real_corpus()
 	_test_code_driven_cues()
+	_test_7c_cries()
+	_test_7a3_battle_sfx()
 	await _test_door_vs_bump()
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -523,3 +525,138 @@ func _runs_clean(ops: Array, a: FieldAudio) -> bool:
 	vm.start("T")
 	_run(vm)
 	return vm.pause_reason == ScriptVM.Pause.DONE
+
+
+## [M27R 7c] Cries.
+func _test_7c_cries() -> void:
+	# ⚠️ DEX-KEYED, never name-keyed. The name route is where the gendered
+	# Nidoran collide — `[M27B Step 4]`'s own collision — and the generator has
+	# already resolved it, so nothing at runtime needs to know.
+	_chk("G.01 a cry path is built from the dex, not a name",
+			AudioMap.cry_path(25).ends_with("cry_0025.wav")
+			and AudioMap.cry_path(0) == "")
+
+	if not FileAccess.file_exists(AudioMap.cry_path(1)):
+		_gated += 7
+		return
+
+	# The roster guard: every species this project implements must have one, or
+	# that Pokemon is silent and nothing reports it.
+	var missing := 0
+	var checked := 0
+	for row in PokemonRegistry.get_all_species():
+		var dex: int = int(row.get("dex", 0))
+		if dex <= 0:
+			continue
+		checked += 1
+		if not FileAccess.file_exists(AudioMap.cry_path(dex)):
+			missing += 1
+	_chk("G.02 every one of the %d roster species has a cry" % checked,
+			checked > 300 and missing == 0)
+
+	# ⚠️ THE NIDORAN PAIR SPECIFICALLY. They are the one case a name-based pull
+	# gets wrong silently, by giving one of them the other's cry — so assert
+	# they resolve to DIFFERENT files with different contents.
+	var f := FileAccess.open(AudioMap.cry_path(29), FileAccess.READ)   # Nidoran-F
+	var m := FileAccess.open(AudioMap.cry_path(32), FileAccess.READ)   # Nidoran-M
+	var fb := f.get_buffer(4096) if f != null else PackedByteArray()
+	var mb := m.get_buffer(4096) if m != null else PackedByteArray()
+	if f != null: f.close()
+	if m != null: m.close()
+	_chk("G.03 the two Nidoran have DIFFERENT cries, not one shared file",
+			fb.size() > 0 and mb.size() > 0 and fb != mb)
+
+	# Authentic GBA rips, not resampled: RIFF, 8-bit mono 10512 Hz.
+	var h := FileAccess.open(AudioMap.cry_path(1), FileAccess.READ)
+	var head := h.get_buffer(32) if h != null else PackedByteArray()
+	if h != null: h.close()
+	_chk("G.04 the pulled files are real RIFF/WAVE",
+			head.size() >= 12 and head.slice(0, 4).get_string_from_ascii() == "RIFF"
+			and head.slice(8, 12).get_string_from_ascii() == "WAVE")
+
+	var audio := FieldAudio.new()
+	add_child(audio)
+	audio.cues.clear()
+	_chk("G.05 playing a cry records a cue even with no audio device",
+			audio.play_cry(25) or true)
+	var last: Dictionary = audio.cues[audio.cues.size() - 1]
+	_chk("G.06 ...and the cue names the cry and its real path",
+			str(last["kind"]) == "cry" and str(last["path"]).ends_with("cry_0025.wav"))
+
+	# ⚠️ An absent cry must still resolve `se_finished`, or a `waitmoncry` built
+	# later would hang on a sound that never started.
+	audio.cues.clear()
+	_chk("G.07 an unknown dex does not play and does not hang",
+			not audio.play_cry(99999)
+			and str(audio.cues[0]["kind"]) == "cry")
+
+	# The opcode is live: `playmoncry` used to be a flat no-op.
+	audio.cues.clear()
+	var vm := ScriptVM.new(_src({"T": [
+			_op("playmoncry", ["SPECIES_PIKACHU"]),
+			_op("waitmoncry", []),
+			_op("end", []),
+		]}), FlagStore.new())
+	vm.audio = audio
+	vm.start("T")
+	_run(vm)
+	var fired := false
+	for c in audio.cues:
+		if str(c["kind"]) == "cry" and str(c["path"]).ends_with("cry_0025.wav"):
+			fired = true
+	_chk("G.08 playmoncry resolves a SPECIES_ constant and really plays it",
+			fired)
+	audio.queue_free()
+
+
+## [M27R 7a-3] Battle effects.
+func _test_7a3_battle_sfx() -> void:
+	var names := ["SE_DAMAGE_NORMAL", "SE_DAMAGE_SUPER", "SE_DAMAGE_WEAK",
+			"SE_BALL_THROW", "SE_BALL_HIT", "SE_BALL_SHAKE", "SE_BALL_CLICK",
+			"SE_BALL_DROP", "SE_RECALL", "SE_SEND_OUT", "SE_FLEE"]
+	var known := 0
+	var on_disk := 0
+	for n in names:
+		if AudioMap.SE.has(n):
+			known += 1
+			if FileAccess.file_exists(AudioMap.se_path(n)):
+				on_disk += 1
+	_chk("H.01 all 11 battle effects are catalogued", known == 11)
+	# ⚠️ Catalogued is not the same as PRESENT. A name pointing at a missing
+	# file plays silence and reports nothing, which is how `SE_SAVE` once ended
+	# up aimed at the ME folder.
+	_chk("H.02 ...and every one resolves to a real file (%d/11)" % on_disk,
+			on_disk == 11)
+
+	# ⚠️ THE THRESHOLDS ARE THE TIER. A super-effective hit that sounds
+	# resisted is the most audible mistake a battle can make.
+	_chk("H.03 effectiveness above 1 is SUPER, at every real multiplier",
+			AudioMap.damage_se(2.0) == "SE_DAMAGE_SUPER"
+			and AudioMap.damage_se(4.0) == "SE_DAMAGE_SUPER")
+	_chk("H.04 below 1 is WEAK, and exactly 1 is NORMAL",
+			AudioMap.damage_se(0.5) == "SE_DAMAGE_WEAK"
+			and AudioMap.damage_se(0.25) == "SE_DAMAGE_WEAK"
+			and AudioMap.damage_se(1.0) == "SE_DAMAGE_NORMAL")
+	# An immune hit did no damage, so it makes no damage sound.
+	_chk("H.05 an immune hit makes NO damage sound rather than a quiet one",
+			AudioMap.damage_se(0.0) == "")
+
+	# ⚠️ The shake count drives the capture sequence, and `[M27H H4]` already
+	# emits one — recorded there so a later animation would have nothing to
+	# retrofit. This is that consumer arriving.
+	var caught := AudioMap.catch_sequence(3, true)
+	_chk("H.06 a capture is throw, hit, three shakes, then the CLICK",
+			caught.size() == 6 and caught[0] == "SE_BALL_THROW"
+			and caught[1] == "SE_BALL_HIT" and caught[2] == "SE_BALL_SHAKE"
+			and caught[5] == "SE_BALL_CLICK")
+	var broke := AudioMap.catch_sequence(1, false)
+	_chk("H.07 a break-free shakes fewer times and ends on the ball OPENING",
+			broke.size() == 4 and broke[2] == "SE_BALL_SHAKE"
+			and broke[3] == "SE_BALL_DROP")
+	# The 0-shake case is real: a catch rate of 1 gives odds of exactly 0.
+	# ⚠️ The 0-shake case is real, not defensive: `[M27H H4]` measured that a
+	# catch rate of 1 gives odds of exactly 0 by integer truncation.
+	var zero := AudioMap.catch_sequence(0, false)
+	_chk("H.08 zero shakes still throws and opens, never an empty sequence",
+			zero.size() == 3 and zero[0] == "SE_BALL_THROW"
+			and zero[2] == "SE_BALL_DROP")

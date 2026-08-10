@@ -38,6 +38,12 @@ const ME_DIR := "res://assets/Essentials_v19.1/Audio/ME/"
 ## `.import` sidecar — inert bytes, not a fallback.
 const BGM_DIR := "res://assets/audio/bgm/"
 
+## [M27R 7c] Per-species cries, keyed by national dex number — the same
+## `cry_%04d` convention the sprite pull already uses, so nothing has to carry a
+## name→file mapping at runtime. Pulled from the REFERENCE tree (authentic
+## 8-bit mono 10512 Hz GBA rips), not the vendored Essentials pack.
+const CRY_DIR := "res://assets/audio/cries/"
+
 
 ## `playse` — source constant -> Essentials filename.
 ##
@@ -91,6 +97,24 @@ const SE := {
 	# that is a one-line change here plus `play_se` -> `play_fanfare` at the
 	# single call site in `FieldNativeEvents`.
 	"SE_SAVE": "GUI save choice.ogg",
+
+	# [M27R 7a-3] Battle effects. Shared with the simulator, which is why they
+	# live in the one catalogue rather than beside the battle screen.
+	#
+	# ⚠️ Damage has THREE variants and picking between them is the whole tier:
+	# a super-effective hit that sounds like a resisted one is the single most
+	# noticeable audio error in a battle.
+	"SE_DAMAGE_NORMAL": "Battle damage normal.ogg",
+	"SE_DAMAGE_SUPER": "Battle damage super.ogg",
+	"SE_DAMAGE_WEAK": "Battle damage weak.ogg",
+	"SE_BALL_THROW": "Battle throw.ogg",
+	"SE_BALL_HIT": "Battle ball hit.ogg",
+	"SE_BALL_SHAKE": "Battle ball shake.ogg",
+	"SE_BALL_CLICK": "Battle catch click.ogg",
+	"SE_BALL_DROP": "Battle ball drop.ogg",
+	"SE_RECALL": "Battle recall.ogg",
+	"SE_SEND_OUT": "Battle jump to ball.ogg",
+	"SE_FLEE": "Battle flee.ogg",
 }
 
 
@@ -182,3 +206,46 @@ static func bgm_path(name: String) -> String:
 static func bgm_intent(name: String) -> String:
 	var stem: String = BGM.get(name, "")
 	return "" if stem.is_empty() else BGM_DIR + stem + BGM_EXTS[0]
+
+
+## Path to a species' cry, or "" when there is none.
+##
+## ⚠️ Keyed on DEX, never on name. The name route is where the gendered Nidoran
+## collide — the same collision `[M27B Step 4]` paid for once — and the
+## generator has already resolved it, so nothing downstream needs to know.
+static func cry_path(dex: int) -> String:
+	if dex <= 0:
+		return ""
+	return CRY_DIR + "cry_%04d.wav" % dex
+
+
+## [M27R 7a-3] Which damage sound a hit makes.
+##
+## ⚠️ **THE THRESHOLDS ARE THE TIER.** A super-effective hit that sounds
+## resisted is the most audible mistake a battle can make, and effectiveness
+## arrives as a float multiplier rather than a category — 0.25, 0.5, 1, 2, 4 —
+## so the split has to be made somewhere. Above 1 is super, below is weak,
+## exactly 1 is normal. An immune hit (0) makes no damage sound at all, because
+## no damage happened.
+static func damage_se(effectiveness: float) -> String:
+	if effectiveness <= 0.0:
+		return ""
+	if effectiveness > 1.0:
+		return "SE_DAMAGE_SUPER"
+	if effectiveness < 1.0:
+		return "SE_DAMAGE_WEAK"
+	return "SE_DAMAGE_NORMAL"
+
+
+## The sounds a capture attempt makes, in order.
+##
+## ⚠️ **THE SHAKE COUNT DRIVES IT, and `[M27H H4]` already emits one** — that
+## tier recorded the count specifically so a future animation would have
+## nothing to retrofit. 0-2 shakes is a break-free and ends on the ball
+## bursting open; 3 is a capture and ends on the click.
+static func catch_sequence(shakes: int, caught: bool) -> Array[String]:
+	var out: Array[String] = ["SE_BALL_THROW", "SE_BALL_HIT"]
+	for i in range(maxi(0, shakes)):
+		out.append("SE_BALL_SHAKE")
+	out.append("SE_BALL_CLICK" if caught else "SE_BALL_DROP")
+	return out
