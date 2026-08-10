@@ -2493,8 +2493,18 @@ func _test_warp_dispatch() -> void:
 	# Snapped, not smoothed. This is C4's camera bug, hidden behind the fade —
 	# a pan across the region would be invisible in the totals but obvious on
 	# screen, so it is pinned here.
+	#
+	# [Bugfix follow-up] No longer a literal equality with the player's own
+	# position — the camera now CLAMPS to the loaded region's bounds (fixing
+	# a real black strip visible near an interior's own exit edge), and Oak's
+	# Lab (13x14) is narrower than the 15-tile viewport, so this exact warp
+	# destination is one of the cases the clamp actually bites on both axes.
+	# Compared against the same clamp function the real snap uses, so this
+	# still proves "landed exactly on the correct target, not mid-pan" — it
+	# just no longer assumes the target is always the raw player position.
 	_chk("AE.12 the camera snapped rather than panning",
-			ow._camera.global_position == ow._player.global_position)
+			ow._camera.global_position
+					== ow._clamp_camera_position(ow._player.global_position).round())
 	_chk("AE.13 and the screen faded back in", is_equal_approx(ow._fade.color.a, 0.0))
 
 	# --- back out, which is where an origin or index error shows up ---

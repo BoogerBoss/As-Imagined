@@ -243,6 +243,18 @@ func apply_entity_visibility(e: OverworldEntity) -> void:
 	_occupancy[map_name] = occ
 
 
+## [Bugfix] The broad counterpart to `apply_entity_visibility()` — queued by a
+## plain `setflag`/`clearflag` rather than `addobject`/`removeobject`, since a
+## generic flag write has no single entity to target. Refreshes every entity's
+## `.visible` and rebuilds occupancy across every currently loaded chunk.
+func refresh_all_entity_visibility() -> void:
+	for map_name in _chunks.keys():
+		var root: Node2D = _chunks[map_name]["root"]
+		if root != null and is_instance_valid(root):
+			_apply_entity_visibility(root)
+		rebuild_occupancy(map_name)
+
+
 func _entities_under(root: Node2D) -> Array[OverworldEntity]:
 	var out: Array[OverworldEntity] = []
 	for stratum in root.get_children():

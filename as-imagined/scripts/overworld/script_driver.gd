@@ -170,9 +170,29 @@ func drive() -> void:
 		return
 
 	# Run until the VM needs something from us.
+	#
+	# [Bugfix, live-reported: Oak stays invisible in his own lab even after
+	# the setflag/clearflag visibility-refresh fix] `apply_pending_object_ops()`
+	# used to be called ONCE, after this whole loop finished — but the loop
+	# runs MANY opcodes per `drive()` call (up to 500), and `setflag`/
+	# `clearflag` mutate `FlagStore` IMMEDIATELY inside `vm.step()` while
+	# `removeobject`/`addobject` only QUEUE their own flag mutation for this
+	# later drain. So within one drive() pass, EVERY immediate flag write
+	# from the WHOLE batch happened first, and only THEN did the accumulated
+	# queue drain — meaning a `removeobject` (hide) that a script places
+	# BEFORE a later `clearflag` (show) had its hide applied AFTER the show,
+	# silently re-hiding it. Exactly `ChooseStarterScene`'s own sequence:
+	# `removeobject LOCALID_OAKS_LAB_PROF_OAK` / `setobjectxyperm ...` /
+	# `clearflag FLAG_HIDE_OAK_IN_HIS_LAB` — live-verified: the flag read
+	# `false` (correctly cleared) immediately before the drain, then flipped
+	# back to `true` inside it. Draining after EVERY step (not just once
+	# after the loop) keeps deferred and immediate mutations in the SAME
+	# relative order the script itself wrote them in. Cheap: the function is
+	# a no-op whenever nothing is queued, which is most opcodes.
 	var guard := 0
 	while vm.step() and guard < 500:
 		guard += 1
+		apply_pending_object_ops()
 
 	# [M27F Stage 3] `applymovement` is ASYNCHRONOUS: it queues rather than
 	# pausing, so the script keeps running and a cutscene can start two
@@ -182,7 +202,10 @@ func drive() -> void:
 	# [Map scripts] setobjectxyperm/setobjectmovementtype/turnobject/
 	# addobject/removeobject — same drain shape as movements, immediately
 	# after them so a script that repositions an entity THEN walks it (or
-	# vice versa) sees its own ops applied in the order it issued them.
+	# vice versa) sees its own ops applied in the order it issued them. Also
+	# covers whatever the FINAL step (the one that caused `vm.step()` to
+	# return false and the loop to exit) queued, which the in-loop drain
+	# above never reaches since the loop body does not run for that step.
 	apply_pending_object_ops()
 
 	match vm.pause_reason:
@@ -261,6 +284,27 @@ func drive() -> void:
 			# is up. `_drive_naming` handles the keys; this branch only opens it
 			# and waits, because `answer_naming` is what actually resumes the VM.
 			if not _ow._naming.is_open and vm.naming_slot >= 0:
+				# [Bugfix, live-reported: the nickname screen is a black screen
+				# that hard-locks the game] `Common_EventScript_NameReceivedPartyMon`
+				# (the real shared script every nickname site — including the
+				# starter's — runs through) is `fadescreen FADE_TO_BLACK` then
+				# `special ChangePokemonNickname`. `fadescreen` genuinely fades
+				# `_fade` (a CanvasLayer at layer 200, above EVERY other overworld
+				# UI including this naming screen's own layer 82) to fully opaque
+				# black, and nothing clears it again until the whole ENCLOSING
+				# script finishes — which in the real flow is many opcodes later
+				# (the rival's own walk/dialogue/fanfare). So the keyboard was
+				# drawing correctly the entire time, just entirely hidden behind
+				# an opaque layer above it — reads as a hard lock because there is
+				# no way to SEE the cursor to navigate to OK, even though input
+				# was never actually stuck. Un-fading here, the instant the
+				# keyboard is about to be shown, is the naming screen's own
+				# equivalent of source's real screen-swap (`CB2_ChangePokemonNickname`
+				# draws its OWN background rather than sitting behind the field's
+				# fade) — not awaited, matching every other fire-and-forget
+				# `_fade_to` call in this file, so opening the screen isn't
+				# delayed by the tween.
+				_ow._fade_to(0.0)
 				if not _ow._naming.name_chosen.is_connected(on_name_chosen):
 					_ow._naming.name_chosen.connect(on_name_chosen)
 				_ow._naming.open_keyboard(vm.naming_prompt())
@@ -462,6 +506,15 @@ func apply_pending_object_ops() -> void:
 			"player_visible":
 				if _ow._player != null:
 					_ow._player.visible = bool(op.get("value", true))
+			# [Bugfix] Queued by a plain `setflag`/`clearflag` in `ScriptVM` —
+			# see that opcode's own doc comment. A generic flag write can
+			# affect ANY loaded entity's `visibility_flag`, not just the one
+			# `addobject`/`removeobject` happened to target, so this refreshes
+			# every entity across every loaded chunk rather than trying to
+			# track which flag belongs to which entity. Rare (cutscene-only),
+			# so a full pass is the right cost.
+			"refresh_visibility":
+				_ow.manager.refresh_all_entity_visibility()
 
 			"setmetatile":
 				# `x`/`y` are LOCAL to whichever map the running script belongs
@@ -516,6 +569,16 @@ func resolve_movement_entity(target: String) -> OverworldEntity:
 		if vm.subject_local_id == "":
 			return null
 		return _ow.manager.find_entity_by_local_id(vm.subject_local_id)
+	# [Bugfix, live-reported: Gary's own starter ball never disappears] `target`
+	# may itself be a VAR NAME a script chose to hold a LOCALID in (see
+	# `ScriptVM._localid_vars`'s own doc comment) rather than a literal
+	# `LOCALID_*` token — resolve that indirection before treating `target` as
+	# the local_id itself. A literal target (the overwhelmingly common case)
+	# was never registered as a localid-var name, so this is a no-op for it.
+	if vm != null:
+		var mapped := vm.localid_var(target)
+		if mapped != "":
+			return _ow.manager.find_entity_by_local_id(mapped)
 	return _ow.manager.find_entity_by_local_id(target)
 
 

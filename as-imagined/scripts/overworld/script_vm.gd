@@ -227,6 +227,23 @@ var subject: OverworldEntity = null
 ## script or an entity with no id.
 var subject_local_id: String = ""
 
+## [Bugfix, live-reported: Gary's own starter ball never disappears]
+## `setvar <var>, LOCALID_X` stores X's NUMERIC resolution via `_literal`
+## (which has no `LOCALID_*` case at all, so it silently stored 0) — but a
+## corpus script is free to hold a LOCALID in an arbitrary var name of its
+## own choosing (this project's own `PalletTown_ProfessorOaksLab_
+## ChooseStarterScene` does exactly that: `setvar RIVAL_STARTER_ID,
+## LOCALID_CHARMANDER_BALL`, then later `removeobject RIVAL_STARTER_ID`) —
+## not just the one hardcoded name (`VAR_LAST_TALKED`) object-op resolution
+## already special-cases. Recorded here, alongside the numeric var, purely
+## so `removeobject`/`addobject`/`applymovement`/etc. can resolve a var name
+## back to the LOCALID string it was actually meant to carry.
+var _localid_vars: Dictionary = {}
+
+
+func localid_var(name: String) -> String:
+	return str(_localid_vars.get(name, ""))
+
 ## [M27I I2] The three script string buffers. Runtime-only, like source's own
 ## gStringVar1-3 globals — deliberately NOT in FlagStore, which is save state.
 var buffers := TextBuffers.new()
@@ -1164,11 +1181,34 @@ func step() -> bool:
 						audio.play_fanfare("MUS_OBTAIN_BADGE")
 				else:
 					_flags.flag_clear(str(args[0]))
+				# [Bugfix, live-reported: Oak stays invisible inside his own lab]
+				# `removeobject`/`addobject` correctly re-derive an entity's
+				# rendering/occupancy the moment THEY flip a visibility_flag —
+				# but a script is equally free to flip the SAME flag directly
+				# via plain `setflag`/`clearflag` (this project's own
+				# ChooseStarterScene does exactly that: `removeobject` hides
+				# Oak, `setobjectxyperm` repositions him, then a bare
+				# `clearflag FLAG_HIDE_OAK_IN_HIS_LAB` is what is meant to
+				# reveal him again). Nothing re-applied visibility for THAT
+				# path, so Oak stayed frozen at whatever `.visible` the
+				# earlier `removeobject` left him at. Queued the same way
+				# every other object-op is — the VM has no business touching
+				# the scene tree directly — and resolved broadly rather than
+				# tracking a flag-name-to-entity index for what is a rare,
+				# cutscene-only operation.
+				pending_object_ops.append({"op": "refresh_visibility"})
 			return true
 
 		"setvar":
 			if _flags != null and args.size() > 1:
 				_flags.var_set(str(args[0]), _literal(str(args[1])))
+				# [Bugfix] See `_localid_vars`' own doc comment. A LOCALID_*
+				# value is data this VM cannot express as an int (it has no
+				# meaningful `_literal` resolution), so it is kept alongside
+				# the numeric var rather than instead of it — nothing reading
+				# the var numerically is affected.
+				if str(args[1]).begins_with("LOCALID_"):
+					_localid_vars[str(args[0])] = str(args[1])
 			return true
 
 		"switch":

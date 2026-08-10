@@ -682,7 +682,7 @@ func _add_camera() -> void:
 func _snap_camera_to_player() -> void:
 	if _camera == null or _player == null:
 		return
-	_camera.global_position = _player.global_position.round()
+	_camera.global_position = _clamp_camera_position(_player.global_position).round()
 	# [M27N W3] Pushed from the exact call that just moved the camera, not
 	# polled later — a sibling node reading camera position from its own
 	# `_process()` would reliably see LAST frame's value, since Tweens (the
@@ -691,6 +691,46 @@ func _snap_camera_to_player() -> void:
 	# function's own doc comment already applies to pixel-snapping.
 	if _weather != null:
 		_weather.push_camera_scroll(_camera.global_position * _camera.zoom.x)
+
+
+## [Bugfix, live-reported: "a one tile deep strip of black on indoor maps on
+## the side where there is an exit"] Interior maps carry a real, in-bounds
+## "void" padding row baked at one edge (present in the imported reference
+## data itself — measured region-wide, 192 of 421 maps, almost entirely
+## interiors). The GBA's own small, fixed viewport keeps it permanently
+## off-screen; this project's camera never clamped to a map's bounds at all,
+## so standing near a door — the one place a player gets close enough to that
+## edge — exposes it.
+##
+## Clamps to the UNION of every currently LOADED chunk's pixel bounds, not
+## just the player's own map, so a seamless outdoor connection can still pan
+## across a boundary into an already-streamed neighbour exactly as before —
+## a no-op there, since the loaded region is far larger than one viewport.
+## Only a small, unconnected interior (nothing else ever loaded beside it) is
+## small enough for the clamp to actually take hold.
+func _clamp_camera_position(target: Vector2) -> Vector2:
+	if _camera == null:
+		return target
+	var bounds := Rect2i()
+	for map_name in manager.loaded_chunks():
+		var r := manager.chunk_rect(map_name)
+		if r.size == Vector2i.ZERO:
+			continue
+		bounds = r if bounds.size == Vector2i.ZERO else bounds.merge(r)
+	if bounds.size == Vector2i.ZERO:
+		return target
+	var px := Rect2(Vector2(bounds.position) * CELL, Vector2(bounds.size) * CELL)
+	var half := get_viewport_rect().size / _camera.zoom / 2.0
+	# A loaded region SMALLER than the viewport on a given axis has no valid
+	# clamp range at all (min would exceed max) — center on that axis instead
+	# of clamping into a backwards range.
+	var min_x := px.position.x + half.x
+	var max_x := px.position.x + px.size.x - half.x
+	var min_y := px.position.y + half.y
+	var max_y := px.position.y + px.size.y - half.y
+	var x := (px.position.x + px.size.x / 2.0) if min_x > max_x else clampf(target.x, min_x, max_x)
+	var y := (px.position.y + px.size.y / 2.0) if min_y > max_y else clampf(target.y, min_y, max_y)
+	return Vector2(x, y)
 
 
 ## Tween `_player.position` toward `target_local` over `dur` seconds, snapping
@@ -885,14 +925,37 @@ func _process(_delta: float) -> void:
 		_start_menu.open(flags)
 		return
 
-	# [M27F] A press of A, before movement: interacting with the tile you face
-	# must not also step into it.
-	if Input.is_action_just_pressed("ui_accept") and try_interact():
-		return
+	# [Bugfix, live-reported: "I can select a pokemon before I finish my
+	# walking animation so I face the wrong direction"] A held direction was
+	# read and applied to `_facing`/`_try_step` AFTER the interact check
+	# below, so `try_interact()` always read `_facing`/`_cell` as they stood
+	# at the START of the frame — last frame's values, not this one's. A
+	# player already correctly facing one target who, in the SAME input
+	# frame, pressed a NEW direction (turning toward a different target) AND
+	# `ui_accept` together got the OLD target: the interact fired on stale
+	# facing before this frame's turn was ever applied, and — because
+	# `try_interact()` succeeding `return`s immediately — the facing update
+	# for the new key was silently dropped, never retried (the key's
+	# `just_pressed` edge is gone next frame). Reproduced live: holding a new
+	# direction + accept in one frame fired the OLD target's script and left
+	# `_facing` unchanged.
+	#
+	# Turning/stepping now resolves FIRST, so `_facing` is always this
+	# frame's true value by the time interact is checked. `_try_step` sets
+	# `_moving` synchronously only when a step actually STARTS (a blocked
+	# step — turning into a wall, or, in this exact bug, into a solid item
+	# ball — leaves `_moving` false); a real, in-flight step still owns the
+	# frame and interact is skipped for it, matching the "before movement"
+	# comment's own original intent, just applied to a step that is actually
+	# happening rather than to stale state from last frame.
 	var dir := _held_direction()
 	if dir >= 0:
 		_facing = dir
 		_try_step(dir)
+		if _moving:
+			return
+	if Input.is_action_just_pressed("ui_accept") and try_interact():
+		return
 
 
 func _held_direction() -> int:
@@ -1990,18 +2053,27 @@ func whiteout_payout(highest_level: int) -> int:
 	return mini(asked, OverworldSession.wallet.money)
 
 
-## Drop a running script without running the rest of it.
-##
-## [M27O O2] Source's `ScriptContext_Init()` inside `CB2_WhiteOut`. Distinct
-## from the normal finish path, which reports where a script stopped — a script
-## abandoned by a blackout did not stop at a coverage gap, so saying so would be
-## noise.
+## [Bugfix, live-reported: a trainer's ORIGINAL spawn cell stays permanently
+## blocked after it approaches and battles, even though the trainer visibly
+## ends up standing somewhere else entirely] This used to reimplement "which
+## chunk owns this entity" as an ORIGIN-based geometry test — `e.cell` is
+## LOCAL to the chunk the entity actually lives in, but the old body added
+## EVERY *candidate* chunk's own origin to that local cell and checked whether
+## the result fell inside THAT candidate's rect, never checking which chunk
+## the entity is actually parented under. For any entity whose real home
+## chunk sits at a non-zero origin, its raw local cell trivially collides with
+## whichever OTHER loaded chunk happens to sit at origin (0,0) (Route1/
+## Pallet Town in the corridor), so `_run_trainer_approach()`'s own
+## `manager.start_entity_movement(map_name, ...)` call silently updated the
+## WRONG chunk's occupancy dictionary on every step of the approach — the
+## trainer's real spawn cell in its own chunk was never erased, and its new
+## cell got written into a chunk nobody ever queries. `MapManager.map_name_of()`
+## already answers this correctly, by real scene-tree ancestry rather than
+## origin arithmetic, and is what `move_entity`/`start_movement_for_entity`
+## already trust for this exact question — delegated to it instead of keeping
+## a second, broken reimplementation.
 func _owning_map_of(e: OverworldEntity) -> String:
-	for map_name in manager.loaded_chunks():
-		var r := manager.chunk_rect(map_name)
-		if r.has_point(e.cell + manager.origin_of(map_name)):
-			return map_name
-	return ""
+	return manager.map_name_of(e)
 
 
 ## The "!" over the trainer's head. Source plays FLDEFF_EXCLAMATION_MARK_ICON
