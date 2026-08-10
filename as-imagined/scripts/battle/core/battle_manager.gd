@@ -1748,9 +1748,24 @@ func _phase_priority_resolution() -> void:
 		# quick_effect being true — evaluated/consumed exactly once here, matching
 		# this precompute's own "exactly once per battler per turn" requirement
 		# (the same reasoning [M17n-3] documented for why this loop exists at all).
-		var custap_item: ItemData = ItemManager.custap_berry_activates(mon, ng_active)
-		_turn_quick_effect[mon] = AbilityManager.quick_draw_activates(
-				mon, chosen_move, ng_active, _force_quick_draw_roll) \
+		#
+		# ⚠️ **FIX, 2026-08-10: Custap Berry is only even CHECKED — let alone
+		# eaten — when Quick Draw has NOT already flagged this battler this
+		# turn.** Source's own gate, `TryChangingTurnOrderEffects`
+		# (battle_main.c:5190): `if (!gProtectStructs[battler1].quickDraw &&
+		# (...QUICK_CLAW... || ...CUSTAP_BERRY...))`. This previously called
+		# `custap_berry_activates()` unconditionally and consumed the berry
+		# whenever it activated, even when Quick Draw alone already put the
+		# mon first — wastefully eating the berry for zero turn-order effect.
+		# Quick Claw is deliberately left unguarded below: it is never
+		# consumed either way, so gating its own check would change nothing
+		# observable — only Custap's consumption is a real side effect.
+		var quick_draw_active: bool = AbilityManager.quick_draw_activates(
+				mon, chosen_move, ng_active, _force_quick_draw_roll)
+		var custap_item: ItemData = null
+		if not quick_draw_active:
+			custap_item = ItemManager.custap_berry_activates(mon, ng_active)
+		_turn_quick_effect[mon] = quick_draw_active \
 				or ItemManager.quick_claw_activates(mon, ng_active, _force_quick_claw_roll) \
 				or custap_item != null
 		if custap_item != null:
@@ -6654,76 +6669,187 @@ func _phase_faint_check() -> void:
 
 
 func _phase_end_of_turn() -> void:
-	# M17g: computed once for the whole end-of-turn tick — Poison Heal, Truant's
-	# implicit gate (via pre_move_check next turn), and every ABILITYEFFECT_ENDTURN
-	# ability below share this same field-wide snapshot.
-	var ng_active: bool = _is_neutralizing_gas_active()
-	# ── M11: Weather duration tick (ENDTURN_WEATHER, position 2 in source handler table) ──
-	# Source: HandleEndTurnWeather → EndOrContinueWeather (battle_util.c L244):
-	#   if (weatherDuration > 0 && --weatherDuration == 0) → gBattleWeather = B_WEATHER_NONE
-	# Tick fires BEFORE weather chip damage and BEFORE status damage.
-	# [M26B4-0] Restructured to mirror source's own if/else exactly, including
-	# its short-circuit. Source's condition is
-	#   `weatherDuration > 0 && --weatherDuration == 0`
-	# so the ELSE branch (weather continues) catches TWO cases: weather with
-	# turns still remaining after the decrement, AND permanent weather
-	# (duration 0), which short-circuits before decrementing and so never
-	# expires. Behaviour for every reachable case here is byte-identical to the
-	# previous `if weather != NONE and weather_duration > 0:` form.
+	# ⚠️ **THE CALL ORDER BELOW IS THE MECHANIC. DO NOT REORDER WITHOUT
+	# RE-DERIVING IT FROM SOURCE.**
 	#
-	# The permanent case is currently UNREACHABLE in this project: weather_duration
-	# is assigned at exactly one site (_try_set_weather), from
-	# ItemManager.weather_duration, which returns only WEATHER_DURATION_DEFAULT (5)
-	# or WEATHER_DURATION_ROCK (8) for a real weather -- 0 only when clearing to
-	# WEATHER_NONE. Primal weather is NOT modelled as permanent here (a gap already
-	# flagged by [D2 batch], deliberately not fixed). Written in source's shape
-	# anyway so that whenever primal permanence IS built, weather_continues keeps
-	# firing correctly with no further change needed here.
-	if weather != WEATHER_NONE:
-		var weather_expired_this_turn: bool = false
-		if weather_duration > 0:
-			weather_duration -= 1
-			if weather_duration == 0:
-				var expired_w: int = weather
-				weather = WEATHER_NONE
-				weather_expired.emit(expired_w)
-				_notify_weather_changed()
-				weather_expired_this_turn = true
-		if not weather_expired_this_turn:
-			weather_continues.emit(weather)
+	# Source's end-of-turn is a strict linear walk over `sEndTurnFuncs`
+	# (battle_end_turn.c L1547-1600), dispatched by `DoEndTurnEffects`
+	# (L1619-1664) in ascending `enum EndTurnResolutionOrder` order
+	# (include/constants/battle_end_turn.h) — every battler is processed at
+	# stage N before ANY battler reaches stage N+1. The index in each comment
+	# below is that enum's own real ordinal, and the calls are sorted by it.
+	#
+	# [Reordered 2026-08-10] This used to be one ~600-line straight-line body
+	# whose block order had drifted badly from source — 11 distinct
+	# mismatches, found by auditing every implemented effect against the real
+	# table. The worst were load-bearing, not cosmetic:
+	#   * Rain Dish / Ice Body / Dry Skin / Solar Power ran DEAD LAST instead
+	#     of alongside weather chip damage (idx 3) — 23 ranks late;
+	#   * Healer / Hydration / Shed Skin likewise ran dead last instead of at
+	#     idx 8;
+	#   * Leftovers / Black Sludge ran AFTER poison/burn/Nightmare/Wrap/
+	#     Octolock/Curse instead of before them (idx 8 vs 13+) — so a mon
+	#     source would leave alive at low HP could faint outright here;
+	#   * Sticky Barb / status orbs ran ~24 ranks EARLY;
+	#   * Water Sport / Mud Sport ran 2nd instead of ~26th;
+	#   * Future Sight / Wish ran ~15 ranks late;
+	#   * Magnet Rise / Telekinesis / Roost ran ~15 ranks early;
+	#   * Curse ran after Wrap/Octolock instead of before both.
+	# The old body's own comments cited "position 19" for Leftovers, which is
+	# simply wrong (FIRST_EVENT_BLOCK is idx 8) — a wrong citation is what let
+	# the wrong order look justified for as long as it did.
+	#
+	# Extracted into one function per stage SPECIFICALLY so the order is
+	# auditable at a glance rather than buried in 600 lines of straight-line
+	# code: that opacity is what hid the drift.
+	#
+	# M17g: `ng_active` is computed ONCE for the whole tick — Poison Heal,
+	# Truant's implicit gate (via pre_move_check next turn), and every
+	# ABILITYEFFECT_ENDTURN ability below share this same field-wide snapshot.
+	var ng_active: bool = _is_neutralizing_gas_active()
 
-	# ── [D4 Bundle 5] Mud Sport / Water Sport — FIELD-WIDE 5-turn countdown ──
-	# Source: HandleEndTurnMudSport/HandleEndTurnWaterSport (battle_end_turn.c
-	# L1184-1198) — see the `_mud_sport_turns`/`_water_sport_turns` fields'
-	# own doc comment for the full citation.
-	if _mud_sport_turns > 0:
-		_mud_sport_turns -= 1
-	if _water_sport_turns > 0:
-		_water_sport_turns -= 1
+	_eot_various()                          # idx 1  ENDTURN_VARIOUS
+	_eot_weather_duration()                 # idx 2  ENDTURN_WEATHER
+	_eot_weather_damage(ng_active)          # idx 3  ENDTURN_WEATHER_DAMAGE
+	_eot_future_sight()                     # idx 6  ENDTURN_FUTURE_SIGHT
+	_eot_wish()                             # idx 7  ENDTURN_WISH
+	_eot_first_event_block(ng_active)       # idx 8  ENDTURN_FIRST_EVENT_BLOCK
+	_eot_aqua_ring_ingrain(ng_active)       # idx 10/11 AQUA_RING / INGRAIN
+	_eot_leech_seed(ng_active)              # idx 12 ENDTURN_LEECH_SEED
+	_eot_status_damage(ng_active)           # idx 13/14 POISON / BURN
+	_eot_nightmare(ng_active)               # idx 16 ENDTURN_NIGHTMARE
+	_eot_curse(ng_active)                   # idx 17 ENDTURN_CURSE
+	_eot_wrap(ng_active)                    # idx 18 ENDTURN_WRAP
+	_eot_octolock(ng_active)                # idx 20 ENDTURN_OCTOLOCK
+	_eot_taunt()                            # idx 22 ENDTURN_TAUNT
+	_eot_encore()                           # idx 24 ENDTURN_ENCORE
+	_eot_disable()                          # idx 25 ENDTURN_DISABLE
+	_eot_magnet_rise()                      # idx 26 ENDTURN_MAGNET_RISE
+	_eot_telekinesis()                      # idx 27 ENDTURN_TELEKINESIS
+	_eot_yawn(ng_active)                    # idx 30 ENDTURN_YAWN
+	_eot_perish_song()                      # idx 31 ENDTURN_PERISH_SONG
+	_eot_roost()                            # idx 32 ENDTURN_ROOST
+	_eot_second_event_block()               # idx 34 ENDTURN_SECOND_EVENT_BLOCK
+	_eot_trick_room()                       # idx 35 ENDTURN_TRICK_ROOM
+	_eot_water_sport()                      # idx 37 ENDTURN_WATER_SPORT
+	_eot_mud_sport()                        # idx 38 ENDTURN_MUD_SPORT
+	_eot_third_event_block(ng_active)       # idx 42 ENDTURN_THIRD_EVENT_BLOCK
 
-	# ── M11: Weather chip damage (ENDTURN_WEATHER_DAMAGE, position 3) ────────────────────
-	# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L100–186).
-	# Fires BEFORE poison/burn (ENDTURN_POISON=12, ENDTURN_BURN=13 in handler table).
-	# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable,
-	#   or ability is Sand Veil/Sand Force/Sand Rush/Overcoat.
-	#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148);
-	#   ability exemptions at L144-147.
-	#   [M17n-2] FOLLOW-UP FIX (post-[M17n-6]): this comment previously (and wrongly)
-	#   stated "Sand Veil/Sand Rush do NOT grant sandstorm-chip immunity" — that was
-	#   [M17n-2]'s own original conclusion, confirmed WRONG during [M17n-6]'s Overcoat
-	#   work and fixed here (see docs/decisions.md's [M17n-2] follow-up subsection).
-	#   Sand Veil/Sand Force/Sand Rush DO grant sandstorm-chip immunity, matching
-	#   Overcoat's existing shape — see AbilityManager.blocks_weather_chip_damage.
-	# HAIL: immune if any type is Ice(16), or semi-invulnerable, or ability is Snow
-	#   Cloak/Overcoat. Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171); ability
-	#   exemption at L166. Magic Guard also appears in source's exemption chain
-	#   (L150, L167) — implemented as of [M17n-9], gated inside
-	#   _is_weather_damage_immune via AbilityManager.blocks_indirect_damage.
-	# Damage = maxHP / 16 (integer division). Source: GetNonDynamaxMaxHP(battler) / 16 (L154, L177).
-	# M17n-2: `weather` here is intentionally the RAW field, not `_effective_weather()`
-	# — Air Lock/Cloud Nine negation is applied via the `eff_weather` local below,
-	# computed once and reused for both the outer gate and the per-mon immunity check.
+	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
+	_set_phase(BattlePhase.SWITCH_PROMPT)
+
+
+# ── idx 1: ENDTURN_VARIOUS ────────────────────────────────────────────────
+#
+# Source: battle_end_turn.c L59-88 — ONE atomic stage covering Throat Chop,
+# Lock-On, Laser Focus and (field-wide, after the per-battler loop) Echoed
+# Voice. These were previously scattered across ranks 6, 9, 20 and 24 of the
+# old straight-line body; source runs all of them FIRST, before the weather
+# tick.
+func _eot_various() -> void:
+	for mon: BattlePokemon in _turn_order:
+		# [Bucket 4 cheapest singles] Throat Chop. Source: L61-63 — note it
+		# also cuts an in-progress uproar short, which is why it is not a bare
+		# decrement.
+		if mon.throat_chop_turns > 0:
+			mon.throat_chop_turns -= 1
+		# [D1] Lock-On / Mind Reader — 2-tick countdown. Source: L68-69:
+		# `if (lockOn > 0 && --lockOn == 0) battlerWithSureHit = 0`. Cleared
+		# after exactly one full extra turn.
+		if mon.sure_hit_target != null:
+			mon.sure_hit_turns -= 1
+			if mon.sure_hit_turns <= 0:
+				mon.sure_hit_target = null
+				mon.sure_hit_turns = 0
+		# [D4 Bundle 5] Laser Focus — flat, UNCONDITIONAL 2-turn countdown,
+		# decremented regardless of whether the holder even attacked this
+		# turn. Source: L74-75.
+		if mon.laser_focus_turns > 0:
+			mon.laser_focus_turns -= 1
+
+	# [D3 turn-order/event-tracker batch] Echoed Voice: increment (capped 4)
+	# if used this turn, else reset to 0. Source: L79-88. Field-wide, and
+	# source runs it after the per-battler loop within this same stage.
+	if _echoed_voice_used_this_turn:
+		if _echoed_voice_counter < 4:
+			_echoed_voice_counter += 1
+		_echoed_voice_used_this_turn = false
+	else:
+		_echoed_voice_counter = 0
+
+
+# ── idx 2: ENDTURN_WEATHER — duration tick ────────────────────────────────
+#
+# Source: HandleEndTurnWeather → EndOrContinueWeather (battle_util.c L244):
+#   if (weatherDuration > 0 && --weatherDuration == 0) → gBattleWeather = NONE
+# Tick fires BEFORE weather chip damage and BEFORE status damage.
+#
+# [M26B4-0] Mirrors source's own if/else exactly, including its short-circuit.
+# Source's condition is `weatherDuration > 0 && --weatherDuration == 0`, so
+# the ELSE branch (weather continues) catches TWO cases: weather with turns
+# still remaining after the decrement, AND permanent weather (duration 0),
+# which short-circuits before decrementing and so never expires.
+#
+# The permanent case is currently UNREACHABLE in this project: weather_duration
+# is assigned at exactly one site (_try_set_weather), from
+# ItemManager.weather_duration, which returns only WEATHER_DURATION_DEFAULT (5)
+# or WEATHER_DURATION_ROCK (8) for a real weather -- 0 only when clearing to
+# WEATHER_NONE. Primal weather is NOT modelled as permanent here (a gap already
+# flagged by [D2 batch], deliberately not fixed). Written in source's shape
+# anyway so that whenever primal permanence IS built, weather_continues keeps
+# firing correctly with no further change needed here.
+func _eot_weather_duration() -> void:
+	if weather == WEATHER_NONE:
+		return
+	var weather_expired_this_turn: bool = false
+	if weather_duration > 0:
+		weather_duration -= 1
+		if weather_duration == 0:
+			var expired_w: int = weather
+			weather = WEATHER_NONE
+			weather_expired.emit(expired_w)
+			_notify_weather_changed()
+			weather_expired_this_turn = true
+	if not weather_expired_this_turn:
+		weather_continues.emit(weather)
+
+
+# ── idx 3: ENDTURN_WEATHER_DAMAGE — chip damage AND the weather abilities ──
+#
+# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L100-186).
+#
+# ⚠️ **THE WEATHER-DRIVEN ABILITIES BELONG HERE, NOT IN A LATER PASS.**
+# Source dispatches Dry Skin/Rain Dish (rain, L129-141), Dry Skin/Solar Power
+# (sun) and Ice Body (hail/snow, L162-166) via AbilityBattleEffects from
+# INSIDE this same weather switch — they are not a separate stage. Running
+# them at the end of the tick (which this project did until 2026-08-10) puts
+# them ~23 ranks late, after every damage source that could have killed the
+# holder first.
+#
+# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable,
+#   or ability is Sand Veil/Sand Force/Sand Rush/Overcoat.
+#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148);
+#   ability exemptions at L144-147.
+#   [M17n-2] FOLLOW-UP FIX (post-[M17n-6]): an earlier version of this comment
+#   wrongly stated "Sand Veil/Sand Rush do NOT grant sandstorm-chip immunity" —
+#   that was [M17n-2]'s own original conclusion, confirmed WRONG during
+#   [M17n-6]'s Overcoat work (see docs/decisions.md's [M17n-2] follow-up).
+#   Sand Veil/Sand Force/Sand Rush DO grant sandstorm-chip immunity, matching
+#   Overcoat's existing shape — see AbilityManager.blocks_weather_chip_damage.
+# HAIL: immune if any type is Ice(16), or semi-invulnerable, or ability is Snow
+#   Cloak/Overcoat. Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171); ability
+#   exemption at L166. Magic Guard also appears in source's exemption chain
+#   (L150, L167) — implemented as of [M17n-9], gated inside
+#   _is_weather_damage_immune via AbilityManager.blocks_indirect_damage.
+# Damage = maxHP / 16 (integer division). Source: GetNonDynamaxMaxHP(battler) / 16
+# (L154, L177).
+#
+# M17n-2: `weather` is intentionally the RAW field, not `_effective_weather()`
+# — Air Lock/Cloud Nine negation is applied via the `eff_weather` local,
+# computed once and reused for both the outer gate and the per-mon immunity check.
+func _eot_weather_damage(ng_active: bool) -> void:
 	var eff_weather: int = _effective_weather()
+
 	if eff_weather == WEATHER_SANDSTORM or eff_weather == WEATHER_HAIL:
 		for mon: BattlePokemon in _turn_order:
 			if mon.fainted:
@@ -6739,16 +6865,167 @@ func _phase_end_of_turn() -> void:
 					pokemon_fainted.emit(mon)
 					_award_exp_for_fainted_opponent(mon)
 
-	# ── [D4 CHEAP bundle] Aqua Ring / Ingrain end-of-turn self-heal
-	# (ENDTURN_AQUA_RING=1557, ENDTURN_INGRAIN=1558 in source's own handler
-	# table — both BEFORE ENDTURN_LEECH_SEED=1559, matching this insertion
-	# point) ───────────────────────────────────────────────────────────────
-	# Source: battle_end_turn.c :: HandleEndTurnAquaRing (L438-455) /
-	#   HandleEndTurnIngrain (L457-474) — the literal same maxHP/16 formula,
-	#   Big-Root-boosted, gated on not already at max HP. Magic Guard has no
-	#   interaction here (a heal, not indirect damage) — confirmed from
-	#   source (neither function checks it), matching Leftovers' own
-	#   precedent.
+	# M17c/M17d: Rain Dish / Ice Body / Dry Skin's heal-or-sun-damage halves,
+	# and Solar Power's own damage half — the SAME dispatch source runs them
+	# from, immediately alongside the chip damage above.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var r: Dictionary = AbilityManager.try_end_of_turn(
+				mon, null, null, eff_weather, _get_ally(mon), null, null, ng_active,
+				AbilityManager.EotStage.WEATHER)
+		if r["heal_amount"] > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + r["heal_amount"])
+			ability_healed.emit(mon, r["heal_amount"])
+			ability_triggered.emit(mon, "rain_dish_ice_body_dry_skin")
+		if r["damage_amount"] > 0:
+			mon.current_hp = max(0, mon.current_hp - r["damage_amount"])
+			weather_damage.emit(mon, r["damage_amount"])
+			var dmg_tag: String = "solar_power" \
+					if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SOLAR_POWER \
+					else "dry_skin"
+			ability_triggered.emit(mon, dmg_tag)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
+
+
+# ── idx 6: ENDTURN_FUTURE_SIGHT ───────────────────────────────────────────
+#
+# [Delayed-effect family] Decrement each pending slot's counter once per
+# turn; resolve (via the normal _do_damaging_hit chokepoint) against whoever
+# occupies that slot when it hits 0. See MoveData.is_future_sight's own doc
+# comment for full source citations.
+func _eot_future_sight() -> void:
+	for fs_target_idx: int in _future_sight_pending.keys().duplicate():
+		var fs_entry: Dictionary = _future_sight_pending[fs_target_idx]
+		fs_entry["counter"] -= 1
+		if fs_entry["counter"] <= 0:
+			_future_sight_pending.erase(fs_target_idx)
+			if fs_target_idx < 0 or fs_target_idx >= _combatants.size():
+				continue
+			var fs_target: BattlePokemon = _combatants[fs_target_idx]
+			if fs_target.fainted:
+				continue
+			var fs_caster: BattlePokemon = fs_entry["caster"]
+			var fs_move: MoveData = fs_entry["move"]
+			var fs_damage: int = _do_damaging_hit(fs_caster, fs_target, fs_move)
+			future_sight_resolved.emit(fs_caster, fs_target, fs_move, fs_damage)
+
+
+# ── idx 7: ENDTURN_WISH ───────────────────────────────────────────────────
+#
+# [Delayed-effect family] Decrement each pending slot's counter once per
+# turn; resolve (a flat heal, caster's own max HP / 2) against whoever
+# occupies the CASTER's OWN slot when it hits 0. See MoveData.is_wish's own
+# doc comment for full source citations.
+func _eot_wish() -> void:
+	for wish_slot_idx: int in _wish_pending.keys().duplicate():
+		var wish_entry: Dictionary = _wish_pending[wish_slot_idx]
+		wish_entry["counter"] -= 1
+		if wish_entry["counter"] <= 0:
+			_wish_pending.erase(wish_slot_idx)
+			if wish_slot_idx < 0 or wish_slot_idx >= _combatants.size():
+				continue
+			var wish_recipient: BattlePokemon = _combatants[wish_slot_idx]
+			if wish_recipient.fainted:
+				continue
+			var wish_caster: BattlePokemon = wish_entry["caster"]
+			var wish_heal: int = wish_caster.max_hp / 2
+			var wish_actual: int = 0
+			if wish_recipient.current_hp < wish_recipient.max_hp:
+				wish_actual = min(wish_heal, wish_recipient.max_hp - wish_recipient.current_hp)
+				wish_recipient.current_hp += wish_actual
+			wish_resolved.emit(wish_recipient, wish_actual)
+
+
+# ── idx 8: ENDTURN_FIRST_EVENT_BLOCK ──────────────────────────────────────
+#
+# Source: HandleEndTurnFirstEventBlock (battle_end_turn.c L315-436), whose
+# own internal `endTurnBlock` sub-switch fixes the order within this stage:
+#   GMAX_RESIDUAL → SEA_OF_FIRE → THRASH → GRASSY_TERRAIN_HEAL →
+#   ABILITIES (Healer/Hydration/Shed Skin, L410-426) →
+#   HEAL_ITEMS (Leftovers/Black Sludge, L427-432)
+# The first four have no implementation in this project (no G-Max, no Sea of
+# Fire, no Gen-4 thrash-confusion, no terrain), so this reproduces the last
+# two — ABILITIES first, then HEAL_ITEMS, matching that sub-order.
+#
+# ⚠️ **THIS WHOLE STAGE RUNS BEFORE POISON/BURN (idx 13/14), AND THAT IS THE
+# HEADLINE FIX.** Leftovers healing after poison damage (the old order) can
+# faint a Pokémon source would have left alive at low HP.
+#
+# "Leftovers-family" is exactly Leftovers + Black Sludge, not a loose
+# grouping: source's HEAL_ITEMS sub-step calls ItemBattleEffects with the
+# `IsLeftoversActivation` predicate (battle_hold_effects.c:26), which returns
+# `gHoldEffectsInfo[holdEffect].leftovers` — and `.leftovers = TRUE` is set on
+# exactly those two hold effects (src/data/hold_effects.h:219-222, 350-353).
+func _eot_first_event_block(ng_active: bool) -> void:
+	var eff_weather: int = _effective_weather()
+
+	# FIRST_EVENT_BLOCK_ABILITIES — Healer / Hydration / Shed Skin.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var r: Dictionary = AbilityManager.try_end_of_turn(
+				mon, null, null, eff_weather, _get_ally(mon),
+				_force_shed_skin_roll, _force_healer_roll, ng_active,
+				AbilityManager.EotStage.FIRST_BLOCK)
+		# M17c: Hydration / Shed Skin cure the holder's own status.
+		if r["cured_status"]:
+			mon.status = BattlePokemon.STATUS_NONE
+			mon.toxic_counter = 0
+			ability_triggered.emit(mon, "hydration_shed_skin")
+		# M17c: Healer cures the ally's status (doubles-only).
+		if r["healed_ally_status"]:
+			var healer_ally: BattlePokemon = _get_ally(mon)
+			healer_ally.status = BattlePokemon.STATUS_NONE
+			healer_ally.toxic_counter = 0
+			ability_triggered.emit(mon, "healer")
+
+	# FIRST_EVENT_BLOCK_HEAL_ITEMS — Leftovers, then Black Sludge.
+	#
+	# M12: Leftovers. Source: TryLeftovers (battle_hold_effects.c L634-648).
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var lft_heal: int = ItemManager.leftovers_heal(mon, ng_active)
+		if lft_heal > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
+			item_healed.emit(mon, lft_heal)
+
+	# M18r: Black Sludge — Poison-type holder heals maxHP/16 (reuses
+	# TryLeftovers exactly, no Magic Guard interaction since it's a heal).
+	# Non-Poison holder DAMAGES maxHP/8 (NOT 1/16 — see
+	# HOLD_EFFECT_BLACK_SLUDGE's own doc comment for the source citation
+	# correcting this tier's own plan doc), gated by Magic Guard on the damage
+	# side only, matching every other indirect-damage source's call-site pattern.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var bs_heal: int = ItemManager.black_sludge_heal(mon, ng_active)
+		if bs_heal > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + bs_heal)
+			item_healed.emit(mon, bs_heal)
+			continue
+		var bs_dmg: int = ItemManager.black_sludge_damage(mon, ng_active)
+		if bs_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
+			mon.current_hp = max(0, mon.current_hp - bs_dmg)
+			item_damage.emit(mon, bs_dmg)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
+
+
+# ── idx 10/11: ENDTURN_AQUA_RING / ENDTURN_INGRAIN ────────────────────────
+#
+# Source: HandleEndTurnAquaRing (battle_end_turn.c L438-455) /
+# HandleEndTurnIngrain (L457-474) — the literal same maxHP/16 formula,
+# Big-Root-boosted, gated on not already at max HP. Magic Guard has no
+# interaction here (a heal, not indirect damage) — confirmed from source
+# (neither function checks it), matching Leftovers' own precedent.
+func _eot_aqua_ring_ingrain(ng_active: bool) -> void:
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted or mon.current_hp >= mon.max_hp:
 			continue
@@ -6758,19 +7035,21 @@ func _phase_end_of_turn() -> void:
 		mon.current_hp = min(mon.max_hp, mon.current_hp + ring_heal)
 		ring_heal_tick.emit(mon, ring_heal)
 
-	# ── [D0] Leech Seed drain (ENDTURN_LEECH_SEED=11, BEFORE Poison/Burn=12/13
-	# in source's own handler table) ──────────────────────────────────────────
-	# Source: HandleEndTurnLeechSeed (battle_end_turn.c L476-509). Drain amount
-	# is maxHP/8 of the SEEDED battler (`mon` here), Magic-Guard-blocked on the
-	# SEEDED battler (skips the whole tick, no damage AND no heal). Big Root
-	# (a real correction to [M18q]'s own "move-drain only" scope note — see
-	# MoveData.is_leech_seed's doc comment) boosts the SEEDER's heal; Liquid
-	# Ooze is checked on the SEEDED battler and inverts the SEEDER's heal into
-	# damage of the identical amount if present (the drained mon's own ability
-	# protecting itself, the same shape Giga Drain's own Liquid Ooze check
-	# already established). Both seeder and seeded must still be present —
-	# already guaranteed by _clear_volatiles' own reciprocal clear (a fainted/
-	# switched-out seeder's leftover victims are cleared the instant it leaves).
+
+# ── idx 12: ENDTURN_LEECH_SEED ────────────────────────────────────────────
+#
+# Source: HandleEndTurnLeechSeed (battle_end_turn.c L476-509). Drain amount
+# is maxHP/8 of the SEEDED battler (`mon` here), Magic-Guard-blocked on the
+# SEEDED battler (skips the whole tick, no damage AND no heal). Big Root
+# (a real correction to [M18q]'s own "move-drain only" scope note — see
+# MoveData.is_leech_seed's doc comment) boosts the SEEDER's heal; Liquid
+# Ooze is checked on the SEEDED battler and inverts the SEEDER's heal into
+# damage of the identical amount if present (the drained mon's own ability
+# protecting itself, the same shape Giga Drain's own Liquid Ooze check
+# already established). Both seeder and seeded must still be present —
+# already guaranteed by _clear_volatiles' own reciprocal clear (a fainted/
+# switched-out seeder's leftover victims are cleared the instant it leaves).
+func _eot_leech_seed(ng_active: bool) -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted or mon.leeched_by == null:
 			continue
@@ -6792,51 +7071,13 @@ func _phase_end_of_turn() -> void:
 			pokemon_fainted.emit(mon)
 			_award_exp_for_fainted_opponent(mon)
 
-	# ── [D1] Lock-On / Mind Reader — 2-tick countdown ─────────────────────────
-	# Source: battle_end_turn.c L68-69: `if (lockOn > 0 && --lockOn == 0)
-	# battlerWithSureHit = 0`. Cleared after exactly one full extra turn.
-	for mon: BattlePokemon in _turn_order:
-		if mon.sure_hit_target != null:
-			mon.sure_hit_turns -= 1
-			if mon.sure_hit_turns <= 0:
-				mon.sure_hit_target = null
-				mon.sure_hit_turns = 0
 
-	# ── [D4 CHEAP bundle] Magnet Rise — 5-turn countdown ──────────────────────
-	# Source: battle_end_turn.c :: HandleEndTurnMagnetRise (L848-855):
-	#   `if (magnetRiseTimer > 0 && --magnetRiseTimer == 0) volatiles.magnetRise = FALSE`.
-	for mon: BattlePokemon in _turn_order:
-		if mon.magnet_rise_turns > 0:
-			mon.magnet_rise_turns -= 1
-
-	# ── [D4 Bundle 5] Roost — restore the pre-mutation type snapshot at the
-	# END of the SAME turn it was used (HandleEndTurnRoost, battle_end_turn.c
-	# L1005-1013) — see BattlePokemon.roost_active's own doc comment for the
-	# full mutate-and-restore design rationale.
-	for mon: BattlePokemon in _turn_order:
-		if mon.roost_active:
-			_set_mon_type_array(mon, mon.roost_pre_types)
-			types_changed.emit(mon, mon.roost_pre_types, "roost_restore")
-			mon.roost_active = false
-			mon.roost_pre_types = []
-
-	# ── [D4 Bundle 5] Laser Focus — flat, UNCONDITIONAL 2-turn countdown,
-	# decremented regardless of whether the holder even attacked this turn.
-	# Source: battle_end_turn.c L74-75.
-	for mon: BattlePokemon in _turn_order:
-		if mon.laser_focus_turns > 0:
-			mon.laser_focus_turns -= 1
-
-	# ── [D4 Bundle 6] Telekinesis — 3-turn countdown, same shape as Magnet
-	# Rise above. Source: battle_end_turn.c :: HandleEndTurnTelekinesis.
-	for mon: BattlePokemon in _turn_order:
-		if mon.telekinesis_turns > 0:
-			mon.telekinesis_turns -= 1
-
-	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
-	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
-	# and ENDTURN_BURN handlers in battle_end_turn.c which iterate by battler order).
-	# Source: battle_end_turn.c :: HandleEndTurnPoison (L517), HandleEndTurnBurn (L565)
+# ── idx 13/14: ENDTURN_POISON / ENDTURN_BURN ──────────────────────────────
+#
+# Apply end-of-turn status damage in speed order (matching source's
+# HandleEndTurnPoison (L517) / HandleEndTurnBurn (L565), which iterate by
+# battler order).
+func _eot_status_damage(ng_active: bool) -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted:
 			continue
@@ -6854,13 +7095,15 @@ func _phase_end_of_turn() -> void:
 			ability_healed.emit(mon, -dmg)
 			ability_triggered.emit(mon, "poison_heal")
 
-	# ── [D4 bundle 3] Nightmare recurring damage (ENDTURN_NIGHTMARE, right
-	# before ENDTURN_WRAP in source's own handler table) ──────────────────────
-	# Source: HandleEndTurnNightmare (battle_end_turn.c L610-633). Sleep
-	# status is RE-CHECKED every turn (not just at application) — if the
-	# target has woken up or lost Comatose, this silently clears with no
-	# damage that turn rather than re-attempting. Magic Guard blocks the
-	# damage (indirect-damage class).
+
+# ── idx 16: ENDTURN_NIGHTMARE ─────────────────────────────────────────────
+#
+# Source: HandleEndTurnNightmare (battle_end_turn.c L610-633). Sleep status
+# is RE-CHECKED every turn (not just at application) — if the target has
+# woken up or lost Comatose, this silently clears with no damage that turn
+# rather than re-attempting. Magic Guard blocks the damage (indirect-damage
+# class).
+func _eot_nightmare(ng_active: bool) -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted or not mon.nightmare_active:
 			continue
@@ -6879,22 +7122,47 @@ func _phase_end_of_turn() -> void:
 			pokemon_fainted.emit(mon)
 			_award_exp_for_fainted_opponent(mon)
 
-	# ── [M18.5f] Bind/Wrap-family recurring damage (ENDTURN_WRAP, source's handler
-	# table slot right after Burn/Frostbite/Nightmare/Curse, before Salt Cure) ──────
-	# Source: HandleEndTurnWrap (battle_end_turn.c L649-687). Deliberate off-by-one
-	# vs. a naive decrement-then-check-zero shape: source checks wrapTurns != 0
-	# BEFORE decrementing, so a fresh N-turn trap deals damage on N separate end-of-
-	# turns (turns 1..N all decrement-and-damage, since the check reads the PRE-
-	# decrement value each time), and only breaks free — no damage, just the "ends"
-	# message — on the (N+1)th end-of-turn once wrapTurns is already 0. Reproduced
-	# here by checking wrapped_turns BEFORE decrementing, matching source's exact
-	# ordering, rather than the simpler "decrement then clear at 0" shape this
-	# project's own disable_turns/encore_turns use (those don't have this same
-	# extra-silent-tick nuance in source). wrapped_turns decrements UNCONDITIONALLY
-	# even under Magic Guard (only the damage itself is suppressed — same
-	# "counter still ticks" shape as toxic_counter above). maxHP/8, B_BINDING_DAMAGE
-	# >= GEN_6 branch (this project's default config) — Binding Band's maxHP/6
-	# variant is out of scope (item unbuilt, flagged alongside Grip Claw for M18.5i).
+
+# ── idx 17: ENDTURN_CURSE ─────────────────────────────────────────────────
+#
+# ⚠️ Source puts Curse BEFORE Wrap (idx 18) and Octolock (idx 20); this
+# project ran it after both until the 2026-08-10 reorder.
+#
+# [D4 Bundle 7] Curse (Ghost-type user's half) — recurring maxHP/4 tick on
+# the cursed mon, Magic-Guard-gated. No back-reference to the caster to check
+# (see BattlePokemon.cursed's own doc comment for why this is simpler than
+# Leech Seed's shape). Source: HandleEndTurnCurse (battle_end_turn.c L635-650).
+func _eot_curse(ng_active: bool) -> void:
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or not mon.cursed or AbilityManager.blocks_indirect_damage(mon, ng_active):
+			continue
+		var curse_tick_dmg: int = mon.max_hp / 4
+		mon.current_hp = max(0, mon.current_hp - curse_tick_dmg)
+		curse_damage.emit(mon, curse_tick_dmg)
+		if mon.current_hp == 0:
+			mon.fainted = true
+			pokemon_fainted.emit(mon)
+			_award_exp_for_fainted_opponent(mon)
+
+
+# ── idx 18: ENDTURN_WRAP ──────────────────────────────────────────────────
+#
+# [M18.5f] Source: HandleEndTurnWrap (battle_end_turn.c L649-687). Deliberate
+# off-by-one vs. a naive decrement-then-check-zero shape: source checks
+# wrapTurns != 0 BEFORE decrementing, so a fresh N-turn trap deals damage on
+# N separate end-of-turns (turns 1..N all decrement-and-damage, since the
+# check reads the PRE-decrement value each time), and only breaks free — no
+# damage, just the "ends" message — on the (N+1)th end-of-turn once wrapTurns
+# is already 0. Reproduced here by checking wrapped_turns BEFORE decrementing,
+# matching source's exact ordering, rather than the simpler "decrement then
+# clear at 0" shape this project's own disable_turns/encore_turns use (those
+# don't have this same extra-silent-tick nuance in source). wrapped_turns
+# decrements UNCONDITIONALLY even under Magic Guard (only the damage itself is
+# suppressed — same "counter still ticks" shape as toxic_counter). maxHP/8,
+# B_BINDING_DAMAGE >= GEN_6 branch (this project's default config) — Binding
+# Band's maxHP/6 variant is out of scope (item unbuilt, flagged alongside Grip
+# Claw for M18.5i).
+func _eot_wrap(ng_active: bool) -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted or mon.wrapped_by == null:
 			continue
@@ -6913,14 +7181,15 @@ func _phase_end_of_turn() -> void:
 			pokemon_fainted.emit(mon)
 			_award_exp_for_fainted_opponent(mon)
 
-	# ── [D4 Bundle 6] Octolock — recurring -1 Def/-1 Sp. Defense tick,
-	# positioned right after Wrap (source: battle_end_turn.c's own handler
-	# table has ENDTURN_OCTOLOCK immediately after ENDTURN_WRAP/ENDTURN_
-	# SALT_CURE) and gated on the target still being alive — matters
-	# observably here, unlike Magnet Rise/Roost/Laser Focus/Telekinesis's own
-	# pure decrements above, since a mon that fainted from poison/burn/wrap
-	# this same tick must not also take the Octolock stat-lower.
-	# Source: HandleEndTurnOctolock (battle_end_turn.c L715-724).
+
+# ── idx 20: ENDTURN_OCTOLOCK ──────────────────────────────────────────────
+#
+# [D4 Bundle 6] Recurring -1 Def / -1 Sp. Def tick, gated on the target still
+# being alive — which matters observably here, unlike the pure decrements
+# elsewhere in this file, since a mon that fainted from poison/burn/wrap this
+# same tick must not also take the Octolock stat-lower.
+# Source: HandleEndTurnOctolock (battle_end_turn.c L715-724).
+func _eot_octolock(ng_active: bool) -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted or mon.octolocked_by == null:
 			continue
@@ -6931,92 +7200,34 @@ func _phase_end_of_turn() -> void:
 		if ol_spdef != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPDEF, ol_spdef)
 
-	# [D4 Bundle 7] Curse (Ghost-type user's half) — recurring maxHP/4 tick
-	# on the cursed mon, Magic-Guard-gated. No back-reference to the caster
-	# to check (see BattlePokemon.cursed's own doc comment for why this is
-	# simpler than Leech Seed's shape). Source: HandleEndTurnCurse
-	# (battle_end_turn.c L635-650).
-	for mon: BattlePokemon in _turn_order:
-		if mon.fainted or not mon.cursed or AbilityManager.blocks_indirect_damage(mon, ng_active):
-			continue
-		var curse_tick_dmg: int = mon.max_hp / 4
-		mon.current_hp = max(0, mon.current_hp - curse_tick_dmg)
-		curse_damage.emit(mon, curse_tick_dmg)
-		if mon.current_hp == 0:
-			mon.fainted = true
-			pokemon_fainted.emit(mon)
-			_award_exp_for_fainted_opponent(mon)
 
-	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
-	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
-	#   which is position 19 in battle_end_turn.c handler table (after ENDTURN_BURN=13).
+# ── idx 22: ENDTURN_TAUNT ─────────────────────────────────────────────────
+#
+# ⚠️ Taunt(22) → Encore(24) → Disable(25) is source's real order
+# (HandleEndTurnTaunt L756 / HandleEndTurnEncore L790 / HandleEndTurnDisable
+# L817, and the sEndTurnFuncs slots that dispatch them). The old combined
+# loop checked them in exactly the REVERSE order.
+func _eot_taunt() -> void:
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
-		var lft_heal: int = ItemManager.leftovers_heal(mon, ng_active)
-		if lft_heal > 0:
-			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
-			item_healed.emit(mon, lft_heal)
+		if mon.taunt_turns > 0:
+			mon.taunt_turns -= 1
 
-	# M18r: Black Sludge — same EOT neighborhood Leftovers occupies. Poison-type
-	# holder: heals maxHP/16 (reuses TryLeftovers exactly, no Magic Guard
-	# interaction since it's a heal). Non-Poison holder: DAMAGES maxHP/8 (NOT
-	# 1/16 — see HOLD_EFFECT_BLACK_SLUDGE's own doc comment for the source
-	# citation correcting this tier's own plan doc), gated by Magic Guard on the
-	# damage side only, matching every other indirect-damage source's call-site
-	# pattern (Jaboca/Rowap, sandstorm/hail chip).
+
+# ── idx 24: ENDTURN_ENCORE ────────────────────────────────────────────────
+func _eot_encore() -> void:
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
-		var bs_heal: int = ItemManager.black_sludge_heal(mon, ng_active)
-		if bs_heal > 0:
-			mon.current_hp = min(mon.max_hp, mon.current_hp + bs_heal)
-			item_healed.emit(mon, bs_heal)
-			continue
-		var bs_dmg: int = ItemManager.black_sludge_damage(mon, ng_active)
-		if bs_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
-			mon.current_hp = max(0, mon.current_hp - bs_dmg)
-			item_damage.emit(mon, bs_dmg)
-			if mon.current_hp == 0:
-				mon.fainted = true
-				pokemon_fainted.emit(mon)
-				_award_exp_for_fainted_opponent(mon)
+		if mon.encore_turns > 0:
+			mon.encore_turns -= 1
+			if mon.encore_turns == 0:
+				mon.encored_move = null
 
-	# M18p: Sticky Barb's end-of-turn self-damage half (TryStickyBarbOnEndTurn) — NOT
-	# contact-related at all, unconditional every end of turn, gated by the HOLDER's
-	# own Magic Guard (unlike Rocky Helmet's attacker-side gate above). Source
-	# dispatches this via IsOrbsActivation alongside Flame/Toxic Orb, but it's
-	# mechanically identical in shape to Black Sludge's damage half just above, so
-	# it's placed in that neighborhood instead.
-	for mon: BattlePokemon in _combatants:
-		if mon.fainted:
-			continue
-		var sb_dmg: int = ItemManager.sticky_barb_damage(mon, ng_active)
-		if sb_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
-			mon.current_hp = max(0, mon.current_hp - sb_dmg)
-			item_damage.emit(mon, sb_dmg)
-			if mon.current_hp == 0:
-				mon.fainted = true
-				pokemon_fainted.emit(mon)
-				_award_exp_for_fainted_opponent(mon)
 
-	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
-	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
-	# own doc comment), same THIRD_EVENT_BLOCK_ITEMS neighborhood Leftovers
-	# occupies. Applies through StatusManager.try_apply_status — the SAME
-	# function moves use — passing the holder as its own `attacker`, mirroring
-	# source's self-referential CanBeBurned/CanBePoisoned call shape so existing
-	# type immunities compose for free.
-	for mon: BattlePokemon in _combatants:
-		if mon.fainted:
-			continue
-		var orb_status: int = ItemManager.status_orb_status(mon, ng_active)
-		if orb_status != BattlePokemon.STATUS_NONE:
-			if StatusManager.try_apply_status(mon, orb_status, null, null, ng_active, mon):
-				secondary_applied.emit(mon, _status_to_se(orb_status))
-
-	# M7: Decrement Disable and Encore turn counters.
-	# Source: battle_end_turn.c :: HandleTurnStartFunctionOrder (Disable/Encore decrements)
+# ── idx 25: ENDTURN_DISABLE ───────────────────────────────────────────────
+func _eot_disable() -> void:
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
@@ -7024,26 +7235,38 @@ func _phase_end_of_turn() -> void:
 			mon.disable_turns -= 1
 			if mon.disable_turns == 0:
 				mon.disabled_move = null
-		if mon.encore_turns > 0:
-			mon.encore_turns -= 1
-			if mon.encore_turns == 0:
-				mon.encored_move = null
-		# [Bucket 4 cheapest singles] Throat Chop: same decrement shape as
-		# Disable/Encore above. Source: battle_end_turn.c L61-63/L1280-1311.
-		if mon.throat_chop_turns > 0:
-			mon.throat_chop_turns -= 1
-		# [D4 bundle] Taunt: same decrement shape as Disable/Encore/Throat
-		# Chop above — confirmed individually that source's own decrement
-		# site (battle_end_turn.c L762) lives in this same file/category,
-		# not the separate per-battler-action-reset site
-		# stomping_tantrum_timer/_retaliate_timer needed.
-		if mon.taunt_turns > 0:
-			mon.taunt_turns -= 1
-		# [Delayed-effect family] Yawn: same decrement shape as the above,
-		# but hitting 0 triggers a completely fresh sleep-infliction
-		# attempt (all immunity checks re-derived at THIS moment, not
-		# locked in at cast time) via the existing status pipeline. See
-		# MoveData.is_yawn's own doc comment for full source citations.
+
+
+# ── idx 26: ENDTURN_MAGNET_RISE ───────────────────────────────────────────
+#
+# Source: HandleEndTurnMagnetRise (battle_end_turn.c L848-855):
+#   `if (magnetRiseTimer > 0 && --magnetRiseTimer == 0) volatiles.magnetRise = FALSE`.
+func _eot_magnet_rise() -> void:
+	for mon: BattlePokemon in _turn_order:
+		if mon.magnet_rise_turns > 0:
+			mon.magnet_rise_turns -= 1
+
+
+# ── idx 27: ENDTURN_TELEKINESIS ───────────────────────────────────────────
+#
+# [D4 Bundle 6] 3-turn countdown, same shape as Magnet Rise above.
+# Source: HandleEndTurnTelekinesis.
+func _eot_telekinesis() -> void:
+	for mon: BattlePokemon in _turn_order:
+		if mon.telekinesis_turns > 0:
+			mon.telekinesis_turns -= 1
+
+
+# ── idx 30: ENDTURN_YAWN ──────────────────────────────────────────────────
+#
+# [Delayed-effect family] Hitting 0 triggers a completely fresh sleep-
+# infliction attempt (all immunity checks re-derived at THIS moment, not
+# locked in at cast time) via the existing status pipeline. See
+# MoveData.is_yawn's own doc comment for full source citations.
+func _eot_yawn(ng_active: bool) -> void:
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
 		if mon.yawn_turns > 0:
 			mon.yawn_turns -= 1
 			if mon.yawn_turns == 0:
@@ -7051,15 +7274,21 @@ func _phase_end_of_turn() -> void:
 						null, _get_ally(mon), ng_active, null, _effective_weather(), null,
 						_is_uproar_active()):
 					secondary_applied.emit(mon, MoveData.SE_SLEEP)
-		# [Perish Song] Checked BEFORE decrementing (matching the exact
-		# off-by-one shape source's own HandleEndTurnPerishSong uses,
-		# battle_end_turn.c L979-996): a timer of 3 ticks 3→2→1→0 across 3
-		# end-of-turn passes (message-only in source, no state change here
-		# beyond the decrement itself), then the 4th pass — timer already
-		# 0 — deals the fatal blow. Damage is a direct HP-zero, the same
-		# shape Self-Destruct/Explosion already use, not a real damage-calc
-		# call (source: `SetPassiveDamageAmount(battler, hp)`, i.e. exactly
-		# the holder's own current HP).
+
+
+# ── idx 31: ENDTURN_PERISH_SONG ───────────────────────────────────────────
+#
+# Checked BEFORE decrementing (matching the exact off-by-one shape source's
+# own HandleEndTurnPerishSong uses, battle_end_turn.c L979-996): a timer of 3
+# ticks 3→2→1→0 across 3 end-of-turn passes (message-only in source, no state
+# change here beyond the decrement itself), then the 4th pass — timer already
+# 0 — deals the fatal blow. Damage is a direct HP-zero, the same shape
+# Self-Destruct/Explosion already use, not a real damage-calc call (source:
+# `SetPassiveDamageAmount(battler, hp)`, i.e. exactly the holder's own current HP).
+func _eot_perish_song() -> void:
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
 		if mon.perish_song_active:
 			if mon.perish_song_timer <= 0:
 				mon.perish_song_active = false
@@ -7070,52 +7299,38 @@ func _phase_end_of_turn() -> void:
 			else:
 				mon.perish_song_timer -= 1
 
-	# [Delayed-effect family] Future Sight / Doom Desire — decrement each
-	# pending slot's counter once per turn; resolve (via the normal
-	# _do_damaging_hit chokepoint) against whoever occupies that slot when
-	# it hits 0. See MoveData.is_future_sight's own doc comment for full
-	# source citations.
-	for fs_target_idx: int in _future_sight_pending.keys().duplicate():
-		var fs_entry: Dictionary = _future_sight_pending[fs_target_idx]
-		fs_entry["counter"] -= 1
-		if fs_entry["counter"] <= 0:
-			_future_sight_pending.erase(fs_target_idx)
-			if fs_target_idx < 0 or fs_target_idx >= _combatants.size():
-				continue
-			var fs_target: BattlePokemon = _combatants[fs_target_idx]
-			if fs_target.fainted:
-				continue
-			var fs_caster: BattlePokemon = fs_entry["caster"]
-			var fs_move: MoveData = fs_entry["move"]
-			var fs_damage: int = _do_damaging_hit(fs_caster, fs_target, fs_move)
-			future_sight_resolved.emit(fs_caster, fs_target, fs_move, fs_damage)
 
-	# [Delayed-effect family] Wish — decrement each pending slot's counter
-	# once per turn; resolve (a flat heal, caster's own max HP / 2) against
-	# whoever occupies the CASTER's OWN slot when it hits 0. See
-	# MoveData.is_wish's own doc comment for full source citations.
-	for wish_slot_idx: int in _wish_pending.keys().duplicate():
-		var wish_entry: Dictionary = _wish_pending[wish_slot_idx]
-		wish_entry["counter"] -= 1
-		if wish_entry["counter"] <= 0:
-			_wish_pending.erase(wish_slot_idx)
-			if wish_slot_idx < 0 or wish_slot_idx >= _combatants.size():
-				continue
-			var wish_recipient: BattlePokemon = _combatants[wish_slot_idx]
-			if wish_recipient.fainted:
-				continue
-			var wish_caster: BattlePokemon = wish_entry["caster"]
-			var wish_heal: int = wish_caster.max_hp / 2
-			var wish_actual: int = 0
-			if wish_recipient.current_hp < wish_recipient.max_hp:
-				wish_actual = min(wish_heal, wish_recipient.max_hp - wish_recipient.current_hp)
-				wish_recipient.current_hp += wish_actual
-			wish_resolved.emit(wish_recipient, wish_actual)
+# ── idx 32: ENDTURN_ROOST ─────────────────────────────────────────────────
+#
+# [D4 Bundle 5] Restore the pre-mutation type snapshot at the END of the SAME
+# turn it was used (HandleEndTurnRoost, battle_end_turn.c L1005-1013) — see
+# BattlePokemon.roost_active's own doc comment for the full mutate-and-restore
+# design rationale.
+func _eot_roost() -> void:
+	for mon: BattlePokemon in _turn_order:
+		if mon.roost_active:
+			_set_mon_type_array(mon, mon.roost_pre_types)
+			types_changed.emit(mon, mon.roost_pre_types, "roost_restore")
+			mon.roost_active = false
+			mon.roost_pre_types = []
 
-	# M16c: Decrement Reflect/Light Screen/Aurora Veil timers, both sides.
-	# Source: battle_end_turn.c :: HandleEndTurnSecondEventBlock, cases
-	#   SECOND_EVENT_BLOCK_REFLECT / _LIGHT_SCREEN / _AURORA_VEIL (L1025-1127): decrement;
-	#   at 0, clear the side-status bit and fire the "wore off" message.
+
+# ── idx 34: ENDTURN_SECOND_EVENT_BLOCK ────────────────────────────────────
+#
+# Source: HandleEndTurnSecondEventBlock (battle_end_turn.c L1017-1136), whose
+# own sub-order is Reflect → Light Screen → Safeguard → Mist → Tailwind →
+# Lucky Chant → Rainbow → Sea of Fire → Swamp → **Aurora Veil**.
+#
+# ⚠️ Aurora Veil is LAST in that sub-order, not third — the old code ran it
+# immediately after Light Screen. Lucky Chant / Rainbow / Sea of Fire / Swamp
+# have no implementation in this project, so they are simply absent rather
+# than reordered.
+#
+# M16c: decrement; at 0, clear the side-status bit and fire the "wore off"
+# message. Note entry hazards (Spikes/Toxic Spikes/Stealth Rock) have NO
+# natural duration — they persist until Rapid Spin clears them or the battle
+# ends, so there is nothing to decrement for those.
+func _eot_second_event_block() -> void:
 	for side in range(2):
 		var sc: Dictionary = _side_conditions[side]
 		if sc["reflect_turns"] > 0:
@@ -7126,16 +7341,8 @@ func _phase_end_of_turn() -> void:
 			sc["light_screen_turns"] -= 1
 			if sc["light_screen_turns"] == 0:
 				screen_expired.emit(side, "light_screen")
-		if sc["aurora_veil_turns"] > 0:
-			sc["aurora_veil_turns"] -= 1
-			if sc["aurora_veil_turns"] == 0:
-				screen_expired.emit(side, "aurora_veil")
-		# [D4 Bundle 4] Tailwind/Safeguard/Mist — same decrement shape as the
+		# [D4 Bundle 4] Safeguard/Mist/Tailwind — same decrement shape as the
 		# screens above, just a different side-status bit/timer in source.
-		if sc["tailwind_turns"] > 0:
-			sc["tailwind_turns"] -= 1
-			if sc["tailwind_turns"] == 0:
-				side_condition_expired.emit(side, "tailwind")
 		if sc["safeguard_turns"] > 0:
 			sc["safeguard_turns"] -= 1
 			if sc["safeguard_turns"] == 0:
@@ -7144,97 +7351,102 @@ func _phase_end_of_turn() -> void:
 			sc["mist_turns"] -= 1
 			if sc["mist_turns"] == 0:
 				side_condition_expired.emit(side, "mist")
+		if sc["tailwind_turns"] > 0:
+			sc["tailwind_turns"] -= 1
+			if sc["tailwind_turns"] == 0:
+				side_condition_expired.emit(side, "tailwind")
+		if sc["aurora_veil_turns"] > 0:
+			sc["aurora_veil_turns"] -= 1
+			if sc["aurora_veil_turns"] == 0:
+				screen_expired.emit(side, "aurora_veil")
 
-	# [D1 easy bundle] Retaliate's own decrement was MOVED to
-	# `_phase_priority_resolution` (a bug fix — see that site's own doc
-	# comment for the full writeup); it no longer lives here.
 
-	# [D3 turn-order/event-tracker batch] Echoed Voice: increment (capped 4)
-	# if used this turn, else reset to 0. Source: battle_end_turn.c L79-88.
-	if _echoed_voice_used_this_turn:
-		if _echoed_voice_counter < 4:
-			_echoed_voice_counter += 1
-		_echoed_voice_used_this_turn = false
-	else:
-		_echoed_voice_counter = 0
-
-	# M16d: Decrement Trick Room's field-wide timer.
-	# Source: battle_end_turn.c L1146 — gFieldStatuses &= ~STATUS_FIELD_TRICK_ROOM at 0.
-	# Note: entry hazards (Spikes/Toxic Spikes/Stealth Rock) have NO natural duration —
-	# they persist until Rapid Spin clears them or the battle ends, so nothing to decrement.
+# ── idx 35: ENDTURN_TRICK_ROOM ────────────────────────────────────────────
+#
+# M16d: Source: battle_end_turn.c L1146 — gFieldStatuses &= ~STATUS_FIELD_
+# TRICK_ROOM at 0.
+func _eot_trick_room() -> void:
 	if trick_room_turns > 0:
 		trick_room_turns -= 1
 		if trick_room_turns == 0:
 			trick_room_ended.emit()
 
-	# End-of-turn ability effects (Speed Boost, M17b: Moody)
+
+# ── idx 37: ENDTURN_WATER_SPORT ───────────────────────────────────────────
+#
+# [D4 Bundle 5] Source: HandleEndTurnWaterSport (battle_end_turn.c L1184-1198)
+# — see the `_water_sport_turns` field's own doc comment for the full citation.
+# ⚠️ Water Sport (37) comes BEFORE Mud Sport (38); the old code ran mud first,
+# and ran BOTH near the very top of the tick instead of near the end.
+func _eot_water_sport() -> void:
+	if _water_sport_turns > 0:
+		_water_sport_turns -= 1
+
+
+# ── idx 38: ENDTURN_MUD_SPORT ─────────────────────────────────────────────
+func _eot_mud_sport() -> void:
+	if _mud_sport_turns > 0:
+		_mud_sport_turns -= 1
+
+
+# ── idx 42: ENDTURN_THIRD_EVENT_BLOCK ─────────────────────────────────────
+#
+# Source: HandleEndTurnThirdEventBlock (battle_end_turn.c L1267-1376), whose
+# own sub-order is Uproar → ABILITIES (Truant/Cud Chew/Slow Start/Bad Dreams/
+# Ball Fetch/Harvest/Moody/Pickup/Speed Boost) → ITEMS (Flame Orb/Sticky Barb/
+# Toxic Orb via IsOrbsActivation; White Herb). Reproduced as ABILITIES then
+# ITEMS; the unimplemented members of each group are simply absent.
+#
+# ⚠️ Sticky Barb and the status orbs belong HERE, dead last — the old code ran
+# them ~24 ranks early, right after Leftovers.
+func _eot_third_event_block(ng_active: bool) -> void:
+	var eff_weather: int = _effective_weather()
+
+	# THIRD_EVENT_BLOCK_ABILITIES.
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
-	var eot_eff_weather: int = _effective_weather()
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
-		var eot_result: Dictionary = AbilityManager.try_end_of_turn(
-				mon, _force_moody_raise, _force_moody_lower, eot_eff_weather, _get_ally(mon),
-				_force_shed_skin_roll, _force_healer_roll, ng_active)
-		var spd_actual: int = eot_result["speed_boost_change"]
+		var r: Dictionary = AbilityManager.try_end_of_turn(
+				mon, _force_moody_raise, _force_moody_lower, eff_weather, _get_ally(mon),
+				null, null, ng_active, AbilityManager.EotStage.THIRD_BLOCK)
+		var spd_actual: int = r["speed_boost_change"]
 		if spd_actual != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
 			ability_triggered.emit(mon, "speed_boost")
-		if eot_result["moody_raised_stat"] != -1 and eot_result["moody_raised_amount"] != 0:
-			stat_stage_changed.emit(mon, eot_result["moody_raised_stat"], eot_result["moody_raised_amount"])
+		if r["moody_raised_stat"] != -1 and r["moody_raised_amount"] != 0:
+			stat_stage_changed.emit(mon, r["moody_raised_stat"], r["moody_raised_amount"])
 			ability_triggered.emit(mon, "moody")
-		if eot_result["moody_lowered_stat"] != -1 and eot_result["moody_lowered_amount"] != 0:
-			stat_stage_changed.emit(mon, eot_result["moody_lowered_stat"], eot_result["moody_lowered_amount"])
+		if r["moody_lowered_stat"] != -1 and r["moody_lowered_amount"] != 0:
+			stat_stage_changed.emit(mon, r["moody_lowered_stat"], r["moody_lowered_amount"])
 			ability_triggered.emit(mon, "moody")
-		# M17c: Rain Dish / Ice Body / Dry Skin end-of-turn heal or (Dry Skin only) sun damage.
-		if eot_result["heal_amount"] > 0:
-			mon.current_hp = min(mon.max_hp, mon.current_hp + eot_result["heal_amount"])
-			ability_healed.emit(mon, eot_result["heal_amount"])
-			ability_triggered.emit(mon, "rain_dish_ice_body_dry_skin")
-		if eot_result["damage_amount"] > 0:
-			mon.current_hp = max(0, mon.current_hp - eot_result["damage_amount"])
-			weather_damage.emit(mon, eot_result["damage_amount"])
-			var eot_dmg_tag: String = "solar_power" \
-					if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SOLAR_POWER \
-					else "dry_skin"
-			ability_triggered.emit(mon, eot_dmg_tag)
-		# M17c: Hydration / Shed Skin cure the holder's own status.
-		if eot_result["cured_status"]:
-			mon.status = BattlePokemon.STATUS_NONE
-			mon.toxic_counter = 0
-			ability_triggered.emit(mon, "hydration_shed_skin")
-		# M17c: Healer cures the ally's status (doubles-only).
-		if eot_result["healed_ally_status"]:
-			var healer_ally: BattlePokemon = _get_ally(mon)
-			healer_ally.status = BattlePokemon.STATUS_NONE
-			healer_ally.toxic_counter = 0
-			ability_triggered.emit(mon, "healer")
-		# M17n-5: Slow Start's 5-turn timer just hit 0 — fires once, the turn its
-		# Atk/Speed penalty ends.
-		if eot_result["slow_start_ended"]:
+		# M17n-5: Slow Start's 5-turn timer just hit 0 — fires once, the turn
+		# its Atk/Speed penalty ends.
+		if r["slow_start_ended"]:
 			ability_triggered.emit(mon, "slow_start_ended")
 
-		# M17n-7: Harvest — regenerate the last consumed berry back onto held_item.
-		# Does NOT clear last_consumed_berry (see BattlePokemon's own doc comment —
-		# source doesn't either; self-consistent since `held_item != null` afterward
-		# blocks Harvest from re-firing until the item is removed again, at which
-		# point _consume_item overwrites last_consumed_berry with whatever was just
-		# eaten anyway).
-		if AbilityManager.harvest_activates(mon, eot_eff_weather, ng_active, _force_harvest_roll):
+		# M17n-7: Harvest — regenerate the last consumed berry back onto
+		# held_item. Does NOT clear last_consumed_berry (see BattlePokemon's own
+		# doc comment — source doesn't either; self-consistent since
+		# `held_item != null` afterward blocks Harvest from re-firing until the
+		# item is removed again, at which point _consume_item overwrites
+		# last_consumed_berry with whatever was just eaten anyway).
+		if AbilityManager.harvest_activates(mon, eff_weather, ng_active, _force_harvest_roll):
 			mon.held_item = mon.last_consumed_berry
 			item_regenerated.emit(mon, mon.held_item)
 			ability_triggered.emit(mon, "harvest")
 
 		# M17n-7: Cud Chew — arm/fire one-turn cycle. Firing re-runs the tracked
-		# berry's effect via the SAME ItemManager functions normal consumption uses
-		# (only one of the three will actually match the berry's real hold_effect;
-		# Resist Berry deliberately has no re-trigger path here at all — it has no
-		# context-independent re-check to perform, confirmed absent from source).
-		# M18b: added the third (confusion_cure_berry_cures) branch for Persim Berry —
-		# status_cure_berry_cures/hp_threshold_berry_heal already cover the other 22
-		# new M18b items automatically, since both were extended in place rather than
-		# replaced; only Persim's confusion-based cure needed a genuinely new function
-		# this chain didn't already call.
+		# berry's effect via the SAME ItemManager functions normal consumption
+		# uses (only one of the three will actually match the berry's real
+		# hold_effect; Resist Berry deliberately has no re-trigger path here at
+		# all — it has no context-independent re-check to perform, confirmed
+		# absent from source).
+		# M18b: added the third (confusion_cure_berry_cures) branch for Persim
+		# Berry — status_cure_berry_cures/hp_threshold_berry_heal already cover
+		# the other 22 new M18b items automatically, since both were extended in
+		# place rather than replaced; only Persim's confusion-based cure needed a
+		# genuinely new function this chain didn't already call.
 		match AbilityManager.cud_chew_check(mon, ng_active):
 			"arm":
 				mon.cud_chew_armed = true
@@ -7256,8 +7468,36 @@ func _phase_end_of_turn() -> void:
 					mon.confusion_turns = 0
 					ability_triggered.emit(mon, "cud_chew")
 
-	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
-	_set_phase(BattlePhase.SWITCH_PROMPT)
+	# THIRD_EVENT_BLOCK_ITEMS.
+	#
+	# M18p: Sticky Barb's end-of-turn self-damage half (TryStickyBarbOnEndTurn)
+	# — NOT contact-related at all, unconditional every end of turn, gated by
+	# the HOLDER's own Magic Guard (unlike Rocky Helmet's attacker-side gate).
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var sb_dmg: int = ItemManager.sticky_barb_damage(mon, ng_active)
+		if sb_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
+			mon.current_hp = max(0, mon.current_hp - sb_dmg)
+			item_damage.emit(mon, sb_dmg)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
+
+	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
+	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
+	# own doc comment). Applies through StatusManager.try_apply_status — the SAME
+	# function moves use — passing the holder as its own `attacker`, mirroring
+	# source's self-referential CanBeBurned/CanBePoisoned call shape so existing
+	# type immunities compose for free.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var orb_status: int = ItemManager.status_orb_status(mon, ng_active)
+		if orb_status != BattlePokemon.STATUS_NONE:
+			if StatusManager.try_apply_status(mon, orb_status, null, null, ng_active, mon):
+				secondary_applied.emit(mon, _status_to_se(orb_status))
 
 
 func _phase_switch_prompt() -> void:

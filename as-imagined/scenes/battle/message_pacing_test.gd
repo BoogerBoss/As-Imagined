@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_wait_time_constants_are_07x_scaled()
 	_test_text_reveal_seconds_per_char()
 	_test_hp_drain_seconds_full_bar()
+	_test_exp_drain_seconds_full_bar()
 	_test_log_default_hold_is_wait_time_long()
 	_test_log_custom_hold_override()
 	_test_move_announced_beat_has_zero_hold()
@@ -34,6 +35,9 @@ func _ready() -> void:
 	_test_move_executed_pushes_hp_drain_beat_on_damage()
 	_test_move_executed_no_hp_drain_beat_when_no_damage()
 	_test_hp_drain_beat_from_frac_clamped_at_one()
+	_test_exp_gained_pushes_exp_drain_beat_with_real_from_to_fractions()
+	_test_exp_gained_to_frac_clamps_at_one_across_a_level_up()
+	_test_exp_gained_no_exp_drain_beat_without_a_real_exp_fill_bar()
 	_test_move_executed_pushes_flash_beat_before_hp_drain_on_damage()
 	_test_move_executed_no_flash_beat_when_no_damage()
 	_test_play_damage_flash_guards_return_null()
@@ -109,6 +113,25 @@ func _singles_party(mon: BattlePokemon) -> BattleParty:
 	return p
 
 
+# [EXP bar animation fix] Unlike _make_typed_mon above (a bare
+# PokemonSpecies.new() with no national_dex_num, which _exp_fraction_at's
+# own disclosed fallback correctly resolves to an always-0.0 fraction), the
+# exp_drain beat tests need REAL growth-rate data to exercise a genuine
+# nonzero from/to pair -- same real-registry-species shape m20_exp_test.gd's
+# own _species_from_registry() already established for the same reason.
+func _make_registry_mon(dex: int, level: int) -> BattlePokemon:
+	var sp := PokemonSpecies.new()
+	sp.national_dex_num = dex
+	sp.types = [TypeChart.TYPE_NORMAL]
+	sp.base_hp = 45
+	sp.base_attack = 49
+	sp.base_defense = 49
+	sp.base_sp_attack = 65
+	sp.base_sp_defense = 65
+	sp.base_speed = 45
+	return BattlePokemon.from_species(sp, level, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+
+
 # ── 1-3. Constant values ─────────────────────────────────────────────────
 
 func _test_wait_time_constants_are_07x_scaled() -> void:
@@ -139,6 +162,15 @@ func _test_hp_drain_seconds_full_bar() -> void:
 	# the requested 2x speed that's ~0.201s.
 	_chk("full-bar HP drain is ~0.201s (2x the real ~0.402s)",
 			is_equal_approx(BattleScreenShared._HP_DRAIN_SECONDS_FULL_BAR, 0.201))
+
+
+func _test_exp_drain_seconds_full_bar() -> void:
+	# [EXP bar animation fix] Reuses the HP bar's own proportional-duration
+	# shape (disclosed simplification of source's real per-amount
+	# GetScaledExpFraction speed curve -- see the constant's own doc
+	# comment).
+	_chk("full-bar EXP drain matches the established HP-drain duration",
+			is_equal_approx(BattleScreenShared._EXP_DRAIN_SECONDS_FULL_BAR, 0.201))
 
 
 # ── 4-6. _log()'s own beat-pushing ────────────────────────────────────────
@@ -311,6 +343,90 @@ func _test_hp_drain_beat_from_frac_clamped_at_one() -> void:
 	var reconstructed: float = min(1.0, float(defender.current_hp + 1000) / float(defender.max_hp))
 	_chk("reconstruction formula clamps at 1.0", reconstructed == 1.0)
 	_chk("sanity: to_frac itself is a valid fraction", to_frac <= 1.0)
+
+
+# ── EXP bar animation fix: exp_drain beat from _on_log_exp_gained ────────
+# This is the fix for the reported bug (experience "isn't being visibly
+# shown") -- the EXP bar previously only ever snapped via _refresh_ui()'s
+# plain refresh() call, with no tween of its own, unlike the HP bar's
+# established "hp_drain" beat immediately above.
+
+func _test_exp_gained_pushes_exp_drain_beat_with_real_from_to_fractions() -> void:
+	var bs := BattleScreenShared.new()
+	var ply_panel := HealthGroupPanel.new()
+	ply_panel._exp_fill = TextureProgressBar.new()
+	bs._ply_panels = [ply_panel]
+	var recipient := _make_registry_mon(1, 10)  # Bulbasaur, real growth data
+	bs._player_party = _singles_party(recipient)
+	bs._opp_party = _singles_party(_make_typed_mon("Foe", TypeChart.TYPE_NORMAL))
+
+	var species_data: Dictionary = PokemonRegistry.get_species(1)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var exp_this_level: int = PokemonRegistry.get_exp_for_level(growth_rate, 10)
+	var exp_next_level: int = PokemonRegistry.get_exp_for_level(growth_rate, 11)
+	var needed: int = exp_next_level - exp_this_level
+	var amount: int = int(needed / 4.0)  # a partial gain, well short of leveling
+	recipient.current_exp = exp_this_level + amount
+
+	bs._on_log_exp_gained(recipient, amount)
+	var drain_beats: Array = bs._pending_beats.filter(func(b): return b.get("kind") == "exp_drain")
+	_chk("exactly one exp_drain beat pushed", drain_beats.size() == 1)
+	var beat: Dictionary = drain_beats[0]
+	_chk("to_frac matches post-gain progress at this level",
+			is_equal_approx(beat.get("to_frac"), float(amount) / float(needed)))
+	_chk("from_frac reconstructs the pre-gain progress (zero here, since exp started exactly at the level floor)",
+			is_equal_approx(beat.get("from_frac"), 0.0))
+	_chk("bar resolves to the stubbed player ExpFill node", beat.get("bar") == ply_panel._exp_fill)
+
+	var text_beats: Array = bs._pending_beats.filter(func(b): return b.get("kind") == "text")
+	_chk("the gained-EXP text beat still queues alongside the animation",
+			text_beats.size() == 1 and text_beats[0].get("text").contains("gained %d Exp" % amount))
+
+
+func _test_exp_gained_to_frac_clamps_at_one_across_a_level_up() -> void:
+	# A single award that crosses (or overshoots) the next level's threshold
+	# -- the bar animates to full rather than overshooting past 1.0; the
+	# level_up signal's own follow-up _refresh_ui() is what snaps it to the
+	# correct in-progress fraction for the new level (see _on_log_exp_gained's
+	# own doc comment).
+	var bs := BattleScreenShared.new()
+	var ply_panel := HealthGroupPanel.new()
+	ply_panel._exp_fill = TextureProgressBar.new()
+	bs._ply_panels = [ply_panel]
+	var recipient := _make_registry_mon(1, 10)
+	bs._player_party = _singles_party(recipient)
+	bs._opp_party = _singles_party(_make_typed_mon("Foe", TypeChart.TYPE_NORMAL))
+
+	var species_data: Dictionary = PokemonRegistry.get_species(1)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var exp_this_level: int = PokemonRegistry.get_exp_for_level(growth_rate, 10)
+	var exp_next_level: int = PokemonRegistry.get_exp_for_level(growth_rate, 11)
+	var needed: int = exp_next_level - exp_this_level
+	var big_amount: int = needed + 500  # comfortably crosses the level boundary
+	recipient.current_exp = exp_this_level + big_amount
+
+	bs._on_log_exp_gained(recipient, big_amount)
+	var beat: Dictionary = bs._pending_beats.filter(func(b): return b.get("kind") == "exp_drain")[0]
+	_chk("to_frac clamps at 1.0 when the award crosses a level boundary",
+			is_equal_approx(beat.get("to_frac"), 1.0))
+
+
+func _test_exp_gained_no_exp_drain_beat_without_a_real_exp_fill_bar() -> void:
+	# Mirrors _test_move_executed_no_hp_drain_beat_when_no_damage's own
+	# graceful-degrade shape: no panel stubbed at all, so _panel_for()
+	# bounds-checks and resolves null -- the text confirmation still queues
+	# even when there's nowhere to animate a bar.
+	var bs := BattleScreenShared.new()
+	var recipient := _make_registry_mon(1, 10)
+	bs._player_party = _singles_party(recipient)
+	bs._opp_party = _singles_party(_make_typed_mon("Foe", TypeChart.TYPE_NORMAL))
+	recipient.current_exp += 10
+
+	bs._on_log_exp_gained(recipient, 10)
+	var drain_beats: Array = bs._pending_beats.filter(func(b): return b.get("kind") == "exp_drain")
+	_chk("no exp_drain beat when no ExpFill bar is reachable", drain_beats.is_empty())
+	var text_beats: Array = bs._pending_beats.filter(func(b): return b.get("kind") == "text")
+	_chk("the gained-EXP text beat still queues regardless", text_beats.size() == 1)
 
 
 # ── 10-11. Tween-returning guard paths (no live tree needed) ─────────────

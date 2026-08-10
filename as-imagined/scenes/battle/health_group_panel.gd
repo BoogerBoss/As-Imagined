@@ -209,6 +209,15 @@ func get_hp_fill_bar() -> TextureProgressBar:
 	return _hp_fill
 
 
+# [EXP bar animation fix] Same shape as get_hp_fill_bar() immediately above --
+# message-pacing's own "exp_drain" beat (battle_screen_shared.gd) tweens this
+# bar directly rather than snapping it via refresh(), so it needs the real
+# live node too. null on the opponent-shaped variant (no ExpFill node at
+# all), matching get_hp_fill_bar's null-safe contract for every caller.
+func get_exp_fill_bar() -> TextureProgressBar:
+	return _exp_fill
+
+
 func refresh(name_text: String, gender_glyph: String, level_text: String, status: int,
 		current_hp: int, max_hp: int, hp_color: Color, exp_fraction: float = -1.0) -> void:
 	_name_label.text = name_text

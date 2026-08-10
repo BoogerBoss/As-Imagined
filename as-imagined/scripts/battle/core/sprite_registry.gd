@@ -56,6 +56,16 @@ const FRAME_SIZE := Vector2(64, 64)
 # dex, the safe default matching get_front()'s own "unknown dex" handling.
 const Y_OFFSET_PATH := "res://data/sprite_y_offsets.json"
 
+# [Back-sprite Y-offset fix, 2026-08-10] The player-side mirror of
+# Y_OFFSET_PATH — real per-species `.backPicYOffset` data, same source field
+# family as frontPicYOffset (include/pokemon.h:459), extracted by the same
+# gen_sprite_y_offsets.py generator into its own JSON file. Kept as a
+# SEPARATE file/cache from the front data rather than merged into one, since
+# front and back offsets are genuinely different numbers per species (e.g.
+# Bulbasaur front=14, back=16) — merging them would need a shape change to
+# every existing front-offset reader for no benefit.
+const BACK_Y_OFFSET_PATH := "res://data/sprite_back_y_offsets.json"
+
 static var _front_path_by_dex: Dictionary = {}
 static var _back_path_by_dex: Dictionary = {}
 static var _icon_path_by_dex: Dictionary = {}
@@ -64,17 +74,26 @@ static var _back_scanned := false
 static var _icon_scanned := false
 static var _y_offset_by_dex: Dictionary = {}
 static var _y_offset_loaded := false
+static var _back_y_offset_by_dex: Dictionary = {}
+static var _back_y_offset_loaded := false
 
 
 static func get_front_y_offset(dex: int) -> int:
 	if not _y_offset_loaded:
-		_load_y_offsets()
+		_load_y_offsets(Y_OFFSET_PATH, _y_offset_by_dex)
 		_y_offset_loaded = true
 	return _y_offset_by_dex.get(dex, 0)
 
 
-static func _load_y_offsets() -> void:
-	var f := FileAccess.open(Y_OFFSET_PATH, FileAccess.READ)
+static func get_back_y_offset(dex: int) -> int:
+	if not _back_y_offset_loaded:
+		_load_y_offsets(BACK_Y_OFFSET_PATH, _back_y_offset_by_dex)
+		_back_y_offset_loaded = true
+	return _back_y_offset_by_dex.get(dex, 0)
+
+
+static func _load_y_offsets(path: String, cache: Dictionary) -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
@@ -84,7 +103,7 @@ static func _load_y_offsets() -> void:
 	# float -- both cast explicitly here (the same float-key/float-value
 	# gotcha this project's own CLAUDE.md gdscript-gotchas memory documents).
 	for key: String in (parsed as Dictionary).keys():
-		_y_offset_by_dex[int(key)] = int((parsed as Dictionary)[key])
+		cache[int(key)] = int((parsed as Dictionary)[key])
 
 
 # [M23.11 Phase 4c] `frame` selects which of the (up to) 2 idle-animation

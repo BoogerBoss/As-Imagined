@@ -3469,6 +3469,35 @@ static func get_switch_in_weather(pokemon: BattlePokemon, ng_active: bool = fals
 #   "damage_amount"      : int — Dry Skin/Solar Power sun self-damage (0 = none)
 #   "cured_status"       : bool — Hydration/Shed Skin cured the holder's own status
 #   "healed_ally_status" : bool — Healer cured the ally's status
+## [End-of-turn reorder, 2026-08-10] Which of source's THREE distinct
+## end-of-turn dispatch stages to run.
+##
+## ⚠️ **THIS FUNCTION BUNDLES ABILITIES FROM THREE DIFFERENT SOURCE STAGES,
+## AND THAT BUNDLING WAS ITSELF A REAL ORDERING BUG.** Source dispatches:
+##   * Rain Dish / Ice Body / Dry Skin / Solar Power inside
+##     `HandleEndTurnWeatherDamage` (ENDTURN_WEATHER_DAMAGE, idx 3) — i.e.
+##     in the SAME breath as sandstorm/hail chip damage, not later;
+##   * Healer / Hydration / Shed Skin inside `HandleEndTurnFirstEventBlock`'s
+##     own FIRST_EVENT_BLOCK_ABILITIES sub-step (idx 8), immediately BEFORE
+##     Leftovers/Black Sludge (FIRST_EVENT_BLOCK_HEAL_ITEMS) and before
+##     poison/burn damage (idx 13/14);
+##   * Speed Boost / Moody / Truant / Slow Start inside
+##     `HandleEndTurnThirdEventBlock` (idx 42), genuinely near the very end.
+## Running all three at one point (which is what a single unstaged call
+## does) puts two of the three ~30 ranks out of position.
+##
+## `ALL` is the DEFAULT and reproduces the exact pre-split behaviour, so
+## every existing direct caller — including ~30 test call sites across
+## m17b/m17c/m17d/m17n5/ability_test — is byte-identical and untouched.
+## Only BattleManager's own `_phase_end_of_turn` passes a real stage.
+enum EotStage {
+	ALL,          ## every stage at once — the pre-split behaviour
+	WEATHER,      ## ENDTURN_WEATHER_DAMAGE (idx 3)
+	FIRST_BLOCK,  ## ENDTURN_FIRST_EVENT_BLOCK's ABILITIES sub-step (idx 8)
+	THIRD_BLOCK,  ## ENDTURN_THIRD_EVENT_BLOCK's ABILITIES sub-step (idx 42)
+}
+
+
 static func try_end_of_turn(
 		pokemon: BattlePokemon,
 		force_moody_raise: Variant = null,
@@ -3477,7 +3506,8 @@ static func try_end_of_turn(
 		ally: BattlePokemon = null,
 		force_shed_skin_roll: Variant = null,
 		force_healer_roll: Variant = null,
-		ng_active: bool = false) -> Dictionary:
+		ng_active: bool = false,
+		stage: EotStage = EotStage.ALL) -> Dictionary:
 	var result := {
 		"speed_boost_change": 0,
 		"moody_raised_stat": -1, "moody_raised_amount": 0,
@@ -3491,51 +3521,69 @@ static func try_end_of_turn(
 	var id: int = effective_ability_id(pokemon, ng_active)
 	if id == ABILITY_NONE:
 		return result
-	if id == ABILITY_SPEED_BOOST and not pokemon.switched_in_this_turn:
-		result["speed_boost_change"] = StatusManager.apply_stat_change(
-				pokemon, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
-	if id == ABILITY_MOODY:
-		_apply_moody(pokemon, result, force_moody_raise, force_moody_lower, ng_active)
-	if id == ABILITY_TRUANT:
-		pokemon.truant_loafing = not pokemon.truant_loafing
-	# M17n-5: Slow Start — post-decrement check, matching source's
-	# `if (timer > 0 && --timer == 0)` shape exactly (battle_util.c L3649-3654).
-	if id == ABILITY_SLOW_START and pokemon.slow_start_timer > 0:
-		pokemon.slow_start_timer -= 1
-		if pokemon.slow_start_timer == 0:
-			result["slow_start_ended"] = true
+	# ── ENDTURN_THIRD_EVENT_BLOCK (idx 42) ────────────────────────────────
+	# ⚠️ Every mutation in this group is REAL and IN-PLACE (a stat change, a
+	# flag toggle, a timer decrement) rather than a value handed back for the
+	# caller to apply — which is exactly why the stage gate has to wrap them
+	# rather than the caller simply ignoring unwanted result fields.
+	var run_third: bool = stage == EotStage.ALL or stage == EotStage.THIRD_BLOCK
+	if run_third:
+		if id == ABILITY_SPEED_BOOST and not pokemon.switched_in_this_turn:
+			result["speed_boost_change"] = StatusManager.apply_stat_change(
+					pokemon, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
+		if id == ABILITY_MOODY:
+			_apply_moody(pokemon, result, force_moody_raise, force_moody_lower, ng_active)
+		if id == ABILITY_TRUANT:
+			pokemon.truant_loafing = not pokemon.truant_loafing
+		# M17n-5: Slow Start — post-decrement check, matching source's
+		# `if (timer > 0 && --timer == 0)` shape exactly (battle_util.c L3649-3654).
+		if id == ABILITY_SLOW_START and pokemon.slow_start_timer > 0:
+			pokemon.slow_start_timer -= 1
+			if pokemon.slow_start_timer == 0:
+				result["slow_start_ended"] = true
 
-	var not_at_max: bool = pokemon.current_hp < pokemon.max_hp
-	if id == ABILITY_RAIN_DISH and weather == DamageCalculator.WEATHER_RAIN and not_at_max:
-		result["heal_amount"] = max(1, pokemon.max_hp / 16)
-	elif id == ABILITY_ICE_BODY and weather == DamageCalculator.WEATHER_HAIL and not_at_max:
-		result["heal_amount"] = max(1, pokemon.max_hp / 16)
-	elif id == ABILITY_DRY_SKIN:
-		if weather == DamageCalculator.WEATHER_RAIN and not_at_max:
-			result["heal_amount"] = max(1, pokemon.max_hp / 8)
-		elif weather == DamageCalculator.WEATHER_SUN:
+	# ── ENDTURN_WEATHER_DAMAGE (idx 3) ────────────────────────────────────
+	# Source runs these INSIDE HandleEndTurnWeatherDamage, alongside the
+	# sandstorm/hail chip-damage check — not as a later, separate pass.
+	var run_weather: bool = stage == EotStage.ALL or stage == EotStage.WEATHER
+	if run_weather:
+		var not_at_max: bool = pokemon.current_hp < pokemon.max_hp
+		if id == ABILITY_RAIN_DISH and weather == DamageCalculator.WEATHER_RAIN and not_at_max:
+			result["heal_amount"] = max(1, pokemon.max_hp / 16)
+		elif id == ABILITY_ICE_BODY and weather == DamageCalculator.WEATHER_HAIL and not_at_max:
+			result["heal_amount"] = max(1, pokemon.max_hp / 16)
+		elif id == ABILITY_DRY_SKIN:
+			if weather == DamageCalculator.WEATHER_RAIN and not_at_max:
+				result["heal_amount"] = max(1, pokemon.max_hp / 8)
+			elif weather == DamageCalculator.WEATHER_SUN:
+				result["damage_amount"] = max(1, pokemon.max_hp / 8)
+		elif id == ABILITY_SOLAR_POWER and weather == DamageCalculator.WEATHER_SUN:
+			# M17d: shares Dry Skin's SOLAR_POWER_HP_DROP label (battle_util.c L3660-3667) —
+			# this is the ability the label is actually named after. Damage half only; the
+			# ATK boost half lives in attack_modifier_uq412.
 			result["damage_amount"] = max(1, pokemon.max_hp / 8)
-	elif id == ABILITY_SOLAR_POWER and weather == DamageCalculator.WEATHER_SUN:
-		# M17d: shares Dry Skin's SOLAR_POWER_HP_DROP label (battle_util.c L3660-3667) —
-		# this is the ability the label is actually named after. Damage half only; the
-		# ATK boost half lives in attack_modifier_uq412.
-		result["damage_amount"] = max(1, pokemon.max_hp / 8)
 
-	if id == ABILITY_HYDRATION and weather == DamageCalculator.WEATHER_RAIN \
-			and pokemon.status != BattlePokemon.STATUS_NONE:
-		result["cured_status"] = true
-	elif id == ABILITY_SHED_SKIN and pokemon.status != BattlePokemon.STATUS_NONE:
-		var ss_fires: bool = bool(force_shed_skin_roll) if force_shed_skin_roll != null \
-				else (randi() % 3 == 0)
-		if ss_fires:
+	# ── ENDTURN_FIRST_EVENT_BLOCK's ABILITIES sub-step (idx 8) ────────────
+	# ⚠️ The RNG rolls below sit INSIDE this gate deliberately: a stage-
+	# filtered call must not burn a Shed Skin / Healer roll it is going to
+	# discard, or the same battler would roll two (or three) times per turn.
+	var run_first: bool = stage == EotStage.ALL or stage == EotStage.FIRST_BLOCK
+	if run_first:
+		if id == ABILITY_HYDRATION and weather == DamageCalculator.WEATHER_RAIN \
+				and pokemon.status != BattlePokemon.STATUS_NONE:
 			result["cured_status"] = true
+		elif id == ABILITY_SHED_SKIN and pokemon.status != BattlePokemon.STATUS_NONE:
+			var ss_fires: bool = bool(force_shed_skin_roll) if force_shed_skin_roll != null \
+					else (randi() % 3 == 0)
+			if ss_fires:
+				result["cured_status"] = true
 
-	if id == ABILITY_HEALER and ally != null and not ally.fainted \
-			and ally.status != BattlePokemon.STATUS_NONE:
-		var h_fires: bool = bool(force_healer_roll) if force_healer_roll != null \
-				else (randi() % 100 < 30)
-		if h_fires:
-			result["healed_ally_status"] = true
+		if id == ABILITY_HEALER and ally != null and not ally.fainted \
+				and ally.status != BattlePokemon.STATUS_NONE:
+			var h_fires: bool = bool(force_healer_roll) if force_healer_roll != null \
+					else (randi() % 100 < 30)
+			if h_fires:
+				result["healed_ally_status"] = true
 
 	return result
 

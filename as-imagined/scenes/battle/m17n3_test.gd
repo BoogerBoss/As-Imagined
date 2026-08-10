@@ -60,6 +60,7 @@ func _ready() -> void:
 	_test_section_7_triage_full_battle()
 	_test_section_8_stall_full_battle()
 	_test_section_9_quick_draw_full_battle()
+	_test_section_9b_quick_draw_suppresses_custap_consumption()
 	_test_section_10_mycelium_might_turn_order_full_battle()
 	_test_section_11_mycelium_might_ability_ignore_full_battle()
 	_test_section_12_trick_room_composition_full_battle()
@@ -471,6 +472,80 @@ func _test_section_9_quick_draw_full_battle() -> void:
 			not events3.is_empty() and events3[0][0] == opp3)
 
 	bm3.queue_free()
+
+
+# ── Section 9b: Quick Draw suppresses Custap Berry's own check/consumption ───
+#
+# Fix, 2026-08-10, found via a direct source audit of `TryChangingTurnOrderEffects`
+# (battle_main.c:5190): `if (!gProtectStructs[battler1].quickDraw && (...
+# CUSTAP_BERRY...))` — Custap Berry is only even checked, let alone eaten, when
+# Quick Draw did NOT already flag the battler this turn. This project previously
+# called `custap_berry_activates()` unconditionally and consumed the berry
+# whenever it activated, even when Quick Draw alone already put the mon first —
+# wasting the berry for zero turn-order effect. Turn order is UNAFFECTED either
+# way (Quick Draw alone already acts first), so the discriminator is the item,
+# not the order.
+func _test_section_9b_quick_draw_suppresses_custap_consumption() -> void:
+	var tackle := _load_move(33)
+	var quick_draw := _load_ability(259)
+	var custap := ItemData.new()
+	custap.hold_effect = ItemManager.HOLD_EFFECT_CUSTAP_BERRY
+	custap.hold_effect_param = 4
+
+	# Quick Draw's roll forced TRUE: the berry must NOT be consumed, since
+	# source never even reaches the Custap check once Quick Draw has fired.
+	var qd := _make_mon("QuickDrawCustap", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 40)
+	qd.ability = quick_draw
+	qd.held_item = custap
+	qd.current_hp = 40  # <=25% of 160 max HP -- Custap's own threshold
+	qd.add_move(tackle)
+	var opp := _make_mon("QuickDrawCustapOpp", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 100)
+	opp.add_move(tackle)
+
+	var events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm._force_quick_draw_roll = true
+	bm.move_executed.connect(func(a, d, m, dmg): events.push_back([a, d, m, dmg]))
+	bm.start_battle_with_parties(BattleParty.single(qd), BattleParty.single(opp))
+
+	_chk("S9b.01 Quick Draw (forced roll=true) still acts first",
+			not events.is_empty() and events[0][0] == qd)
+	_chk("S9b.02 fix: Custap Berry is NOT consumed when Quick Draw already fired",
+			qd.held_item == custap)
+
+	bm.queue_free()
+
+	# Discriminator: Quick Draw's roll forced FALSE this time -- Custap Berry's
+	# own independent HP-gated check should still fire and consume the berry,
+	# proving the gate is conditional on Quick Draw's OWN activation, not a
+	# blanket "Custap never consumes" regression.
+	var custap2 := ItemData.new()
+	custap2.hold_effect = ItemManager.HOLD_EFFECT_CUSTAP_BERRY
+	custap2.hold_effect_param = 4
+	var qd2 := _make_mon("QuickDrawCustap2", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 40)
+	qd2.ability = quick_draw
+	qd2.held_item = custap2
+	qd2.current_hp = 40
+	qd2.add_move(tackle)
+	var opp2 := _make_mon("QuickDrawCustapOpp2", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 100)
+	opp2.add_move(tackle)
+
+	var events2 := []
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2._force_quick_draw_roll = false
+	bm2.move_executed.connect(func(a, d, m, dmg): events2.push_back([a, d, m, dmg]))
+	bm2.start_battle_with_parties(BattleParty.single(qd2), BattleParty.single(opp2))
+
+	_chk("S9b.03 discriminator: Quick Draw NOT active -> Custap Berry's own HP-gate " +
+			"still fires, acting first via Custap alone",
+			not events2.is_empty() and events2[0][0] == qd2)
+	_chk("S9b.04 discriminator: Custap Berry IS consumed when it is the one that " +
+			"actually activated turn order",
+			qd2.held_item == null)
+
+	bm2.queue_free()
 
 
 # ── Section 10: Mycelium Might — turn-order-last, gated on its own move category ──

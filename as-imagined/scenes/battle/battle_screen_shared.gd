@@ -696,6 +696,15 @@ var _matchup_overlay: Control = null
 var _opp_sprite_base_top: Array = []
 var _opp_sprite_base_bottom: Array = []
 
+# [Back-sprite Y-offset fix, 2026-08-10] The player-side mirror of the two
+# arrays immediately above. Back sprites went through _setup_health_ui()
+# without ever capturing a baseline, because until now nothing recomputed
+# their offset_top/offset_bottom per species -- see
+# _apply_bottom_anchored_back_sprite()'s own doc comment for what this
+# baseline feeds.
+var _ply_sprite_base_top: Array = []
+var _ply_sprite_base_bottom: Array = []
+
 # [M23.11 Phase 5c] Hit-effect nodes are spawned/freed here at runtime --
 # a child of BattleStage in battle_screen.tscn, so every sprite/health-box
 # added above it in the tree draws underneath for free (same "later sibling
@@ -854,6 +863,18 @@ const _TEXT_REVEAL_SECONDS_PER_CHAR := 0.016745
 # full-bar traversal takes ~0.201s. Drives the "hp_drain" beat's own tween
 # duration (this * abs(from_frac - to_frac)).
 const _HP_DRAIN_SECONDS_FULL_BAR := 0.201
+
+# [EXP bar animation fix] Source drives the EXP bar through the same
+# MoveBattleBar/CalcNewBarValue machinery as the HP bar (battle_interface.c,
+# EXP_BAR case of MoveBattleBar), just over B_EXPBAR_PIXELS instead of
+# B_HEALTHBAR_PIXELS and with its own GetScaledExpFraction speed curve. That
+# per-amount speed curve is mechanism, not behavior a player would notice
+# (per this project's own "port the behaviour, not the mechanism" rule) --
+# what a player sees is "the bar visibly fills, proportional to how far it
+# travels," which this reuses _HP_DRAIN_SECONDS_FULL_BAR's own proportional-
+# duration shape for, disclosed here as a simplification of the real
+# variable-speed formula rather than a literal port of it.
+const _EXP_DRAIN_SECONDS_FULL_BAR := 0.201
 
 # [M26o] How long the party-status ball row stays visible once shown, before
 # auto-hiding — source's own real sprites slide out on a fixed animation cue
@@ -1176,8 +1197,18 @@ const _TRAINER_SLIDE_OUT_SECONDS := 0.58
 # null -- _run_message_pacing awaits its own "finished" signal) /
 # {"kind":"flash","sprite":Control} (Item 4 damage blink -- see
 # _play_damage_flash's own doc comment) /
-# {"kind":"hp_drain","bar":TextureProgressBar,"from_frac":float,"to_frac":float,"color":Color}.
+# {"kind":"hp_drain","bar":TextureProgressBar,"from_frac":float,"to_frac":float,"color":Color} /
+# {"kind":"exp_drain","bar":TextureProgressBar,"from_frac":float,"to_frac":float}
+# ([EXP bar animation fix] same shape as "hp_drain" minus the color re-tint).
 var _pending_beats: Array[Dictionary] = []
+
+## Reentrancy guard for `_run_message_pacing()`. `_on_battle_ended` now drains
+## beats itself (see that function's own comment for why), and its own await
+## chain unwinds back through `_bm.advance()` to `_dispatch_move`'s ordinary
+## post-advance `await _run_message_pacing()` call while the first drain is
+## still mid-tween -- without this, both calls would iterate the SAME
+## `_pending_beats` array concurrently and double-play every beat.
+var _pacing_active := false
 
 ## [M27R 7a-3b] The battle's own sound player.
 ##
@@ -2250,6 +2281,22 @@ func _on_battle_ended(winner_side: int) -> void:
 	# just above -- a focus tween is one more Tween object that could
 	# otherwise outlive the node it's animating across a scene teardown.
 	_clear_target_select_hover_wiring()
+	# ⚠️ **DRAIN PENDING BEATS BEFORE `_show_trainer_battle_end`, NOT AFTER.**
+	# The finishing blow's own hit animation (queued by
+	# `_on_hit_effect_move_executed` into `_pending_beats`, not yet played)
+	# was previously still sitting queued when `_show_trainer_battle_end`
+	# ran `_set_opponent_mon_sprites_visible(false)` — the animation then
+	# played against an already-hidden sprite the moment `_dispatch_move`'s
+	# own later `await _run_message_pacing()` call finally drained it,
+	# which read as "no animation on the finishing hit." Draining HERE,
+	# first, plays it while the sprite is still visible; `_pacing_active`
+	# (see that var's own comment) makes `_dispatch_move`'s later call a
+	# safe no-op rather than a second, concurrent drain of the same list.
+	#
+	# Safe under --autoplay: `_run_message_pacing()` bypasses to a synchronous
+	# clear-and-return before ever reaching a real await when `_is_autoplay_
+	# run` is true, so this does not disturb the invariant below.
+	await _run_message_pacing()
 	# [M26B3-4] Deliberately LAST, after both synchronous teardown calls
 	# above: this one awaits, and --autoplay's own get_tree().quit() fires
 	# on this same call stack the instant BATTLE_END is reached. Anything
@@ -2957,8 +3004,13 @@ func _wire_log_signals() -> void:
 	# happen to share rendered text), but Sketch genuinely differs
 	# (STRINGID_PKMNSKETCHEDMOVE, "{mon} sketched {move}!") — verified
 	# directly against data/battle_scripts_1.s rather than assumed uniform.
-	_bm.exp_gained.connect(func(recipient: BattlePokemon, amount: int):
-		_log("%s gained %d Exp. Points!" % [_mon_label(recipient), amount]))
+	# [EXP bar animation fix] A real named method, not an inline lambda like
+	# every sibling handler above -- matching _on_log_move_executed's own
+	# established shape (connect(_on_log_move_executed) instead of
+	# connect(func(...): ...)) so this is directly callable from a test the
+	# same way that handler already is, rather than needing a full live
+	# BattleManager just to emit the signal.
+	_bm.exp_gained.connect(_on_log_exp_gained)
 	_bm.level_up.connect(func(pokemon: BattlePokemon, new_level: int):
 		_log("%s grew to Lv. %d!" % [_mon_label(pokemon), new_level]))
 	_bm.money_awarded.connect(func(amount: int):
@@ -3008,6 +3060,36 @@ func _on_log_move_announced(attacker: BattlePokemon, defender: BattlePokemon, mo
 	# other _log() call site keeps the default _WAIT_TIME_LONG hold; this is
 	# the one deliberate exception.
 	_log(text + "!", 0.0)
+
+
+# [EXP bar animation fix] BattleManager applies `current_exp += amount`
+# BEFORE emitting exp_gained (see _award_exp_for_fainted_opponent's own
+# ordering) and only calls _check_level_up() -- which may mutate `level` --
+# AFTER this signal fires. So at this exact moment `recipient.level` is
+# still the PRE-gain level while `recipient.current_exp` already reflects
+# the full award, which is exactly what's needed to compute a real from/to
+# fraction pair at a single level: the "to" fraction is the current
+# (post-gain) state, and the "from" fraction is that same level's progress
+# before the award was applied (current_exp - amount). Both clamp to [0,1]
+# via _exp_fraction_at, so a gain that crosses one or more level-ups
+# animates the bar filling to full rather than overshooting -- the next
+# _refresh_ui() call (already driven by the level_up signal's own beats)
+# snaps it to the correct in-progress fraction for the new level, matching
+# real play's own fill-then-reset-and-continue look closely enough that the
+# bar is never seen jumping straight from one value to another with no
+# motion, which was the actual reported bug (see this session's own
+# investigation: current_exp/level accumulate correctly under the hood, but
+# the EXP bar had no animated confirmation of it at all).
+func _on_log_exp_gained(recipient: BattlePokemon, amount: int) -> void:
+	_log("%s gained %d Exp. Points!" % [_mon_label(recipient), amount])
+	var exp_bar: TextureProgressBar = _exp_fill_bar_for(recipient)
+	if exp_bar != null:
+		var to_frac: float = _exp_fraction_at(recipient, recipient.current_exp)
+		var from_frac: float = _exp_fraction_at(recipient, recipient.current_exp - amount)
+		_pending_beats.append({
+			"kind": "exp_drain", "bar": exp_bar,
+			"from_frac": from_frac, "to_frac": to_frac,
+		})
 
 
 # [M25c] Buffers the effectiveness/crit result for the very next
@@ -3446,6 +3528,17 @@ func _sprite_node_for(mon: BattlePokemon) -> Control:
 func _hp_fill_bar_for(mon: BattlePokemon) -> TextureProgressBar:
 	var panel := _panel_for(mon)
 	return panel.get_hp_fill_bar() if panel != null else null
+
+
+# [EXP bar animation fix] Same generic slot lookup as _hp_fill_bar_for
+# immediately above, for the "exp_drain" beat -- null on any panel with no
+# real ExpFill node (opponent panels, both doubles panel shapes), which the
+# exp_gained handler already treats as "skip the beat," matching
+# _refresh_battlefield_side's own existing null-tolerant exp_fraction
+# contract.
+func _exp_fill_bar_for(mon: BattlePokemon) -> TextureProgressBar:
+	var panel := _panel_for(mon)
+	return panel.get_exp_fill_bar() if panel != null else null
 
 
 # [M26c-4] Same generic slot lookup as _sprite_node_for, for a mon's own
@@ -4217,6 +4310,39 @@ func _apply_bottom_anchored_front_sprite(rect: TextureRect, dex: int, frame: int
 	rect.offset_bottom = base_bottom + shift
 
 
+# [Back-sprite Y-offset fix, 2026-08-10] The player-side mirror of
+# _apply_bottom_anchored_front_sprite() immediately above — same reasoning,
+# same math, mirrored source field. Until this existed, only the OPPONENT
+# sprite got per-species bottom-anchoring; the player's own back sprite was
+# left on the .tscn's one static offset_top/offset_bottom regardless of
+# species, so any species whose real GBA art sits higher within its 64x64
+# canvas than whichever species the box was hand-tuned against (Bulbasaur:
+# backPicYOffset=16, Charmander=14, both well above Squirtle's 14... the
+# actual reported case was the .tscn's own baseline having been tuned
+# against a LOWER-offset species) rendered with its visual bottom cut off
+# by the box, or floating too high above it, depending on direction.
+#
+# Source: `.backPicYOffset` (include/pokemon.h:459 — "the number of pixels
+# between the drawn pixel area and the bottom edge"), extracted by
+# gen_sprite_y_offsets.py into data/sprite_back_y_offsets.json alongside the
+# front-sprite pull it already did, same GBA-style-ternary-branch selection.
+#
+# No `frame` parameter — back sprites have no frame-swap idle animation in
+# the real engine (see SpriteRegistry.get_back()'s own doc comment) — so this
+# mirrors _sprite_or_fallback_back(dex)'s own single-argument shape rather
+# than threading a frame value that would always be 0.
+func _apply_bottom_anchored_back_sprite(rect: TextureRect, dex: int,
+		base_top: float, base_bottom: float) -> void:
+	rect.texture = _sprite_or_fallback_back(dex)
+	var width := rect.offset_right - rect.offset_left
+	if width <= 0.0:
+		return
+	var scale := width / 64.0
+	var shift := SpriteRegistry.get_back_y_offset(dex) * scale
+	rect.offset_top = base_top + shift
+	rect.offset_bottom = base_bottom + shift
+
+
 # [M23.11 Phase 4c] Idle-bob animation, front sprite (opponent) only.
 #
 # Front-only, not both sprites -- confirmed via direct source inspection
@@ -4561,6 +4687,18 @@ func _category_icon_texture(category: int) -> Texture2D:
 # (Team Builder, random teams, trainer battles) has real growth-rate data
 # to show progress for.
 func _exp_bar_fraction(mon: BattlePokemon) -> float:
+	return _exp_fraction_at(mon, mon.current_exp)
+
+
+# [EXP bar animation fix] The shared calculation _exp_bar_fraction above
+# wraps, taking an explicit exp value rather than always reading
+# mon.current_exp -- needed so the exp_gained handler can compute a real
+# from/to fraction PAIR at the mon's own current (pre-level-up) level, for
+# the "exp_drain" beat to animate between, the same way _on_log_move_executed
+# reconstructs an hp_drain beat's own from_frac by adding damage back onto
+# current_hp. Level is always read fresh from `mon.level`, matching this
+# function's own pre-existing "never cached/assumed" discipline.
+func _exp_fraction_at(mon: BattlePokemon, exp_value: int) -> float:
 	if mon.species == null or mon.level >= 100:
 		return 0.0
 	var dex: int = mon.species.national_dex_num
@@ -4571,7 +4709,7 @@ func _exp_bar_fraction(mon: BattlePokemon) -> float:
 	var needed: int = exp_next_level - exp_this_level
 	if needed <= 0:
 		return 0.0
-	var into: int = mon.current_exp - exp_this_level
+	var into: int = exp_value - exp_this_level
 	return clampf(float(into) / float(needed), 0.0, 1.0)
 
 
@@ -4670,10 +4808,15 @@ func _setup_health_ui() -> void:
 
 	_ply_sprites.clear()
 	_ply_panels.clear()
+	_ply_sprite_base_top.clear()
+	_ply_sprite_base_bottom.clear()
 	slot = 0
 	while has_node("BattleStage/PlayerPanel%d" % slot):
-		_ply_sprites.append(get_node("BattleStage/PlayerSprite%d" % slot))
+		var ply_sprite: TextureRect = get_node("BattleStage/PlayerSprite%d" % slot)
+		_ply_sprites.append(ply_sprite)
 		_ply_panels.append(get_node("BattleStage/PlayerPanel%d" % slot))
+		_ply_sprite_base_top.append(ply_sprite.offset_top)
+		_ply_sprite_base_bottom.append(ply_sprite.offset_bottom)
 		slot += 1
 
 
@@ -5002,12 +5145,15 @@ func _exit_message_mode() -> void:
 # get_tree()/create_tween() both need a live tree) — the one precedent this
 # codebase already established for this exact class of bypass.
 func _run_message_pacing() -> void:
+	if _pacing_active:
+		return
 	if _pending_beats.is_empty():
 		return
 	if _is_autoplay_run or not is_inside_tree():
 		_pending_beats.clear()
 		return
 
+	_pacing_active = true
 	for beat: Dictionary in _pending_beats:
 		match beat.get("kind", ""):
 			"text":
@@ -5083,6 +5229,27 @@ func _run_message_pacing() -> void:
 						await drain_tween.finished
 					else:
 						bar.value = to_frac
+			# [EXP bar animation fix] Same shape as "hp_drain" immediately
+			# above -- the tween that was previously entirely missing for
+			# the EXP bar, which is why it only ever snapped instead of
+			# visibly filling. No color re-tint (unlike HP, the EXP bar's
+			# tint never changes) and no max_value reset needed beyond the
+			# defensive one here, since HealthGroupPanel already fixes it
+			# at 0.0..1.0 in _ready().
+			"exp_drain":
+				var exp_bar: TextureProgressBar = beat.get("bar", null)
+				if exp_bar != null:
+					var from_frac: float = beat.get("from_frac", 0.0)
+					var to_frac: float = beat.get("to_frac", 0.0)
+					exp_bar.max_value = 1.0
+					exp_bar.value = from_frac
+					var duration: float = _EXP_DRAIN_SECONDS_FULL_BAR * abs(to_frac - from_frac)
+					if duration > 0.0:
+						var drain_tween := create_tween()
+						drain_tween.tween_property(exp_bar, "value", to_frac, duration)
+						await drain_tween.finished
+					else:
+						exp_bar.value = to_frac
 			"switch_reveal":
 				# [M26 polish batch, item 7a] Re-syncs one side's sprite
 				# textures/HP panels mid-sequence, right after that switch's
@@ -5131,6 +5298,7 @@ func _run_message_pacing() -> void:
 					await _play_recall_to_ball(recalled)
 
 	_pending_beats.clear()
+	_pacing_active = false
 	_exit_message_mode()
 
 
@@ -7364,7 +7532,8 @@ func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
 		var sprite: TextureRect = sprites[slot]
 		var panel: HealthGroupPanel = panels[slot]
 		if is_player:
-			sprite.texture = _sprite_or_fallback_back(mon.species.national_dex_num)
+			_apply_bottom_anchored_back_sprite(sprite, mon.species.national_dex_num,
+					_ply_sprite_base_top[slot], _ply_sprite_base_bottom[slot])
 		else:
 			# [M23.11 Phase 4c precedent] Idle-bob is front-sprite (opponent)
 			# only — reset this slot's own frame to 0 on every state-driven

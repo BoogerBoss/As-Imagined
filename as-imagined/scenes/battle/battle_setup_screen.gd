@@ -301,14 +301,38 @@ func _on_launch_pressed() -> void:
 	# screen reads it. ⚠️ `set_pending`'s overworld caller never touches this,
 	# and `clear()` resets it, so a bench battle cannot leak into a real one.
 	BattleSetupContext.ai_random_moves = _ai_random.button_pressed
+	# A random real trainer identity, purely so the trainer slide-in intro
+	# (battle_screen_shared.gd's _show_trainer_intro) has someone to show —
+	# reverses [Step 3]'s "no default opponent trainer" call (Rob, 2026-08-10).
+	# The opponent's PARTY is still whatever this screen resolved above,
+	# unrelated to the picked trainer's own roster — only name/portrait/class
+	# come along automatically, plus (as a real, accepted side effect, not an
+	# oversight) the trainer's own ai_flags and item stock, since both are
+	# wired through set_trainer_data()/TrainerAI.from_trainer_data() the
+	# moment opp_trainer_key is non-empty.
 	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES,
-			_selected_background_id())
+			_selected_background_id(), _random_trainer_key())
 	# [Doubles-split roadmap, step 6] Launches the real split scene matching
 	# the chosen format -- battle_screen.tscn (the pre-split monolith) is no
 	# longer reachable from here at all, kept only until step 7 retires it.
 	var target := "res://scenes/battle/battle_screen_doubles.tscn" if _format == Format.DOUBLES \
 			else "res://scenes/battle/battle_screen_singles.tscn"
 	get_tree().change_scene_to_file(target)
+
+
+## A uniformly-random real trainer key for the opponent's on-screen identity
+## (name/portrait/class/ai_flags/item stock — see the call site's own comment
+## for what that does and doesn't affect). All 1,477 `data/trainers/*.tres`
+## keys resolve to a real, loadable portrait (measured directly, 2026-08-10 —
+## every trainer's `pic_stem` has a pulled image on disk), so no filtering is
+## needed; an empty registry (never expected — flag, don't silently patch
+## around it if this ever fires) degrades to no trainer, matching the prior
+## behavior exactly.
+func _random_trainer_key() -> String:
+	var keys := TrainerRegistry.all_keys()
+	if keys.is_empty():
+		return ""
+	return keys[randi() % keys.size()]
 
 
 # ── [M36 bench] The move-pool filter ────────────────────────────────────────

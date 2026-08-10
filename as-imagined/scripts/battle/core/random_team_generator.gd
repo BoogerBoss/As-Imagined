@@ -125,12 +125,12 @@ static func _random_move_ids(dex: int, level: int,
 		# that just Struggles — which would look like a broken bench.
 		if not in_range.is_empty():
 			in_range.shuffle()
-			return in_range.slice(0, mini(in_range.size(), 1 + randi() % 4))
+			return in_range.slice(0, mini(in_range.size(), 4))
 
 	if legal.is_empty():
 		return []
 	legal.shuffle()
-	var count: int = mini(legal.size(), 1 + randi() % 4)
+	var count: int = mini(legal.size(), 4)
 	return legal.slice(0, count)
 
 

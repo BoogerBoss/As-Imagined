@@ -51,6 +51,24 @@ const DOUBLES_NODES := {
 	"OpponentTrainerSprite": "B_POSITION_OPPONENT_LEFT",
 }
 
+# ⚠️ **DELIBERATE DIVERGENCE FROM `sBattlerCoords`, Rob's call, 2026-08-10.**
+# The player battler in SINGLES was repositioned and enlarged by hand in the
+# editor to sit correctly against the (separately, also by-eye) positioned
+# player base-platform art -- source's own (72, 80) at the standard 320px box
+# did not read right on this project's own canvas/base art. This is exactly
+# the "a derived position looking wrong is a finding to record, not a number
+# to nudge" case this file's own header comment anticipated -- recorded here
+# as a real, pinned override rather than left as silent drift.
+#
+# `BattlerCoords.SINGLES["B_POSITION_PLAYER_LEFT"]` stays the literal source
+# value untouched -- `_test_table_matches_source_values` below still enforces
+# that -- only these two SINGLES nodes are checked against this override
+# instead of the table. Opponent side, and both sides in doubles, are
+# unaffected and still fully source-derived.
+const SINGLES_PLAYER_OVERRIDE_NODES := ["PlayerSprite0", "PlayerTrainerSprite"]
+const SINGLES_PLAYER_OVERRIDE_ANCHOR := Vector2(0.2370833, 0.598125)
+const SINGLES_PLAYER_OVERRIDE_HALF_BOX := 178.5
+
 var _pass := 0
 var _fail := 0
 
@@ -63,6 +81,7 @@ func _ready() -> void:
 	_test_sprite_boxes_are_square_and_source_sized()
 	_test_offsets_are_symmetric_about_the_anchor()
 	_test_singles_does_not_use_the_right_positions()
+	_test_singles_player_override()
 
 	var total := _pass + _fail
 	print("m26a1_battler_geometry_test: %d/%d passed" % [_pass, total])
@@ -146,6 +165,10 @@ func _test_table_matches_source_values() -> void:
 func _check_scene_against_table(scene_path: String, nodes: Dictionary, table: Dictionary) -> void:
 	var instance: Node = (load(scene_path) as PackedScene).instantiate()
 	for node_name in nodes:
+		# The two overridden SINGLES nodes are checked separately, against the
+		# override, not the table -- see `_test_singles_player_override`.
+		if scene_path == SINGLES_SCENE and node_name in SINGLES_PLAYER_OVERRIDE_NODES:
+			continue
 		var pos_key: String = nodes[node_name]
 		var sprite: Control = instance.get_node("BattleStage/%s" % node_name) as Control
 		_chk("%s exists" % node_name, sprite != null)
@@ -200,6 +223,10 @@ func _test_sprite_boxes_are_square_and_source_sized() -> void:
 	for entry in [[SINGLES_SCENE, SINGLES_NODES], [DOUBLES_SCENE, DOUBLES_NODES]]:
 		var instance: Node = (load(entry[0] as String) as PackedScene).instantiate()
 		for node_name in (entry[1] as Dictionary):
+			# Overridden separately -- its box is deliberately NOT 5x GBA. See
+			# `_test_singles_player_override`.
+			if entry[0] == SINGLES_SCENE and node_name in SINGLES_PLAYER_OVERRIDE_NODES:
+				continue
 			var sprite: Control = instance.get_node("BattleStage/%s" % node_name) as Control
 			if sprite == null:
 				continue
@@ -253,4 +280,33 @@ func _test_singles_does_not_use_the_right_positions() -> void:
 			if here.distance_to(f as Vector2) < 0.0005:
 				clashes = true
 		_chk("%s is not placed on a singles _RIGHT coordinate" % node_name, not clashes)
+	instance.queue_free()
+
+
+# ── 8. The deliberate SINGLES player override ─────────────────────────────
+#
+# Pinned separately from the generic source-derived checks above -- this is
+# the "looking-wrong finding" this suite's header comment says gets recorded
+# rather than silently nudged. Still a drift guard: an editor drag away from
+# THIS anchor now fails here, same as any other node failing against the
+# table.
+func _test_singles_player_override() -> void:
+	var instance: Node = (load(SINGLES_SCENE) as PackedScene).instantiate()
+	for node_name in SINGLES_PLAYER_OVERRIDE_NODES:
+		var sprite: Control = instance.get_node("BattleStage/%s" % node_name) as Control
+		_chk("%s exists" % node_name, sprite != null)
+		if sprite == null:
+			continue
+		_chk("%s is a POINT anchor (left==right, top==bottom)" % node_name,
+				is_equal_approx(sprite.anchor_left, sprite.anchor_right)
+				and is_equal_approx(sprite.anchor_top, sprite.anchor_bottom))
+		_chk("%s sits at the deliberate override anchor (%.4f, %.4f)"
+				% [node_name, SINGLES_PLAYER_OVERRIDE_ANCHOR.x, SINGLES_PLAYER_OVERRIDE_ANCHOR.y],
+				absf(sprite.anchor_left - SINGLES_PLAYER_OVERRIDE_ANCHOR.x) < 0.0005
+				and absf(sprite.anchor_top - SINGLES_PLAYER_OVERRIDE_ANCHOR.y) < 0.0005)
+		var w: float = sprite.offset_right - sprite.offset_left
+		var h: float = sprite.offset_bottom - sprite.offset_top
+		_chk("%s box is square" % node_name, is_equal_approx(w, h))
+		_chk("%s box is the deliberate override size (%d px)" % [node_name, int(SINGLES_PLAYER_OVERRIDE_HALF_BOX * 2)],
+				absf(w - SINGLES_PLAYER_OVERRIDE_HALF_BOX * 2) < 0.5)
 	instance.queue_free()
