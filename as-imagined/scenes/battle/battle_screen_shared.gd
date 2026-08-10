@@ -7928,16 +7928,22 @@ func _on_fight_move_hovered(mon: BattlePokemon, move_index: int) -> void:
 # (matching the exact leak this project's own M25c session already found
 # and fixed for the normal win/loss path).
 func _on_run_pressed() -> void:
-	# [M27D D5] Fleeing a TRAINER battle is a forfeit, and source counts that as
-	# a defeat (`IsPlayerDefeated` includes B_OUTCOME_FORFEITED) — so the
-	# trainer stays undefeated and can be fought again. Only the simulator's own
-	# Run falls through to the setup screen.
+	# [Bugfix, live-reported: Oak's Lab rival battle "ends after 1-2 turns and
+	# dumps back to overworld"] This branch used to call
+	# `_return_to_overworld_if_pending(BattleOutcome.FORFEITED)` unconditionally
+	# for ANY overworld trainer battle, with no confirmation and no refusal —
+	# so pressing Run even once, at any point, silently forfeited the battle
+	# and warped the player out via the whiteout path. Source never lets this
+	# happen at all: `STRINGID_NORUNNINGFROMTRAINERS` ("No! There's no running
+	# from a Trainer battle!", `battle_message.c:389`) is what a real trainer
+	# battle prints on Run — the attempt is REFUSED, not treated as a forfeit.
+	# There is no in-engine way to forfeit a mandatory trainer battle in the
+	# real games at all; this project had accidentally built one.
 	if overlay_mode:
-		# [M27H H5] ⚠️ A WILD BATTLE IS NOT A FORFEIT. Running from a trainer
-		# counts as a defeat (`IsPlayerDefeated` includes B_OUTCOME_FORFEITED),
-		# which whites the player out; running from a wild Pokémon costs
-		# nothing. `[M25b]`'s placeholder could not simply be repointed because
-		# this same button serves both.
+		# [M27H H5] ⚠️ A WILD BATTLE IS NOT A FORFEIT. Running from a wild
+		# Pokémon costs nothing and is the ONLY case this button should ever
+		# end the battle from. `[M25b]`'s placeholder could not simply be
+		# repointed because this same button serves both.
 		if _bm != null and _bm.is_wild_battle:
 			var me: BattlePokemon = _bm.get_active_player_mon()
 			var foe: BattlePokemon = _bm.get_active_opponent_mon()
@@ -7956,7 +7962,9 @@ func _on_run_pressed() -> void:
 				# which is a turn-machine change rather than an escape one.
 				_log("Couldn't escape!")
 			return
-		_return_to_overworld_if_pending(BattleOutcome.FORFEITED)
+		# A trainer battle: refuse outright, matching source. No turn is
+		# spent, no outcome is produced, the battle continues untouched.
+		_log("No! There's no running from a Trainer battle!")
 		return
 	_clear_active_hit_effects()
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")

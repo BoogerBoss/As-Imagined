@@ -35,3 +35,7 @@ text = "Press me"
 [node name="AdventureButton" type="Button" parent="VBoxContainer"]
 layout_mode = 2
 text = "Press me too"
+
+[node name="QuickStartButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Press me three"

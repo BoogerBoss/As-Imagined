@@ -464,6 +464,15 @@ func _ready() -> void:
 	if OverworldSession.pending_new_game:
 		boot_map = NEW_GAME_MAP
 		start_cell = NEW_GAME_CELL
+		# [Bugfix, live-reported: Oak visible in the middle of Pallet Town
+		# before the north trigger reveals him] Source's own
+		# `EventScript_ResetAllMapFlagsFrlg` runs before the player is ever
+		# placed on a map — matched here, before `load_chunk` below, for both
+		# a normal new game AND Quick Start (which never runs `run_new_game`'s
+		# own cutscene at all, so this cannot ride along with that instead).
+		# See `FlagStore.seed_new_game_flags()`'s own doc comment for why this
+		# was never called anywhere in this project until now.
+		OverworldSession.flags.seed_new_game_flags()
 	# [M27E E1c] Debug-boot flags, gated to the F6 case alone. A new game has
 	# `pending_new_game` set; a battle return and a CONTINUE both arrive with a
 	# non-empty `resume`. What is left is someone running this scene directly,
@@ -514,8 +523,15 @@ func _ready() -> void:
 	# screen and message box are children of THIS scene, so it cannot run any
 	# earlier. Consumed on read, so the rebuild after every battle does not
 	# re-run Oak.
+	#
+	# [Quick Start] `take_new_game_skip_intro()` is only ever meaningful
+	# alongside a real `take_new_game()`, so it's consumed inside this branch
+	# rather than unconditionally — a Quick Start boot spawns in the bedroom
+	# exactly like a normal new game (that's `pending_new_game` alone doing
+	# its usual job above) and simply never plays Oak's speech in front of it.
 	if OverworldSession.take_new_game():
-		run_new_game.call_deferred()
+		if not OverworldSession.take_new_game_skip_intro():
+			run_new_game.call_deferred()
 	var d := manager.data_at(_cell)
 	print("overworld: in %s at %s (%d chunk(s) live: %s)"
 			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size(),
@@ -719,21 +735,12 @@ func _apply_player_position(pos: Vector2) -> void:
 func _process(_delta: float) -> void:
 	if _player == null:
 		return
-	# Every frame, including mid-step. ⚠️ This alone is NOT what keeps the
-	# camera in sync during a step — that is `_tween_player_position`'s own
-	# `tween_method` callback, which fires from inside the same Tween that
-	# moves `_player.position` and so can never read a stale value the way a
-	# `_process()`-side poll of a Tween-driven position provably can (measured
-	# directly via `RenderingServer.frame_pre_draw`; see that function's own
-	# comment for the full story, including why `call_deferred` did not help
-	# either). This call is what still matters for every OTHER frame — most of
-	# them, since a walker spends most of its time not mid-step — and for any
-	# future position change that doesn't go through the tween helper.
-	_snap_camera_to_player()
 	# [M27D D5] A battle is a scripted takeover: the world underneath freezes.
 	# This is the one case where NPCs must NOT keep wandering — unlike a warp
-	# fade, where they deliberately do.
+	# fade, where they deliberately do. The camera still snaps (there is
+	# nothing else moving it), so that half runs even on this early return.
 	if _in_battle:
+		_snap_camera_to_player()
 		return
 	# [M27L L2] ⚠️ TICKS HERE, ABOVE every menu and script gate, because a menu
 	# open or a cutscene running is still time the player has spent — source
@@ -746,7 +753,31 @@ func _process(_delta: float) -> void:
 	# while a script runs — that IS what a cutscene is — so this sits ABOVE the
 	# `_vm` return, while `tick_entities` (which DECIDES on new wandering moves)
 	# sits below it and stays frozen.
+	#
+	# [Bugfix, live-reported: scripted movement — following Oak into the lab —
+	# looks jittery for both the player and Oak, while ordinary player-input
+	# walking is smooth] ⚠️ **THIS MUST RUN *BEFORE* THE CAMERA SNAP BELOW, AND
+	# IT USED TO RUN AFTER.** `_tween_player_position`'s own doc comment
+	# already proved the exact shape of this bug for the player's ordinary
+	# Tween-driven walk: a `_process()`-side poll of a moving position is
+	# always one render-frame stale, measured directly via
+	# `RenderingServer.frame_pre_draw`. That path was fixed by driving the
+	# camera snap FROM INSIDE the Tween's own `tween_method` callback
+	# (`_apply_player_position`), so the two updates land in the same call.
+	# `MovementRunner.tick()` — the thing that actually advances a position
+	# under script control (`applymovement`, on the player or any NPC) — has
+	# no such per-step callback; it is a plain `_process()`-side position
+	# write. The camera snap used to run BEFORE this call in the same frame,
+	# so every single frame of a scripted walk rendered the camera at LAST
+	# frame's player position while the sprite was already at THIS frame's —
+	# a one-frame gap sustained continuously for the whole walk, which is
+	# exactly what reads as "jittery" rather than a one-off glitch. Everything
+	# on screen renders relative to that same (jittering) camera, which is why
+	# Oak's own otherwise-smooth interpolation looked shaky too. Fixed by
+	# ensuring the position write happens before the snap that follows it in
+	# the SAME frame, closing the gap the same way the Tween path already did.
 	manager.tick_movement(_delta)
+	_snap_camera_to_player()
 	# [M27E E1c] The blob bobs through message boxes and menus — source's field
 	# effects keep running under windows — so this sits ABOVE the input gates.
 	# Only a battle freezes it, and a battle is a different scene anyway.
@@ -2384,6 +2415,18 @@ func _do_warp(w: Warp) -> void:
 	await _fade_to(0.0)
 	await _exit_arrival(arrival.get("warp"))
 	_warping = false
+	# [Bugfix, live-reported: Oak's Lab OnFrame cutscene starts one tile late]
+	# `check_on_frame_map_script()`'s ONLY other call site is the step-tween's
+	# own `finished` callback (`_try_step`), so an arrival that happens under
+	# ordinary player control (no script running — e.g. walking through the
+	# lab door on your own, following Oak in) left the OnFrame table unchecked
+	# until the player took one MORE voluntary step afterward. The condition
+	# it gates on (`VAR_MAP_SCENE_...`) was already true the instant the warp
+	# landed, so the cutscene started a tile late and the player looked like
+	# they'd wandered off rather than followed Oak. Checked here too, right
+	# after `_warping` clears (its own guard), so an already-true condition
+	# fires on arrival instead of waiting for the next step.
+	check_on_frame_map_script()
 
 
 ## Tear the region down and stand the player somewhere in a fresh map.
@@ -2561,6 +2604,10 @@ func _do_scripted_warp(warp_data: Dictionary) -> void:
 	# which is the correct behaviour for a scripted arrival.
 	await _exit_arrival(null)
 	_warping = false
+	# See the identical fix/comment in `_do_warp` — same latent gap, same fix.
+	# A no-op here whenever the calling script (about to `resume()`) is still
+	# the active `_vm`, which is the common case for a scripted `warp` opcode.
+	check_on_frame_map_script()
 	if _vm != null:
 		_vm.resume()
 

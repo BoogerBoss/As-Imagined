@@ -176,6 +176,16 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	# the save and is layered back on load. Same shape as `entity_visible`
 	# reading a FLAG rather than the scene knowing it is hidden.
 	_apply_object_event_overrides(map_name, root)
+	# [Bugfix, live-reported: Oak's Lab starter ball / rival never disappear]
+	# `removeobject`/`addobject` only ever flipped the FLAG (`entity_visible()`'s
+	# own backing store) — nothing ever re-derived a node's `.visible` from it,
+	# on load or otherwise, so a hidden entity stayed fully drawn AND fully
+	# solid. `rebuild_occupancy` (called by `register_chunk` above) now gates on
+	# the same flag for the solid half; this is the render half, applied here so
+	# a map loaded AFTER a `removeobject` already fired (leaving the lab and
+	# coming back, a loaded save) reflects it immediately rather than only once
+	# something else happens to touch the node.
+	_apply_entity_visibility(root)
 	return true
 
 
@@ -199,6 +209,38 @@ func _apply_object_event_overrides(map_name: String, root: Node2D) -> void:
 		# the wrong place for a frame.
 		if ov.has("facing") and e is NPC:
 			(e as NPC).set_facing(int(ov["facing"]))
+
+
+## [Bugfix companion to `_install_chunk`'s own note] Bulk apply at load time —
+## every entity's `.visible` matches `entity_visible()` before the player ever
+## sees the map, rather than only the entities a script happens to touch again.
+func _apply_entity_visibility(root: Node2D) -> void:
+	for e in _entities_under(root):
+		e.visible = OverworldSession.flags.entity_visible(e)
+
+
+## [Bugfix] The LIVE half: called the instant a script flips an entity's
+## visibility flag (`addobject`/`removeobject`), so the node vanishes (or
+## reappears) in front of the player on the same frame the flag changes,
+## rather than only on the map's next load. Mirrors `move_entity`'s own
+## incremental-occupancy-update shape rather than paying a full
+## `rebuild_occupancy` for one entity.
+func apply_entity_visibility(e: OverworldEntity) -> void:
+	if e == null or not is_instance_valid(e):
+		return
+	var now_visible := OverworldSession.flags.entity_visible(e)
+	e.visible = now_visible
+	if not (e is NPC or e is ItemBall):
+		return
+	var map_name := map_name_of(e)
+	if map_name == "":
+		return
+	var occ: Dictionary = _occupancy.get(map_name, {})
+	if now_visible:
+		occ[e.cell] = true
+	else:
+		occ.erase(e.cell)
+	_occupancy[map_name] = occ
 
 
 func _entities_under(root: Node2D) -> Array[OverworldEntity]:
@@ -633,9 +675,11 @@ func warp_arrival(map_name: String, warp_id: int) -> Dictionary:
 ## cuttable trees, 58 pushable boulders) are object events, so every one becomes
 ## solid here with no obstacle-specific code.
 ##
-## NOT yet gated on `visibility_flag`. Source hides a flagged-away object event
-## and stops it colliding; nothing reads flags until the store lands in D4, so
-## every placed entity currently blocks. Recorded rather than silently assumed.
+## [Bugfix, closes the gap this comment used to record] Now gated on
+## `visibility_flag` via `FlagStore.entity_visible()` — source hides a
+## flagged-away object event and stops it colliding, and an entity a script
+## has removed (`removeobject`) or never revealed (`FLAG_HIDE_*` still set)
+## must not go on blocking a tile the player can now see is empty.
 func rebuild_occupancy(map_name: String) -> void:
 	var out := {}
 	if _chunks.has(map_name):
@@ -643,7 +687,8 @@ func rebuild_occupancy(map_name: String) -> void:
 		if root != null and is_instance_valid(root):
 			for n in root.find_children("*", "OverworldEntity", true, false):
 				var e := n as OverworldEntity
-				if e != null and (e is NPC or e is ItemBall):
+				if e != null and (e is NPC or e is ItemBall) \
+						and OverworldSession.flags.entity_visible(e):
 					out[e.cell] = true
 	_occupancy[map_name] = out
 

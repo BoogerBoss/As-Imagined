@@ -151,6 +151,22 @@ static func take_new_game() -> bool:
 	return v
 
 
+## [Quick Start] Set alongside `pending_new_game` when the whole Oak's-speech/
+## naming/gender/rival-naming cutscene should be skipped — a brand new game
+## that still spawns in the bedroom (`pending_new_game` still decides that),
+## just without the talking-heads sequence in front of it. One-shot, same
+## shape as `pending_new_game` itself, consumed by `overworld.gd`'s own
+## `_ready()` in the same breath as `take_new_game()` so it can never survive
+## into a later battle-triggered rebuild and skip a SECOND, real new game.
+static var pending_new_game_skip_intro: bool = false
+
+
+static func take_new_game_skip_intro() -> bool:
+	var v := pending_new_game_skip_intro
+	pending_new_game_skip_intro = false
+	return v
+
+
 ## [M27L L2] Seconds of play in THIS playthrough.
 ##
 ## ⚠️ Static for the same reason the bag is — a battle is a real scene swap, and
@@ -280,6 +296,7 @@ static func reset() -> void:
 	active_slot = 0
 	surfing = false
 	pending_new_game = false
+	pending_new_game_skip_intro = false
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""

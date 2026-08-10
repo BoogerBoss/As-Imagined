@@ -25,18 +25,22 @@ extends Control
 # two are offered side by side here and `main_scene` is unchanged.
 const BATTLE_SCENE := "res://scenes/battle/battle_setup_screen.tscn"
 const RPG_SCENE := "res://scenes/overworld/title.tscn"
+const OVERWORLD_SCENE := "res://scenes/overworld/overworld.tscn"
 
 @onready var _label: Label = $VBoxContainer/StatusLabel
 @onready var _button: Button = $VBoxContainer/PingButton
 @onready var _adventure: Button = $VBoxContainer/AdventureButton
+@onready var _quick_start: Button = $VBoxContainer/QuickStartButton
 
 
 func _ready() -> void:
 	_button.pressed.connect(_on_button_pressed)
 	_adventure.pressed.connect(_on_adventure_pressed)
+	_quick_start.pressed.connect(_on_quick_start_pressed)
 	_label.text = "As Imagined — entry point OK."
 	_button.text = "Start Battle"
 	_adventure.text = "Start Adventure"
+	_quick_start.text = "Quick Start"
 
 
 func _on_button_pressed() -> void:
@@ -48,3 +52,37 @@ func _on_button_pressed() -> void:
 ## session it reads is what a slot decides.
 func _on_adventure_pressed() -> void:
 	get_tree().change_scene_to_file(RPG_SCENE)
+
+
+## A third way in: a brand new game, straight into the field, with none of
+## Oak's intro speech/naming/gender/rival-naming cutscene — Rob's own request,
+## for fast iteration when the intro isn't what's being tested. Skips the
+## slot-selection screen too, landing on the first slot with nothing in it
+## (or slot 0 if all three are full, matching `TitleScreen`'s own clamp-not-
+## wrap caution rather than inventing a fourth slot).
+##
+## Reuses `title.gd`'s own "NEW GAME" sequence exactly (`OverworldSession.reset()`
+## then `pending_new_game = true` then a scene change to `overworld.tscn`) —
+## the only difference is the new `pending_new_game_skip_intro` flag, which
+## `overworld.gd`'s own `_ready()` checks before deciding whether to run
+## `run_new_game()` at all. Everything downstream of that (spawning in the
+## bedroom, walking to Oak's Lab, picking a starter) is untouched — this
+## skips ONLY the talking-heads cutscene, not the game.
+##
+## `{PLAYER}`/`{RIVAL}` need no special-casing here: `PlayerIdentity.
+## display_name()`/`display_rival_name()` already fall back to "LEAF"/"GREEN"
+## for exactly this case — a boot that never named anyone — since a debug F6
+## boot has always needed the same fallback.
+func _on_quick_start_pressed() -> void:
+	OverworldSession.reset()
+	OverworldSession.active_slot = _first_open_slot()
+	OverworldSession.pending_new_game = true
+	OverworldSession.pending_new_game_skip_intro = true
+	get_tree().change_scene_to_file(OVERWORLD_SCENE)
+
+
+func _first_open_slot() -> int:
+	for i in range(SaveManager.SLOT_COUNT):
+		if not SaveManager.has_save(i):
+			return i
+	return 0

@@ -116,6 +116,86 @@ func var_set(var_name: String, value: int) -> void:
 	_vars[var_name] = value
 
 
+## [Bugfix, live-reported: Oak visible in the middle of Pallet Town before the
+## north-of-town trigger reveals him] Source: `EventScript_ResetAllMapFlagsFrlg`
+## (`field_script_source/data/scripts/new_game.inc:278-329`), run once at
+## new-game creation, BEFORE the player is ever placed on a real map.
+##
+## ⚠️ **NOTHING IN THIS PROJECT'S OWN NEW-GAME FLOW EVER CALLED THIS.**
+## `NewGameEvents` (`[M27K K-b]`/`[M27G G7]`) replaces source's Oak-speech
+## coroutine wholesale and never touches `new_game.inc` at all, so every
+## `FLAG_HIDE_*` this list sets was permanently unset — meaning every entity it
+## names defaulted to VISIBLE the moment `[Bugfix]` above made `entity_visible()`
+## actually control rendering/occupancy. `FLAG_HIDE_OAK_IN_PALLET_TOWN` is the
+## one that got reported; the rest of this list has the identical bug, just
+## unreachable content today (Sevii Islands, postgame, Elite Four) that would
+## have surfaced the same way the moment those maps existed. Ported in full
+## rather than just the one flag, since setting a flag string nothing yet reads
+## is harmless and this is exactly the list source itself keeps for the reason.
+##
+## `VAR_MASSAGE_COOLDOWN_STEP_COUNTER = 500` is source's own line in the same
+## script, not a stray addition — without it Daisy's grooming script
+## (`[M27G G2]`) takes the unimplemented `GetLeadMonFriendship` branch on a
+## fresh save instead of the real cooldown gate.
+const NEW_GAME_HIDE_FLAGS: PackedStringArray = [
+	"FLAG_HIDE_OAK_IN_HIS_LAB",
+	"FLAG_HIDE_OAK_IN_PALLET_TOWN",
+	"FLAG_HIDE_BILL_HUMAN_SEA_COTTAGE",
+	"FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY",
+	"FLAG_HIDE_POKEHOUSE_FUJI",
+	"FLAG_HIDE_LIFT_KEY",
+	"FLAG_HIDE_SILPH_SCOPE",
+	"FLAG_HIDE_CERULEAN_RIVAL",
+	"FLAG_HIDE_SS_ANNE_RIVAL",
+	"FLAG_HIDE_VERMILION_CITY_OAKS_AIDE",
+	"FLAG_HIDE_SAFFRON_CIVILIANS",
+	"FLAG_HIDE_ROUTE_22_RIVAL",
+	"FLAG_HIDE_OAK_IN_CHAMP_ROOM",
+	"FLAG_HIDE_CREDITS_RIVAL",
+	"FLAG_HIDE_CREDITS_OAK",
+	"FLAG_HIDE_CINNABAR_BILL",
+	"FLAG_HIDE_CINNABAR_SEAGALLOP",
+	"FLAG_HIDE_CINNABAR_POKECENTER_BILL",
+	"FLAG_HIDE_LORELEI_IN_HER_HOUSE",
+	"FLAG_HIDE_SAFFRON_FAN_CLUB_BLACKBELT",
+	"FLAG_HIDE_SAFFRON_FAN_CLUB_ROCKER",
+	"FLAG_HIDE_SAFFRON_FAN_CLUB_WOMAN",
+	"FLAG_HIDE_SAFFRON_FAN_CLUB_BEAUTY",
+	"FLAG_HIDE_TWO_ISLAND_GAME_CORNER_LOSTELLE",
+	"FLAG_HIDE_TWO_ISLAND_GAME_CORNER_BIKER",
+	"FLAG_HIDE_TWO_ISLAND_WOMAN",
+	"FLAG_HIDE_TWO_ISLAND_BEAUTY",
+	"FLAG_HIDE_TWO_ISLAND_SUPER_NERD",
+	"FLAG_HIDE_LOSTELLE_IN_HER_HOME",
+	"FLAG_HIDE_THREE_ISLAND_LONE_BIKER",
+	"FLAG_HIDE_FOUR_ISLAND_RIVAL",
+	"FLAG_HIDE_DOTTED_HOLE_SCIENTIST",
+	"FLAG_HIDE_RESORT_GORGEOUS_SELPHY",
+	"FLAG_HIDE_RESORT_GORGEOUS_INSIDE_SELPHY",
+	"FLAG_HIDE_SELPHYS_BUTLER",
+	"FLAG_HIDE_DEOXYS",
+	"FLAG_HIDE_LORELEI_HOUSE_MEOWTH_DOLL",
+	"FLAG_HIDE_LORELEI_HOUSE_CHANSEY_DOLL",
+	"FLAG_HIDE_LORELEIS_HOUSE_NIDORAN_F_DOLL",
+	"FLAG_HIDE_LORELEI_HOUSE_JIGGLYPUFF_DOLL",
+	"FLAG_HIDE_LORELEIS_HOUSE_NIDORAN_M_DOLL",
+	"FLAG_HIDE_LORELEIS_HOUSE_FEAROW_DOLL",
+	"FLAG_HIDE_LORELEIS_HOUSE_PIDGEOT_DOLL",
+	"FLAG_HIDE_LORELEIS_HOUSE_LAPRAS_DOLL",
+	"FLAG_HIDE_POSTGAME_GOSSIPERS",
+	"FLAG_HIDE_FAME_CHECKER_ERIKA_JOURNALS",
+	"FLAG_HIDE_FAME_CHECKER_KOGA_JOURNAL",
+	"FLAG_HIDE_FAME_CHECKER_LT_SURGE_JOURNAL",
+	"FLAG_HIDE_SAFFRON_CITY_POKECENTER_SABRINA_JOURNALS",
+]
+
+
+func seed_new_game_flags() -> void:
+	for f in NEW_GAME_HIDE_FLAGS:
+		flag_set(f)
+	var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 500)
+
+
 ## The flag name recording that `trainer_key` has been beaten.
 ##
 ## Static so a caller can name the flag without holding a store — the same shape

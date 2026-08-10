@@ -445,10 +445,16 @@ func apply_pending_object_ops() -> void:
 				var e4 := resolve_movement_entity(target)
 				if e4 != null and e4.visibility_flag != "":
 					_ow.flags.flag_clear(e4.visibility_flag)
+					# [Bugfix] The flag alone never showed/hid or (un)blocked
+					# anything -- see `MapManager.apply_entity_visibility`'s own
+					# doc comment. Applied live, the same frame the flag flips,
+					# so the player sees it happen rather than only on next load.
+					_ow.manager.apply_entity_visibility(e4)
 			"remove":
 				var e5 := resolve_movement_entity(target)
 				if e5 != null and e5.visibility_flag != "":
 					_ow.flags.flag_set(e5.visibility_flag)
+					_ow.manager.apply_entity_visibility(e5)
 			# [Corridor tail] `hideplayer`/`showplayer`. Writes the same
 			# `_player.visible` that MovementRunner's own set_invisible/
 			# set_visible actions write — one mechanism, and `_place_player`'s
