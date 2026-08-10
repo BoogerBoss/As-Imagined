@@ -286,6 +286,9 @@ var _box: MessageBox = null
 var _yes_no: YesNoBox = null
 ## [M27G] `multichoicegrid`'s widget, opened by the `Multichoice` native handler.
 var _multichoice: MultichoiceGrid = null
+## [M27I I6c] The Poke Mart. Public to the `Pokemart` native handler, the same
+## way `_multichoice` is to its own.
+var _shop_screen: FieldShopScreen = null
 ## [M27I I4] The START menu and the bag it opens.
 var _start_menu: FieldStartMenu = null
 var _bag_screen: FieldBagScreen = null
@@ -2022,6 +2025,8 @@ func _setup_scripting() -> void:
 	# driver.
 	_multichoice = MultichoiceGrid.new()
 	add_child(_multichoice)
+	_shop_screen = FieldShopScreen.new()
+	add_child(_shop_screen)
 	_start_menu = FieldStartMenu.new()
 	add_child(_start_menu)
 	_naming = NamingScreen.new()

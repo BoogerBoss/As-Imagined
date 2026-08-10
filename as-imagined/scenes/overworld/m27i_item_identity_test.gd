@@ -6,7 +6,7 @@ extends Node
 ## suite guards the bridge, and specifically the two things that make it more
 ## than a table lookup: ALIAS spellings, and the TM/HM gap in items.json.
 
-const EXPECTED_TOTAL := 38  # +8: F, the I6b mart roster
+const EXPECTED_TOTAL := 50  # +8 F (I6b roster), +12 G (I6c shop rules)
 
 var _total := 0
 var _failed := 0
@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_identity()
 	_test_corpus_coverage()
 	_test_i6b_mart_roster()
+	_test_i6c_shop_rules()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -252,3 +253,91 @@ func _mon() -> BattlePokemon:
 	m.max_hp = 50
 	m.current_hp = 50
 	return m
+
+
+## [M27I I6c] The purchase rules. Every one of these is a static function, so
+## the screen above them is never in the way of asserting a rule.
+func _test_i6c_shop_rules() -> void:
+	var ball := PokemonRegistry.item_id_of("ITEM_POKE_BALL")
+	var potion := PokemonRegistry.item_id_of("ITEM_POTION")
+	var rope := PokemonRegistry.item_id_of("ITEM_ESCAPE_ROPE")
+	var premier := PokemonRegistry.item_id_of("ITEM_PREMIER_BALL")
+
+	var bag := Bag.new()
+	var w := Wallet.new()
+	w.earn(1000)
+
+	# ⚠️ BOTH caps, not just money. Source clamps by money AND bag space, so a
+	# picker offering more than the bag holds would fail at the confirm rather
+	# than refusing to offer it.
+	_chk("G.01 the quantity cap is money / price",
+			Shop.max_affordable(200, 1000, potion, bag) == 5)
+	# ⚠️ ONE full STACK is not a full POCKET — the items pocket holds 30 slots,
+	# so the first draft left 28,971 units of room and asserted 0. Fill the
+	# pocket, not a slot.
+	var full := Bag.new()
+	while full.free_space_for(potion) > 0:
+		if not full.add(potion, mini(Bag.MAX_STACK, full.free_space_for(potion))):
+			break
+	_chk("G.02 ...and bag space caps it too, independently of money",
+			full.free_space_for(potion) == 0
+			and Shop.max_affordable(200, 1000000, potion, full) == 0)
+	# ⚠️ A FREE ITEM IS REAL, not a divide-by-zero: Escape Rope is price 0 at
+	# GEN_LATEST and Pewter stocks it.
+	_chk("G.03 a price of 0 caps by space alone rather than dividing by zero",
+			Shop.max_affordable(0, 0, rope, bag) > 0)
+
+	# --- the tripled bonus
+	_chk("G.04 the Premier bonus is TRIPLED: 10 -> 3, 20 -> 6 (Rob, 2026-08-09)",
+			Shop.premier_bonus(ball, 10, Bag.new()) == 3
+			and Shop.premier_bonus(ball, 20, Bag.new()) == 6)
+	_chk("G.05 under ten earns nothing, and it is per-ten not a flat award",
+			Shop.premier_bonus(ball, 9, Bag.new()) == 0
+			and Shop.premier_bonus(ball, 19, Bag.new()) == 3)
+	# ⚠️ The gate is the whole POKE_BALLS pocket at GEN_8+, not Poke Balls
+	# alone — but a Potion must still earn nothing.
+	_chk("G.06 a non-ball earns no bonus however many are bought",
+			Shop.premier_bonus(potion, 50, Bag.new()) == 0)
+	var ballfull := Bag.new()
+	ballfull.add(premier, Bag.MAX_STACK)
+	for i in range(16):
+		ballfull.add(premier, Bag.MAX_STACK)
+	_chk("G.07 the bonus is clamped to real bag space, never owed on credit",
+			Shop.premier_bonus(ball, 100, ballfull) == 0)
+
+	# --- purchase
+	var b2 := Bag.new()
+	var w2 := Wallet.new()
+	w2.earn(1000)
+	var r := Shop.purchase(b2, w2, potion, 3)
+	_chk("G.08 a purchase adds the items and charges exactly price x count",
+			bool(r["ok"]) and b2.count_of(potion) == 3
+			and int(r["spent"]) == 600 and w2.money == 400)
+	# ⚠️ Wallet.spend CLAMPS rather than refusing — correct for the whiteout
+	# payout it was built for, catastrophic here. Without the check first, an
+	# unaffordable buy takes every coin AND hands over the goods.
+	var w3 := Wallet.new()
+	w3.earn(100)
+	var b3 := Bag.new()
+	var r3 := Shop.purchase(b3, w3, potion, 5)
+	_chk("G.09 an unaffordable purchase is REFUSED, not clamped",
+			not bool(r3["ok"]) and w3.money == 100 and b3.count_of(potion) == 0)
+	# The bonus arrives through a real purchase, not just the helper.
+	var b4 := Bag.new()
+	var w4 := Wallet.new()
+	w4.earn(10000)
+	var r4 := Shop.purchase(b4, w4, ball, 10)
+	_chk("G.10 buying ten balls really banks three Premier Balls",
+			bool(r4["ok"]) and b4.count_of(ball) == 10
+			and b4.count_of(premier) == 3 and int(r4["premier"]) == 3)
+
+	# ⚠️ A key item already held is SOLD OUT (shop.c:660) — refused, and shown
+	# rather than hidden. Escape Rope is the corridor's own worked example.
+	var b5 := Bag.new()
+	var w5 := Wallet.new()
+	w5.earn(10000)
+	_chk("G.11 a key item can be bought once...",
+			bool(Shop.purchase(b5, w5, rope, 1)["ok"]))
+	_chk("G.12 ...and is SOLD OUT thereafter, not silently sold twice",
+			str(Shop.purchase(b5, w5, rope, 1)["reason"]) == "sold out"
+			and b5.count_of(rope) == 1)

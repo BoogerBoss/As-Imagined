@@ -215,6 +215,11 @@ guards the edge.
 prints "SOLD OUT" and buying is refused. Same discipline as the party screen's
 own "show it and say why" rule from `[M27I I5-2]`.
 
+⚠️ **TRIPLED — Rob, 2026-08-09. `count / 10 * 3`, so 10 balls yield 3 and 20
+yield 6.** A deliberate divergence from source, recorded at `Shop.premier_bonus`
+as well, because it is exactly the number a later session would "correct"
+against the reference. Everything else about the rule is source's own.
+
 **Premier Ball bonus** (`shop.c:1198`): buying 10+ of a Poké Ball pocket item
 throws in a free Premier Ball, gated on bag space. At `I_PREMIER_BALL_BONUS >=
 GEN_8` the trigger is the whole `POCKET_POKE_BALLS`, not just Poké Balls.

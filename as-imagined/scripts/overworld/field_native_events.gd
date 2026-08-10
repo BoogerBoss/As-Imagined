@@ -196,6 +196,21 @@ static func register_all(reg: NativeEventRegistry) -> void:
 		return await grid.chosen)
 
 
+	# --- [M27I I6c] pokemart ---------------------------------------------------
+	#
+	# ⚠️ Answers nothing into `VAR_RESULT` — source's `pokemart` has no result,
+	# the script simply continues after the shop closes. Returning null keeps
+	# `resume_after_native` from writing a var the calling script never reads.
+	reg.register("Pokemart", func(driver, args) -> Variant:
+		# ⚠️ EXPLICIT TYPES, NOT `:=` — `args` is an untyped lambda parameter, so
+		# nothing derived from it carries a type and inference fails outright.
+		var label: String = str(args[0]) if args.size() > 0 else ""
+		var shop = driver.scene()._shop_screen
+		shop.open(MartStock.stock_for(label))
+		await shop.closed
+		return null)
+
+
 	# --- [M27G] fadescreen -----------------------------------------------------
 	#
 	# ⚠️ FADE_FROM_* fades IN. 17 corpus uses are FADE_FROM_BLACK and would fade

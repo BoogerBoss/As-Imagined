@@ -513,6 +513,34 @@ func step() -> bool:
 		#
 		# The list is validated HERE so an untranscribed one halts from the VM
 		# alone, naming itself — the same reason `natives` is injected at all.
+		# [M27I I6c] `pokemart <label>` — the shop, then the script resumes.
+		#
+		# ⚠️ Source's `ScrCmd_pokemart` is `CreatePokemartMenu(ptr)` then
+		# `ScriptContext_Stop()`, and the shop's own callback re-enables the
+		# script (`shop.c:1319`). So the script pauses for the WHOLE shop and
+		# resumes when it closes — which is exactly `WAIT_NATIVE`, no new pause
+		# kind, the same call `multichoicegrid` and `fadescreen` already made.
+		#
+		# ⚠️ **FAILS CLOSED ON AN EMPTY LIST.** Before `[M27I I6a]` taught the
+		# compiler about `.2byte`, a mart label still RESOLVED — to the
+		# `[release, end]` that follows the data in FRLG's asm — so a shop would
+		# have opened onto an empty shelf and read as a design decision. Halting
+		# with a named diagnostic is the only honest answer.
+		"pokemart":
+			var mart := str(args[0]) if args.size() > 0 else ""
+			if not MartStock.has_stock(mart):
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "pokemart '%s' has no stock" % mart
+				return false
+			if natives == null or not natives.has("Pokemart"):
+				pause_reason = Pause.UNKNOWN_OP
+				diagnostic = "pokemart needs the Pokemart handler"
+				return false
+			pending_native = "Pokemart"
+			pending_native_args = [mart]
+			pause_reason = Pause.WAIT_NATIVE
+			return false
+
 		"multichoicegrid":
 			var grid_list := str(args[2]) if args.size() > 2 else ""
 			if not MultichoiceLists.has(grid_list):
