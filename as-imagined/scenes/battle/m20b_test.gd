@@ -44,6 +44,8 @@ func _ready() -> void:
 	_test_four_moves_known_forced_replacement()
 	_test_evolution_interaction_safety()
 	_test_full_battle_integration()
+	_test_b8_1_stats_before_snapshot()
+	_test_b8_1_stats_before_chains_across_multi_level()
 
 	var total := _pass + _fail
 	print("m20b_test: %d/%d passed" % [_pass, total])
@@ -109,7 +111,7 @@ func _test_single_level_up() -> void:
 	# MediumSlow curve[9] == 419 (source-verified against data/exp_curves.json).
 	mon.current_exp = 419
 	var levels: Array = []
-	bm.level_up.connect(func(_p, lvl): levels.append(lvl))
+	bm.level_up.connect(func(_p, lvl, _sb): levels.append(lvl))
 	bm._check_level_up(mon)
 	_chk("single level-up: 8 -> 9 from exactly curve[9] Exp",
 			mon.level == 9)
@@ -125,7 +127,7 @@ func _test_multi_level_up_in_one_award() -> void:
 	# all in one jump -- a real multi-level-up-in-one-award scenario.
 	mon.current_exp = 973
 	var levels: Array = []
-	bm.level_up.connect(func(_p, lvl): levels.append(lvl))
+	bm.level_up.connect(func(_p, lvl, _sb): levels.append(lvl))
 	bm._check_level_up(mon)
 	_chk("multi level-up: 8 -> 12 in one pass (re-scan derivation, not increment-and-check-once)",
 			mon.level == 12)
@@ -168,7 +170,7 @@ func _test_no_level_up_negative_control() -> void:
 	mon.current_exp = 418  # one short of curve[9]==419
 	var levels: Array = []
 	var learned: Array = []
-	bm.level_up.connect(func(_p, lvl): levels.append(lvl))
+	bm.level_up.connect(func(_p, lvl, _sb): levels.append(lvl))
 	bm.move_learned.connect(func(_p, _s, _m, _k): learned.append(true))
 	bm._check_level_up(mon)
 	_chk("negative control: level unchanged (still 8) when Exp is one short of the next threshold",
@@ -314,7 +316,7 @@ func _test_full_battle_integration() -> void:
 	fainted.add_move(MoveRegistry.get_move(33))
 
 	var levels: Array = []
-	bm.level_up.connect(func(p, lvl): if p == recipient: levels.append(lvl))
+	bm.level_up.connect(func(p, lvl, _sb): if p == recipient: levels.append(lvl))
 
 	bm._exp_participants = [[0]]
 	bm._parties = [BattleParty.single(recipient), BattleParty.single(fainted)]
@@ -332,3 +334,84 @@ func _test_full_battle_integration() -> void:
 			levels == [9])
 	_chk("full-battle integration: recipient is now level 9",
 			recipient.level == 9)
+
+
+# ── [M26B8-1] The pre-level stats snapshot carried on `level_up` ──────────
+#
+# Scoped in CLAUDE.md's M26B8 section: the level-up stat window needs a
+# before/after diff, and NOTHING downstream could recover it, because
+# `_calculate_stats()` overwrites all six stats in place before `level_up`
+# ever fires. Emitting it now, ahead of the UI, matches [M27H H4]'s own
+# shake-count precedent.
+
+func _test_b8_1_stats_before_snapshot() -> void:
+	var bm := _make_bm()
+	var mon := _make_bulbasaur(8)
+	# Capture the genuine pre-level values from the live object, so this
+	# asserts against reality rather than against a hand-copied table that
+	# could drift with the stat formula.
+	var truth: Dictionary = mon.stats_snapshot()
+	mon.current_exp = 419  # curve[9]
+
+	var seen: Array = []
+	bm.level_up.connect(func(_p, _lvl, sb): seen.append(sb))
+	bm._check_level_up(mon)
+
+	_chk("B8-1.01 level_up carries a stats_before Dictionary",
+			seen.size() == 1 and seen[0] is Dictionary)
+	if seen.size() != 1:
+		bm.queue_free()
+		return
+	var sb: Dictionary = seen[0]
+	_chk("B8-1.02 all six stats are present and keyed (not positional)",
+			sb.has("max_hp") and sb.has("attack") and sb.has("defense")
+			and sb.has("sp_attack") and sb.has("sp_defense") and sb.has("speed"))
+	_chk("B8-1.03 the snapshot holds the PRE-level values, not the post-level ones",
+			sb == truth)
+	# ⚠️ THE DISCRIMINATOR. Every assertion above would still pass if the
+	# snapshot were taken AFTER _calculate_stats() and simply handed back --
+	# it would be a valid, fully-populated, six-keyed Dictionary. What proves
+	# the timing is that it must DIFFER from the mon's current stats now that
+	# it has levelled.
+	_chk("B8-1.04 discriminator: the snapshot differs from the mon's stats AFTER "
+			+ "the level-up, proving it was taken before _calculate_stats()",
+			sb != mon.stats_snapshot())
+	_chk("B8-1.05 and max_hp specifically went up, so the diff is real",
+			int(sb["max_hp"]) < mon.max_hp)
+	bm.queue_free()
+
+
+# ⚠️ **THIS IS THE CASE A SIDE-CHANNEL SNAPSHOT WOULD GET WRONG**, and it is
+# why the value rides the signal rather than living in a field: `level_up`
+# fires once PER LEVEL, so each emission's `stats_before` must be that level's
+# own starting point -- i.e. the previous emission's end state. A single
+# stashed snapshot would report level 8's stats for all four level-ups.
+func _test_b8_1_stats_before_chains_across_multi_level() -> void:
+	var bm := _make_bm()
+	var mon := _make_bulbasaur(8)
+	mon.current_exp = 973  # crosses curve[9..12] in one award
+
+	var snaps: Array = []
+	bm.level_up.connect(func(_p, _lvl, sb): snaps.append(sb))
+	bm._check_level_up(mon)
+
+	_chk("B8-1.06 one snapshot per level crossed", snaps.size() == 4)
+	if snaps.size() != 4:
+		bm.queue_free()
+		return
+	var all_distinct := true
+	for i in range(snaps.size()):
+		for j in range(i + 1, snaps.size()):
+			if snaps[i] == snaps[j]:
+				all_distinct = false
+	_chk("B8-1.07 discriminator: every level's snapshot is DISTINCT -- a single "
+			+ "stashed snapshot would repeat the first one four times", all_distinct)
+	var ascending := true
+	for i in range(snaps.size() - 1):
+		if int(snaps[i]["max_hp"]) >= int(snaps[i + 1]["max_hp"]):
+			ascending = false
+	_chk("B8-1.08 snapshots ascend, so each level's 'before' is the previous "
+			+ "level's 'after' rather than an arbitrary set", ascending)
+	_chk("B8-1.09 the FIRST snapshot is the true starting point (level 8)",
+			int(snaps[0]["max_hp"]) == _bulbasaur_max_hp(8))
+	bm.queue_free()

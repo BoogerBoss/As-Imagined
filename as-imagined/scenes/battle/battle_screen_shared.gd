@@ -3011,7 +3011,11 @@ func _wire_log_signals() -> void:
 	# same way that handler already is, rather than needing a full live
 	# BattleManager just to emit the signal.
 	_bm.exp_gained.connect(_on_log_exp_gained)
-	_bm.level_up.connect(func(pokemon: BattlePokemon, new_level: int):
+	# [M26B8-1] `_stats_before` is deliberately unused HERE — the level-up stat
+	# window (M26B8) is scoped but not built, and this narrative line never
+	# needed the delta. The parameter exists so that window has nothing to
+	# retrofit when it lands, matching [M27H H4]'s own shake-count precedent.
+	_bm.level_up.connect(func(pokemon: BattlePokemon, new_level: int, _stats_before: Dictionary):
 		_log("%s grew to Lv. %d!" % [_mon_label(pokemon), new_level]))
 	_bm.money_awarded.connect(func(amount: int):
 		_log("You got ¥%d for winning!" % amount))

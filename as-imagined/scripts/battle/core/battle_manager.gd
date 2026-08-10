@@ -154,7 +154,24 @@ signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal money_awarded(amount: int)  # [M24b] fired once, right before battle_ended(0), only when the opponent side had a real TrainerData attached
 signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
-signal level_up(pokemon: BattlePokemon, new_level: int)  # [M20b] fired once per level crossed
+## [M20b] fired once per level crossed.
+##
+## [M26B8-1, 2026-08-10] `stats_before` is that level's own PRE-recompute
+## snapshot (`BattlePokemon.stats_snapshot()`), captured immediately before
+## `_calculate_stats()` overwrites the six stats in place — the level-up stat
+## window (M26B8) needs the before/after delta and nothing downstream could
+## recover it otherwise.
+##
+## ⚠️ **CARRIED ON THE SIGNAL RATHER THAN STASHED IN A FIELD, AND MULTI-LEVEL
+## IS WHY.** This fires once PER LEVEL, so in a multi-level jump the "before"
+## for level N+1 is the "after" of level N. A single side-channel snapshot
+## would only ever hold the first level's values; pairing each snapshot with
+## the emission that produced it makes a stale read unrepresentable. Source
+## keeps its own equivalent in a separate buffer
+## (`gBattleResources->beforeLvlUp->stats`), which is a hardware-era mechanism
+## rather than behaviour — this project prefers the Godot-idiomatic shape, per
+## the standing "port the behaviour, not the mechanism" rule.
+signal level_up(pokemon: BattlePokemon, new_level: int, stats_before: Dictionary)
 signal evolved(pokemon: BattlePokemon, old_species_dex: int, new_species_dex: int)  # [M28a] fired once per evolution
 signal ev_gained(recipient: BattlePokemon, stat_idx: int, amount: int)  # [M20c] fired once per stat actually increased
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
@@ -7929,6 +7946,14 @@ func _check_level_up(recipient: BattlePokemon) -> void:
 		return
 	var learnset: Array = PokemonRegistry.get_learnset(dex)
 	for lvl in range(recipient.level + 1, new_level + 1):
+		# [M26B8-1] ⚠️ **CAPTURED BEFORE `_calculate_stats()`, WHICH OVERWRITES
+		# ALL SIX IN PLACE.** Nothing downstream can recover the pre-level
+		# values once that call returns — `old_max_hp` below used to be the only
+		# survivor, kept purely for the HP-delta rule. The level-up stat window
+		# (M26B8) needs the full before/after diff, so the whole snapshot is
+		# taken here and handed to `level_up` (see that signal's own comment for
+		# why it rides the signal rather than a field).
+		var stats_before: Dictionary = recipient.stats_snapshot()
 		var old_max_hp: int = recipient.max_hp
 		recipient.level = lvl
 		recipient._calculate_stats()
@@ -7936,7 +7961,7 @@ func _check_level_up(recipient: BattlePokemon) -> void:
 			recipient.current_hp += (recipient.max_hp - old_max_hp)
 		if recipient.current_hp > recipient.max_hp:
 			recipient.current_hp = recipient.max_hp
-		level_up.emit(recipient, lvl)
+		level_up.emit(recipient, lvl, stats_before)
 		for entry: Dictionary in learnset:
 			if int(entry.get("level", -1)) == lvl:
 				_try_learn_move_at_level(recipient, int(entry.get("move_id", -1)))

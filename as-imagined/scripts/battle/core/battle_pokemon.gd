@@ -168,6 +168,33 @@ var original_sp_attack: int = 0
 var original_sp_defense: int = 0
 var original_speed: int = 0
 
+
+## [M26B8-1] The six computed stats as a keyed snapshot, for diffing.
+##
+## Exists for the level-up stat window (M26B8), which needs BEFORE and AFTER
+## of the same six values to print a gains page — see `BattleManager`'s own
+## `level_up` signal, which carries one of these captured immediately before
+## `_calculate_stats()` runs.
+##
+## ⚠️ **KEYED, NOT POSITIONAL, AND DELIBERATELY SO.** Source's own level-up
+## window has a real trap here: the storage helper `GetMonLevelUpWindowStats`
+## (`src/menu_specialized.c:1604`) fills by `STAT_*` index, which puts Speed
+## THIRD, while the display order (`sLvlUpStatStrings`, `:1490-1496`) is
+## HP/Attack/Defense/Sp.Atk/Sp.Def/Speed. An Array would carry that ambiguity
+## into every consumer; naming each field makes the mismatch unrepresentable.
+##
+## `max_hp` rather than `current_hp`: a level-up raises the maximum and adds
+## the delta to current, so the max is what a gains page reports.
+func stats_snapshot() -> Dictionary:
+	return {
+		"max_hp": max_hp,
+		"attack": attack,
+		"defense": defense,
+		"sp_attack": sp_attack,
+		"sp_defense": sp_defense,
+		"speed": speed,
+	}
+
 # [M18.5h-2] IVs: rolled once in from_species() (see _roll_ivs), independent
 # real 0-31 per stat unless a forced_ivs override is threaded through
 # from_species. Index order matches STAT_* constants above. Freely

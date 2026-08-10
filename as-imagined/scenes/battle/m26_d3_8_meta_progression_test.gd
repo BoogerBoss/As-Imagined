@@ -161,7 +161,9 @@ func _test_exp_gained_text() -> void:
 func _test_level_up_text() -> void:
 	var bm := _make_bm()
 	var bs := _make_bs(bm)
-	bm.level_up.emit(_make_mon("Riser"), 9)
+	# [M26B8-1] The third arg is the pre-level stats snapshot; this test only
+	# cares about the narrative line, so an empty Dictionary is sufficient.
+	bm.level_up.emit(_make_mon("Riser"), 9, {})
 	_chk("A.02 level_up narrates the real source phrasing",
 			"Riser grew to Lv. 9!" in _narrative(bs))
 	bs.free()
