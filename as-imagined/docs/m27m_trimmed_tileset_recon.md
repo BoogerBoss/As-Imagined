@@ -1,6 +1,18 @@
 # M27M — Trimmed TileSet recon
 
-**Status:** recon only. Nothing implemented. **Rev 2, 2026-08-09** — re-measured
+**Status: OUT OF SCOPE — Rob's call, 2026-08-09. Not deferred, not parked: cut.**
+Nothing here will be built. The document is kept because its measurements are
+real and because the routing correction in §0.1 is a fact about this project
+that other work can rely on, not just an argument for a tier that is now closed.
+
+⚠️ **DO NOT RE-PROPOSE IT.** It was parked once, re-measured once, and then cut
+with the better numbers in hand — so "the trim is worth more than we thought" is
+not new information and is not a reason to reopen. The one consequence worth
+knowing rather than rediscovering: TileSet construction costs ~21 ms per pair,
+so boot grows toward ~1.3 s once all 60 pairs are built. That is the accepted
+cost of this decision.
+
+**Rev 2, 2026-08-09** — re-measured
 after Part C. Rev 1's headline numbers are WRONG in three ways and the
 correction makes trimming *more* valuable, not less. §0 is the correction; the
 rest of the document is Rev 1 and its reasoning still holds where the arithmetic
