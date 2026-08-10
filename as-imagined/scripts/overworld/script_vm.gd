@@ -175,7 +175,25 @@ var pending_battle_script: String = ""
 ## fallback that ends the script if none was given). `resume_after_battle`'s existing
 ## "no continuation script means the win ends the script" rule is correct for THAT
 ## family and wrong for this one, so this flag lets one function serve both.
+##
+## ⚠️ **"ONLY A LOSS STOPS IT" WAS ONLY TRUE BEFORE `pending_battle_heal_after`
+## EXISTED.** A `trainerbattle_earlyrival` loss with the heal-after bit set
+## does NOT stop it either — see that field's own doc comment.
 var pending_battle_always_continues: bool = false
+
+## [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
+## option"] Set from `trainerbattle_earlyrival`'s own flags argument
+## (`RIVAL_BATTLE_HEAL_AFTER`/`RIVAL_BATTLE_TUTORIAL`). Source's
+## `CB2_EndTrainerBattle` (`battle_setup.c:1444-1465`) checks this on a LOSS
+## specifically: with it set, the party heals and the calling script
+## continues exactly like a win; without it, a loss is a real whiteout.
+## Consulted by the OVERWORLD, not this VM, BEFORE it ever calls
+## `resume_after_battle` — a real whiteout means `_abandon_script()` runs
+## instead and this VM is never resumed at all, so the decision has to be
+## made one layer up. `resume_after_battle` still needs to know about it
+## too, so a heal-after loss reaches the SAME `always_continues` fallthrough
+## a win does rather than the ordinary "a loss just stops the script" path.
+var pending_battle_heal_after: bool = false
 
 ## [M27G G5] Which registered handler `native` is waiting on, and its extra
 ## arguments. Plain readable properties like every other pause carrier, so
@@ -1510,17 +1528,27 @@ func step() -> bool:
 		# handler `trainerbattle_no_intro` uses above — same no-intro-message
 		# shape, same unconditional-fallthrough-on-win shape.
 		#
-		# `flags` (RIVAL_BATTLE_TUTORIAL) and `victory_text` (the rival's own
-		# in-battle "won't lose" quote, `GetTrainerWonSpeech`) are both
-		# BATTLE-side presentation this project's overworld VM has no seam
-		# for and doesn't need one for — the field script's own control flow
-		# never branches on either.
+		# `victory_text` (the rival's own in-battle "won't lose" quote,
+		# `GetTrainerWonSpeech`) is BATTLE-side presentation this project's
+		# overworld VM has no seam for and doesn't need one for — the field
+		# script's own control flow never branches on it.
+		#
+		# ⚠️ **`flags` (RIVAL_BATTLE_HEAL_AFTER/RIVAL_BATTLE_TUTORIAL) IS NOT
+		# PRESENTATION — IT IS REAL CONTROL FLOW, AND THE ORIGINAL COMMENT
+		# HERE WAS WRONG.** Source's `CB2_EndTrainerBattle`
+		# (`battle_setup.c:1444-1465`) checks it on a LOSS specifically: with
+		# the bit set, the party heals and the script continues exactly like
+		# a win; without it, a loss is a real whiteout. Read here and carried
+		# on `pending_battle_heal_after` for `resume_after_battle`/the
+		# overworld's own `_apply_battle_result` to consult BEFORE either of
+		# them decides whether this loss whitesout.
 		"trainerbattle_earlyrival":
 			if args.size() < 3:
 				pause_reason = Pause.UNKNOWN_OP
 				diagnostic = "trainerbattle_earlyrival needs 3+ args, got %d" % args.size()
 				return false
-			return _start_trainer_battle(str(args[0]), "", str(args[2]), "", false, true)
+			return _start_trainer_battle(str(args[0]), "", str(args[2]), "", false, true,
+					bool(_literal(str(args[1])) & 1))
 
 		# [Map scripts] `checkplayergender` — writes VAR_RESULT with the
 		# player's chosen gender (`ScrCmd_checkplayergender`, `scrcmd.c`).
@@ -1669,12 +1697,20 @@ func _trainer_battle(args: Array) -> bool:
 ## internal check does not open a rematch that shouldn't be reachable.
 func _start_trainer_battle(trainer: String, intro_label: String, defeat_label: String,
 		continuation_label: String, skip_already_beaten_check: bool,
-		always_continues: bool = false) -> bool:
+		always_continues: bool = false, heal_after: bool = false) -> bool:
 	pending_trainer_key = trainer
 	pending_battle_intro = intro_label
 	pending_battle_defeat_text = defeat_label
 	pending_battle_script = continuation_label
 	pending_battle_always_continues = always_continues
+	# [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
+	# option"] Set UNCONDITIONALLY here, alongside `always_continues`, rather
+	# than left to a caller to set on the VM directly beforehand — this is
+	# the one function every `trainerbattle*` variant funnels through, so
+	# resetting it here is what stops a stale `true` from an earlier
+	# `trainerbattle_earlyrival` leaking into a later, unrelated battle that
+	# never passed this parameter at all.
+	pending_battle_heal_after = heal_after
 
 	# The already-beaten skip. Source checks `GetTrainerFlag` inside the shared
 	# script, one level below the command -- which is why Brock's own script has
@@ -1712,7 +1748,14 @@ static func _script_arg(args: Array, i: int) -> String:
 func resume_after_battle(won: bool) -> void:
 	if pause_reason != Pause.WAIT_BATTLE:
 		return
-	if not won:
+	# [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
+	# option"] A heal-after LOSS reaches the exact same fallthrough a WIN
+	# does — see `pending_battle_heal_after`'s own doc comment. By the time
+	# the overworld calls this for such a loss, it has ALREADY healed the
+	# party and decided not to whiteout, so this function must not
+	# independently re-decide to stop the script; that would strand the
+	# player mid-cutscene with a healed party and no continuation.
+	if not won and not pending_battle_heal_after:
 		# Whiteout is M27I/M27K's; here the script simply stops, which leaves
 		# the trainer undefeated and the encounter repeatable.
 		pause_reason = Pause.DONE
@@ -2373,6 +2416,14 @@ static func _literal(tok: String) -> int:
 		# EventScript_GroomMon`, whose own very next opcode after `ChoosePartyMon`
 		# is exactly this check (`include/constants/global.h:82`).
 		"PARTY_SIZE": return BattleParty.PARTY_SIZE
+		# [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
+		# option"] `trainerbattle_earlyrival`'s own flags argument — a bare
+		# bitmask, general (not Hoenn-only), so it belongs beside PARTY_SIZE
+		# rather than in `_SYMBOLIC_CONSTANTS`. Route22's own early rival
+		# battle passes a literal `0` and needs neither constant; only the
+		# Pallet Town Lab tutorial battle passes `RIVAL_BATTLE_TUTORIAL`.
+		"RIVAL_BATTLE_HEAL_AFTER": return 1  # include/constants/battle.h:161
+		"RIVAL_BATTLE_TUTORIAL": return 3    # include/constants/battle.h:162
 	# ⚠️ [M27K K-a] A SPECIES CONSTANT IS A REAL VALUE, AND 295 CORPUS ARGS ARE
 	# ONE. Before this they all resolved to 0 through the fallthrough below —
 	# `setvar PLAYER_STARTER_SPECIES, SPECIES_BULBASAUR` stored nothing, so the

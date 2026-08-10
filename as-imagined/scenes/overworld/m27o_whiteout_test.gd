@@ -7,7 +7,7 @@ extends Node
 ## must not resume. Either one getting through hands out the reward for a fight
 ## the player lost.
 
-const EXPECTED_TOTAL := 32
+const EXPECTED_TOTAL := 43
 
 var _total := 0
 var _failed := 0
@@ -27,6 +27,8 @@ func _ready() -> void:
 	_test_destination()
 	_test_scene_wiring()
 	_test_payout()
+	_test_heal_after_loss()
+	_test_downgrade_bad_poison()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -178,5 +180,144 @@ func _test_payout() -> void:
 			BattleOutcome.make(BattleOutcome.LOST).prize_money == 0
 			and BattleOutcome.make(BattleOutcome.LOST).highest_party_level == 1)
 	ow.free()
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+
+
+## --- F. [Bugfix, "don't whiteout and heal"] a LOSS carrying the heal-after
+## flag continues the calling script instead of whiting out ---
+##
+## Source: `CB2_EndTrainerBattle` (`battle_setup.c:1444-1465`) — a LOSS with
+## `RIVAL_BATTLE_HEAL_AFTER` set heals the party and falls through to the
+## SAME continuation a win gets; without it, a loss is a real whiteout.
+## Route22's own early-rival battle passes flags=0 (unaffected, already
+## correct); only the Pallet Town Lab tutorial battle passes
+## RIVAL_BATTLE_TUTORIAL and needed this.
+func _test_heal_after_loss() -> void:
+	# `_setup_scripting` is what wires `_driver._ow`, which `_abandon_script`
+	# (the discriminator's own whiteout path, below) needs to run without
+	# crashing on a null `_ow._box` access — cheap and idempotent to call
+	# once here rather than adding a second, fragile way to reach it.
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	# ⚠️ NOT `_setup_scripting()` — that also loads the full script corpora,
+	# audio, and the message box, none of which this test needs, and it hung
+	# the suite outright when tried (never even reached its own first print).
+	# `_abandon_script()`'s own `_driver.abandon()` needs only `_driver._ow`
+	# to be a real object — `_ow._box` stays at its safe `null` default, so
+	# `abandon()`'s own `if _ow._box != null:` guard skips cleanly.
+	ow._driver._ow = ow
+
+	# A real, damaged party — healing has to be OBSERVABLE, not just "the
+	# function ran". Fainted AND poisoned, so F.02 cannot pass by accident.
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	var mon: BattlePokemon = OverworldSession.party.members[0]
+	mon.current_hp = 0
+	mon.fainted = true
+	mon.status = BattlePokemon.STATUS_POISON
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+	OverworldSession.wallet.earn(500)
+
+	var vm := ScriptVM.new(null, OverworldSession.flags)
+	vm.pause_reason = ScriptVM.Pause.WAIT_BATTLE
+	vm.pending_battle_heal_after = true
+	vm.pending_battle_always_continues = true
+	ow._vm = vm
+
+	OverworldSession.set_result(BattleOutcome.make(BattleOutcome.LOST, "TRAINER_TUTORIAL", 0, 5))
+	var whiteout: bool = ow._apply_battle_result()
+
+	_chk("F.01 a heal-after loss reports NO whiteout owed", not whiteout)
+	_chk("F.02 the party is actually healed, not just the function called",
+			mon.current_hp == mon.max_hp and not mon.fainted)
+	_chk("F.03 ⚠️ Rob's own call: the trainer is NOT marked defeated for this",
+			not ow.flags.trainer_defeated("TRAINER_TUTORIAL"))
+	_chk("F.04 and no money changes hands on this path",
+			OverworldSession.wallet.money == 500)
+	_chk("F.05 the script is left able to continue, not stopped",
+			vm.pause_reason != ScriptVM.Pause.DONE)
+
+	# --- discriminator: the SAME loss WITHOUT heal-after still whitesouts ---
+	# Proves F.01-F.05 are actually reading the flag, not just always passing.
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	var mon2: BattlePokemon = OverworldSession.party.members[0]
+	mon2.current_hp = 0
+	mon2.fainted = true
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+	OverworldSession.wallet.earn(500)
+	var vm2 := ScriptVM.new(null, OverworldSession.flags)
+	vm2.pause_reason = ScriptVM.Pause.WAIT_BATTLE
+	vm2.pending_battle_heal_after = false
+	vm2.pending_battle_always_continues = true
+	ow._vm = vm2
+	OverworldSession.set_result(BattleOutcome.make(BattleOutcome.LOST, "TRAINER_REAL", 0, 5))
+	var whiteout2: bool = ow._apply_battle_result()
+	_chk("F.06 the same loss WITHOUT heal-after still whitesout — the flag is what decides",
+			whiteout2)
+	_chk("F.07 and DOES charge money, unlike the heal-after path",
+			OverworldSession.wallet.money < 500)
+	_chk("F.08 the party is left as the battle left it (a real whiteout heals separately)",
+			mon2.current_hp == 0 and mon2.fainted)
+
+	ow.free()
+	OverworldSession.party = null
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+
+
+## --- G. [Bugfix, rolled in] DowngradeBadPoison ---
+##
+## Source: `DowngradeBadPoison` (`battle_setup.c:633`) — called on every
+## post-battle path that reaches the field (won, heal-after loss), never on
+## a real whiteout. TOXIC resets to plain POISON; the escalation counter
+## resets with it since it means nothing for plain poison.
+func _test_downgrade_bad_poison() -> void:
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	# ⚠️ NOT `_setup_scripting()` — that also loads the full script corpora,
+	# audio, and the message box, none of which this test needs, and it hung
+	# the suite outright when tried (never even reached its own first print).
+	# `_abandon_script()`'s own `_driver.abandon()` needs only `_driver._ow`
+	# to be a real object — `_ow._box` stays at its safe `null` default, so
+	# `abandon()`'s own `if _ow._box != null:` guard skips cleanly.
+	ow._driver._ow = ow
+
+	# --- a WIN downgrades a toxic party member ---
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	var mon: BattlePokemon = OverworldSession.party.members[0]
+	mon.status = BattlePokemon.STATUS_TOXIC
+	mon.toxic_counter = 3
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+	var vm := ScriptVM.new(null, OverworldSession.flags)
+	vm.pause_reason = ScriptVM.Pause.WAIT_BATTLE
+	ow._vm = vm
+	OverworldSession.set_result(BattleOutcome.make(BattleOutcome.WON, "TRAINER_X"))
+	ow._apply_battle_result()
+	_chk("G.01 a WIN downgrades TOXIC to plain POISON",
+			mon.status == BattlePokemon.STATUS_POISON)
+	_chk("G.02 and resets the escalation counter, meaningless for plain poison",
+			mon.toxic_counter == 0)
+
+	# --- discriminator: a REAL whiteout (no heal-after) does NOT downgrade —
+	# it returns before ever reaching the shared downgrade call, and a real
+	# whiteout heals everything separately anyway, making the point moot. ---
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	var mon2: BattlePokemon = OverworldSession.party.members[0]
+	mon2.status = BattlePokemon.STATUS_TOXIC
+	mon2.toxic_counter = 3
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+	var vm2 := ScriptVM.new(null, OverworldSession.flags)
+	vm2.pause_reason = ScriptVM.Pause.WAIT_BATTLE
+	vm2.pending_battle_heal_after = false
+	ow._vm = vm2
+	OverworldSession.set_result(BattleOutcome.make(BattleOutcome.LOST, "TRAINER_Y"))
+	ow._apply_battle_result()
+	_chk("G.03 a real whiteout leaves status untouched (it returns before the downgrade)",
+			mon2.status == BattlePokemon.STATUS_TOXIC and mon2.toxic_counter == 3)
+
+	ow.free()
+	OverworldSession.party = null
 	OverworldSession.flags = FlagStore.new()
 	OverworldSession.wallet = Wallet.new()

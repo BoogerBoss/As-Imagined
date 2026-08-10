@@ -234,6 +234,28 @@ func drive() -> void:
 			# `gSpecialVar_Result` 1 for row 0 and 0 for row 1 or B). The two are
 			# not interchangeable: `goto_if_eq VAR_RESULT, YES` is what every
 			# call site branches on.
+			#
+			# ⚠️ [Bugfix, live-reported: "the dialog prompt isn't shown, it
+			# skips right to yes/no"] `Std_MsgboxYesNo` compiles to `message` /
+			# `waitmessage` / `yesnobox` -- no `waitbuttonpress` -- so nothing
+			# else in the chain ever blocks on the question's own text actually
+			# finishing typing. `WAIT_MESSAGE` above opens the box and resumes
+			# the VM on the SAME frame (correct there -- that's what lets a
+			# waitbuttonpress-terminated chain reach WAIT_BUTTON, where an
+			# early press legitimately skips typing), and `waitmessage` itself
+			# is a pure no-op at the VM level, so with nothing else in the way
+			# the very NEXT frame's step loop ran straight through it into
+			# `yesnobox`, opening this cursor while the question's text had
+			# barely begun (or not yet started) printing -- one frame after
+			# the box first opened. Source's real `waitmessage`
+			# (`ScrCmd_waitmessage`) genuinely blocks until the printer
+			# finishes, and ONLY THEN does `yesnobox` run, with no skip
+			# mechanism of its own -- so holding here until the box's own
+			# typewriter is done is the source-faithful wait, ported to where
+			# this chain's version of it actually needs to live rather than
+			# where a chain WITH a waitbuttonpress gets it for free.
+			if _ow._box.is_open and _ow._box.is_typing:
+				return
 			if not _ow._yes_no.is_open:
 				_ow._yes_no.open()
 			elif _ow._yes_no.accepts_input:
@@ -464,7 +486,31 @@ func apply_pending_object_ops() -> void:
 			"move":
 				var e := resolve_movement_entity(target)
 				if e != null:
-					e.cell = Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
+					# [Bugfix, found during a script-vulnerability review of the
+					# Route22 rival battle] This used to assign `e.cell` directly,
+					# bypassing `move_entity`'s incremental occupancy update
+					# (erase the old cell, claim the new one) that every OTHER
+					# entity-position change in this file goes through. Every
+					# `setobjectxyperm` call in the corridor's own corpus happens
+					# to be immediately followed by an `addobject`/`removeobject`/
+					# `clearflag` that re-derives occupancy from scratch (the
+					# same "hide -> reposition -> reveal" idiom that hid the Oak
+					# bug), which is what kept this latent rather than visibly
+					# broken — a script that repositions an ALREADY-VISIBLE
+					# entity with no such follow-up would leave a phantom block
+					# at the old cell and no block at the new one, the same
+					# symptom already found and fixed for the trainer-approach
+					# occupancy bug. `map_name_of` is the same origin-independent
+					# lookup that fixed that bug, reused here for the same reason.
+					# Explicit `: String`, not `:=` — `_ow` is untyped (see the
+					# class doc comment), so nothing reached through it carries
+					# a return type and inference fails outright.
+					var map_name: String = _ow.manager.map_name_of(e)
+					var to := Vector2i(int(op.get("x", 0)), int(op.get("y", 0)))
+					if map_name != "":
+						_ow.manager.move_entity(map_name, e, to)
+					else:
+						e.cell = to
 					# [M27G G9] `setobjectxyperm` — the "perm" is the point, and
 					# it was not permanent: the node is freed on the next warp
 					# and the baked scene supplies the original cell again.

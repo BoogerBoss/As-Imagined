@@ -1977,6 +1977,17 @@ func _apply_battle_result() -> bool:
 	if r.should_set_defeated_flag():
 		flags.set_trainer_defeated(r.trainer_key)
 
+	# [Bugfix, "don't whiteout and heal"] Decided before EITHER the money or
+	# the whiteout branch below, since both need to skip their normal defeat
+	# handling when it applies — source's own `HealPlayerParty()` branch in
+	# `CB2_EndTrainerBattle` (`battle_setup.c:1449-1452`) charges no money and
+	# never reaches `CB2_WhiteOut` at all. ⚠️ Rob's own call: this does NOT
+	# also mark the trainer defeated — `should_set_defeated_flag()` above
+	# already correctly stays false for any LOST outcome regardless, so this
+	# path is a pure "heal and continue," not "treat a loss as a win."
+	var heal_after_loss := r.player_defeated() and _vm != null \
+			and _vm.pending_battle_heal_after
+
 	# [M27O O3] Money. Source does BOTH halves in one place
 	# (`Cmd_getmoneyreward`) — the win prize and the loss payout — so they are
 	# applied together here rather than split across the win and whiteout paths.
@@ -1991,7 +2002,7 @@ func _apply_battle_result() -> bool:
 			push_warning("overworld: caught a Pokémon with a full party — refused")
 	if r.outcome == BattleOutcome.WON:
 		OverworldSession.wallet.earn(r.prize_money)
-	elif r.player_defeated():
+	elif r.player_defeated() and not heal_after_loss:
 		OverworldSession.wallet.spend(whiteout_payout(r.highest_party_level))
 
 	# [M27O O2] A defeat whites out. The flag above is deliberately NOT set on
@@ -2002,7 +2013,7 @@ func _apply_battle_result() -> bool:
 	# `ScriptContext_Init()`, which wipes the script state outright — the
 	# trainer's post-battle branch does not run after you black out. Resuming it
 	# would hand out the reward for a fight you lost.
-	if r.player_defeated():
+	if r.player_defeated() and not heal_after_loss:
 		# ⚠️ Source's gate is `IsPlayerDefeated && NoAliveMonsForPlayer()`, not
 		# defeat alone. That second half is currently UNREACHABLE-BUT-EQUIVALENT
 		# here: with no persistent party, every battle starts at full health, so
@@ -2012,6 +2023,22 @@ func _apply_battle_result() -> bool:
 		_abandon_script()
 		battle_returned.emit(r)
 		return true
+
+	# [Bugfix] The heal-after loss's own healing step — source's
+	# `HealPlayerParty()`, the exact heal a real whiteout would otherwise have
+	# applied for free at the respawn point. Done here, BEFORE resuming the
+	# script below, so the calling script's own post-battle dialogue plays out
+	# against an already-healed party rather than a fainted one.
+	if heal_after_loss:
+		OverworldSession.heal_party()
+
+	# [Bugfix, rolled in from the same source function] `DowngradeBadPoison()`
+	# — source calls it on every branch that reaches this point (won,
+	# already-beaten, heal-after loss), never on a real whiteout (which heals
+	# everything anyway and returns above). Toxic poison resets to plain
+	# poison the instant a battle you don't whiteout from ends with it still
+	# active.
+	OverworldSession.downgrade_bad_poison()
 
 	# [M27F Stage 2] A script that started this battle is parked on WAIT_BATTLE.
 	# Resumed AFTER the flag is set, so its post-battle branch sees a trainer

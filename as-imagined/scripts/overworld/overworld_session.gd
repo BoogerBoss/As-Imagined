@@ -118,6 +118,26 @@ static func heal_party() -> void:
 	party.active_indices = [0]
 
 
+## [Bugfix, rolled in while implementing "don't whiteout and heal"] Source:
+## `DowngradeBadPoison` (`battle_setup.c:633`), called at the end of every
+## trainer battle that does NOT whiteout (won, already-beaten, or a
+## heal-after loss) — never on a real whiteout, which heals everything via
+## `heal_party()` and makes the distinction moot anyway. At this project's
+## `GEN_LATEST` config source's own gate (`B_TOXIC_REVERSAL < GEN_5: return`)
+## never fires, so the downgrade always applies.
+##
+## Toxic poison resets to plain poison the moment you leave a battle with it
+## still active — `toxic_counter` resets alongside it, since that counter is
+## meaningless for plain poison (it exists to escalate TOXIC's own damage).
+static func downgrade_bad_poison() -> void:
+	if party == null:
+		return
+	for mon: BattlePokemon in party.members:
+		if mon.status == BattlePokemon.STATUS_TOXIC:
+			mon.status = BattlePokemon.STATUS_POISON
+			mon.toxic_counter = 0
+
+
 ## [M27E E1b] Is the player on the water?
 ##
 ## ⚠️ **STATIC, AND THIS ONE IS NOT OPTIONAL.** A wild encounter can start while
