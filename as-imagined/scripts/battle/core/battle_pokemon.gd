@@ -154,14 +154,24 @@ var sp_attack: int = 0
 var sp_defense: int = 0
 var speed: int = 0
 
-# [Transform] Snapshot of this mon's own TRUE computed stats, captured once in
-# from_species right after _calculate_stats() runs — these 5 fields (unlike
-# moves/current_pp below) are static/eternal once computed (no EV-gain
-# mechanic, no other mutator ever touches attack/defense/sp_attack/
-# sp_defense/speed), so a construction-time capture is sufficient, matching
-# original_types/original_ability rather than the cast-time shape
-# pre_transform_moves/pre_transform_pp need. Restored via
-# BattleManager._reset_mon_stats at every switch-in site.
+# [Transform] Snapshot of this mon's own TRUE computed stats — the baseline
+# BattleManager._reset_mon_stats restores at every switch-in site, so that a
+# Transform's borrowed stats never outlive the Transform.
+#
+# ⚠️ **NOT CAPTURE-ONCE. This comment used to say these were "static/eternal
+# once computed (no EV-gain mechanic, no other mutator ever touches
+# attack/defense/...)" and that a construction-time capture was sufficient.
+# That was true when written and went STALE when [M20b] added level-up stat
+# recalculation** — a mon that levelled up mid-battle kept its
+# construction-time originals, so the very next switch-in reverted the
+# level-up (measured: Bulbasaur 8 -> 12, Attack 12 -> 16 -> back to 12).
+# Fixed 2026-08-10; see `_check_level_up`'s own refresh and its comment.
+#
+# Anything that establishes a genuinely NEW permanent baseline must refresh
+# these five explicitly. Two sites do today: `_evolve_mon_stats` (evolution)
+# and `_check_level_up` (level-up). A third would need the same treatment —
+# `_calculate_stats()` deliberately does NOT refresh them, so that a call on a
+# transformed mon cannot capture borrowed stats as its originals.
 var original_attack: int = 0
 var original_defense: int = 0
 var original_sp_attack: int = 0

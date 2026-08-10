@@ -46,6 +46,7 @@ func _ready() -> void:
 	_test_full_battle_integration()
 	_test_b8_1_stats_before_snapshot()
 	_test_b8_1_stats_before_chains_across_multi_level()
+	_test_level_up_stats_survive_a_real_switch()
 
 	var total := _pass + _fail
 	print("m20b_test: %d/%d passed" % [_pass, total])
@@ -414,4 +415,62 @@ func _test_b8_1_stats_before_chains_across_multi_level() -> void:
 			+ "level's 'after' rather than an arbitrary set", ascending)
 	_chk("B8-1.09 the FIRST snapshot is the true starting point (level 8)",
 			int(snaps[0]["max_hp"]) == _bulbasaur_max_hp(8))
+	bm.queue_free()
+
+
+# ── A level-up must SURVIVE a switch out and back in ──────────────────────
+#
+# Regression guard for a real bug found while building M26B8-1 and confirmed
+# empirically before being fixed: `original_attack/defense/sp_attack/
+# sp_defense/speed` were captured ONCE in `from_species` and never refreshed
+# by `_calculate_stats()`, while `_reset_mon_stats` restores FROM them on
+# every switch-in. So a Pokemon that levelled up mid-battle, switched out and
+# returned had those five stats silently reverted to their pre-level values.
+# Measured on Bulbasaur 8 -> 12: Attack 12 -> 16, then back to 12 on switch-in.
+#
+# ⚠️ **DRIVEN THROUGH THE REAL `_do_voluntary_switch`, NOT `_reset_mon_stats`
+# DIRECTLY, AND THAT IS THE POINT.** Calling the helper only proves the helper
+# reverts (trivially true by reading it); it proves nothing about whether any
+# reachable path gets there after a level-up. Going through the real switch
+# also makes this guard survive a future refactor of HOW the invariant is
+# maintained — it asserts the observable outcome, not one particular fix.
+#
+# ⚠️ **max_hp IS THE DISCRIMINATOR.** It is NOT among the five fields
+# `_reset_mon_stats` restores, so the bug is asymmetric: post-switch the mon
+# held level-12 max_hp alongside level-8 Attack. Asserting max_hp is RETAINED
+# while Attack is also retained proves this measures the real mechanism rather
+# than "stats got reset somehow" — a test that only checked Attack could pass
+# against a broken implementation that reset everything uniformly.
+func _test_level_up_stats_survive_a_real_switch() -> void:
+	var bm := _make_bm()
+	var leveller := _make_bulbasaur(8)
+	var bench := _make_bulbasaur(8)
+	var opponent := _make_bulbasaur(8)
+
+	bm._parties = [BattleParty.new(), BattleParty.single(opponent)]
+	bm._parties[0].members = [leveller, bench]
+	bm._parties[0].active_indices = [0]
+	bm._active_per_side = 1
+	bm._combatants = [leveller, bm._parties[1].get_active()]
+
+	leveller.current_exp = 973  # crosses to level 12
+	bm._check_level_up(leveller)
+	var atk_after_level: int = leveller.attack
+	var spe_after_level: int = leveller.speed
+	var hp_after_level: int = leveller.max_hp
+	_chk("switch-survival setup: the level-up actually raised Attack (8 -> 12)",
+			leveller.level == 12 and atk_after_level > 12)
+
+	# Out to the bench, then back in — both through the REAL switch path.
+	bm._do_voluntary_switch(0, 1)
+	bm._do_voluntary_switch(0, 0)
+
+	_chk("a level-up's Attack survives a switch out and back in",
+			leveller.attack == atk_after_level)
+	_chk("...and Speed likewise (all five reset fields, not just one)",
+			leveller.speed == spe_after_level)
+	_chk("discriminator: max_hp is retained too — it is NOT one of the five "
+			+ "fields _reset_mon_stats restores, so this proves the test measures "
+			+ "the real mechanism rather than a uniform reset",
+			leveller.max_hp == hp_after_level)
 	bm.queue_free()

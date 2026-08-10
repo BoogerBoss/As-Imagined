@@ -7957,6 +7957,32 @@ func _check_level_up(recipient: BattlePokemon) -> void:
 		var old_max_hp: int = recipient.max_hp
 		recipient.level = lvl
 		recipient._calculate_stats()
+		# ⚠️ **REFRESH THE `original_*` SNAPSHOT, OR THE LEVEL-UP IS UNDONE BY
+		# THE NEXT SWITCH-IN.** `_reset_mon_stats` (Transform's revert net)
+		# restores these five fields at EVERY switch-in — `_do_voluntary_switch`,
+		# `_do_forced_switch_in`, `_do_switch_in` — so leaving them at their
+		# construction-time values meant a Pokemon that levelled up mid-battle,
+		# switched out and came back had its Attack/Defense/Sp.Atk/Sp.Def/Speed
+		# silently reverted. Measured on Bulbasaur 8 -> 12: Attack 12 -> 16, then
+		# back to 12 on return. `max_hp` is NOT among the restored fields, so the
+		# corruption was asymmetric — level-12 HP alongside level-8 Attack.
+		#
+		# This is the SAME bypass `_evolve_mon_stats` already performs for the
+		# identical reason (see its own comment: a later Transform-revert must
+		# restore to POST-evolution stats, not pre-evolution ones). Evolution got
+		# it; an ordinary level-up never did.
+		#
+		# Deliberately NOT folded into `_calculate_stats()` itself: `original_*`
+		# means "this mon's own TRUE stats", and a blanket refresh there would let
+		# any future call on a TRANSFORMED mon capture the borrowed stats as its
+		# originals, breaking the revert. Refreshing at the sites that genuinely
+		# make a new permanent baseline — evolution, and now level-up — keeps that
+		# meaning intact.
+		recipient.original_attack = recipient.attack
+		recipient.original_defense = recipient.defense
+		recipient.original_sp_attack = recipient.sp_attack
+		recipient.original_sp_defense = recipient.sp_defense
+		recipient.original_speed = recipient.speed
 		if recipient.max_hp > old_max_hp:
 			recipient.current_hp += (recipient.max_hp - old_max_hp)
 		if recipient.current_hp > recipient.max_hp:
