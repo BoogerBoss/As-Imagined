@@ -30,13 +30,19 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 16
+const EXPECTED_TOTAL := 20
 
 
 func _ready() -> void:
+	# ⚠️ Every sibling M36 suite does this and the first draft of this one did
+	# not. Without it `AnimData.template()` answers {} — section D then spawned
+	# no sprite and failed for a reason unrelated to what it tests.
+	AnimData.ensure_loaded()
+
 	_test_section_a_multi_hit_alternates()
 	_test_section_b_two_turn_charge_then_release()
 	_test_section_c_the_screen_seam()
+	_test_section_d_a_real_consumer_reads_it()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -248,3 +254,107 @@ func _test_section_c_the_screen_seam() -> void:
 			bs._anim_turn_for(charging) == 0)
 
 	bs.free()
+
+
+# ── Section D: a real consumer reads it ─────────────────────────────────────
+#
+# A/B prove the engine produces the right value and C proves the screen hands
+# it over; this proves a behavior at the far end actually branches on it.
+#
+# ⚠️ **`AnimArmThrustHit` READ `vm.turn`, WHICH DOES NOT EXIST** — the field is
+# `move_turn`. It threw `Invalid access to property or key 'turn'` on every Arm
+# Thrust hit and aborted the function before it positioned its sprite. Silent
+# in play, because a script error does not stop an animation. Found by the leak
+# harness while fixing the counter this behavior consumes; Arm Thrust is itself
+# one of the multi-hit movers, so it would still not have alternated.
+#
+# Source: `AnimArmThrustHit` (battle_anim_fight.c:965) — on odd turns the x
+# offset flips and the anim variant advances, so a flurry does not stack every
+# hit in one spot.
+
+class FakeStage extends RefCounted:
+	var layer_node: Control
+	var nodes: Dictionary = {}
+	func _init() -> void:
+		layer_node = Control.new()
+		layer_node.size = Vector2(1024, 768)
+		var placeholder := PlaceholderTexture2D.new()
+		placeholder.size = Vector2(64, 64)
+		for i in range(4):
+			var n := TextureRect.new()
+			n.texture = placeholder
+			n.size = Vector2(64, 64)
+			n.position = Vector2(150 + i * 250, 450 - i * 120)
+			layer_node.add_child(n)
+			nodes[i] = n
+	func sprite_for(b: int) -> Control: return nodes.get(b, null)
+	func mon_for(b: int): return nodes.get(b, null)
+	func center_of(b: int) -> Vector2:
+		var n: Control = nodes.get(b, null)
+		return n.position + n.size * 0.5 if n != null else Vector2.ZERO
+	func layer() -> Control: return layer_node
+	func pixel_scale() -> float: return maxf(1.0, layer_node.size.x / 240.0)
+	func facing_sign() -> float: return 1.0
+	func attacker_is_player_side() -> bool: return true
+
+
+# ⚠️ The stage is RETURNED, not dropped. A first draft let the FakeStage go out
+# of scope after each spawn; the sprite it parented then vanished, D.02 failed,
+# and the run leaked RIDs at exit. The stage owns the layer the sprite lives
+# on, so the caller has to outlive it.
+func _spawn_arm_thrust(turn: int) -> Dictionary:
+	var registry := AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(registry)
+	var stage := FakeStage.new()
+	var vm := AnimScriptVM.new()
+	vm.registry = registry
+	vm.stage = stage
+	vm.state = AnimScriptVM.State.RUNNING
+	vm.move_turn = turn
+	# args: 0/1 offset, 2 duration, 3 base anim index — a NON-ZERO x offset,
+	# because the mirror is a sign flip and zero cannot express one.
+	vm.args[0] = 20
+	vm.args[1] = 0
+	vm.args[2] = 8
+	vm.args[3] = 0
+	var template := "gArmThrustHandSpriteTemplate"
+	registry.get_behavior("AnimArmThrustHit").call(vm, {
+		"template": template,
+		"template_data": AnimData.template(template),
+		"blend": {"eva": 16, "evb": 0}})
+	var found: AnimSprite = null
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite:
+			found = child
+			break
+	return {"stage": stage, "sprite": found}
+
+
+func _test_section_d_a_real_consumer_reads_it() -> void:
+	var even_r := _spawn_arm_thrust(0)
+	var odd_r := _spawn_arm_thrust(1)
+	var even: AnimSprite = even_r["sprite"]
+	var odd: AnimSprite = odd_r["sprite"]
+	_chk("D.01 the behavior spawns its sprite on an even turn", even != null)
+	_chk("D.02 the behavior spawns its sprite on an odd turn", odd != null)
+	if even == null or odd == null:
+		return
+	# ⚠️ THE discriminator, and it is what the `vm.turn` bug failed. That threw
+	# BEFORE `node.centre` was assigned, so both turns left the sprite at its
+	# default position and the two agreed. Asserting "it was positioned at all"
+	# would also catch it, but this additionally pins that the turn is what
+	# decides — a behavior that positioned correctly and ignored the turn would
+	# pass that weaker check and fail this one.
+	_chk("D.03 the x offset MIRRORS between an even and an odd turn (%.1f vs %.1f)"
+			% [even.centre.x, odd.centre.x], even.centre.x != odd.centre.x)
+	# And it is a mirror about the TARGET, not merely two different numbers.
+	# ⚠️ An earlier draft of this took the midpoint of the two samples and
+	# asserted they were symmetric about it — which is the DEFINITION of a
+	# midpoint and true of any two values. The centre has to come from the
+	# stage, independently of what the behavior produced.
+	var stage_target_x: float = (even_r["stage"] as FakeStage).center_of(AnimStage.ANIM_TARGET).x
+	_chk("D.04 the offsets are a sign flip about the TARGET's own centre",
+			absf((even.centre.x - stage_target_x) + (odd.centre.x - stage_target_x)) < 0.01)
+
+	(even_r["stage"] as FakeStage).layer_node.free()
+	(odd_r["stage"] as FakeStage).layer_node.free()

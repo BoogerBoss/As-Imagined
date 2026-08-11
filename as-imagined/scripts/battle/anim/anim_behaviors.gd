@@ -5640,7 +5640,12 @@ static func _arm_thrust_hit(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	var scale := _scale(vm)
 	var variant: int = vm.args[3]
 	var x_off := float(vm.args[0])
-	var turn: int = vm.turn
+	# ⚠️ `vm.move_turn`, NOT `vm.turn` — there is no such property, and reading
+	# it threw `Invalid access to property or key 'turn'` on every Arm Thrust
+	# hit, aborting this function before it positioned the sprite. Found by the
+	# leak harness while fixing the counter this line consumes; the error was
+	# silent in play because a script error does not stop the animation.
+	var turn: int = vm.move_turn
 	if not _is_player_side(vm):
 		turn += 1
 	if turn % 2 == 1:
