@@ -73,6 +73,11 @@ class MonOffset:
 class MonScale:
 	const META_SCALE := "_anim_mon_scale"
 	const META_ROT := "_anim_mon_rotation"
+	# [M36P] The VM sets the centre pivot for the whole run and restores it at
+	# the end (see `_capture_battler_baseline`). This records it too, so the
+	# `_restore_scaled_battlers` net — which reads meta rather than the VM's
+	# own snapshot — can put it back if a run ends without reaching `_finish`.
+	const META_PIVOT := "_anim_mon_pivot"
 	var node: Control
 	var base_scale: Vector2
 	var base_rotation: float
@@ -90,6 +95,10 @@ class MonScale:
 			base_rotation = target.rotation
 			target.set_meta(META_SCALE, base_scale)
 			target.set_meta(META_ROT, base_rotation)
+			target.set_meta(META_PIVOT, target.pivot_offset)
+		# Deforming about the corner is the M36P defect; a behavior reached
+		# without the VM having run (a direct unit test) still needs this.
+		target.pivot_offset = target.size * 0.5
 	func apply(mul: Vector2, rot_delta: float = 0.0) -> void:
 		if node != null and is_instance_valid(node):
 			node.scale = base_scale * mul

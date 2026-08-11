@@ -628,7 +628,31 @@ func _capture_battler_baseline() -> void:
 			"vis": node.visible,
 			"mod": node.modulate,
 			"mat": node.material,
+			"pivot": node.pivot_offset,
 		})
+		# ⚠️ **[M36P] THE PIVOT IS SET HERE, FOR EVERY BATTLER, FOR THE WHOLE
+		# RUN.** A `Control` rotates and scales about `pivot_offset`, which
+		# defaults to `(0, 0)` — the TOP-LEFT CORNER of a 320-357px box — so
+		# every battler deform in this port was pivoting at the corner. Source
+		# is centre-based by construction (OAM affine matrices) and calls
+		# `CalcCenterToCornerVec` (`battle_anim_mons.c:1239`) precisely so a
+		# sprite does not jump when affine mode changes. Reported from play as
+		# the mon snapping 5-10% lower/right when an animation starts.
+		#
+		# Centrally rather than per behavior, so it covers the ones that write
+		# `node.rotation`/`node.scale` DIRECTLY as well as the ones going
+		# through `MonScale` — 19 behaviors across 89 moves, and a per-behavior
+		# fix would have to be remembered at each new one.
+		#
+		# ⚠️ **RESTORED, NOT ZEROED, AND THAT MATTERS** — the battle screen's
+		# own recall animation deliberately sets a BOTTOM-CENTRE pivot so the
+		# shrink collapses toward the ball (`battle_screen_shared.gd:6337`),
+		# and does not restore it afterwards. Whatever was there comes back.
+		#
+		# `size * 0.5` is the box centre, which is the faithful target: source
+		# rotates about the 64x64 OAM box, not the drawn pixels, and these
+		# rects are square with the art centred by `stretch_mode`.
+		node.pivot_offset = node.size * 0.5
 
 
 func _restore_battler_baseline() -> void:
@@ -648,6 +672,7 @@ func _restore_battler_baseline() -> void:
 		node.visible = snap["vis"]
 		node.modulate = snap["mod"]
 		node.material = snap["mat"]
+		node.pivot_offset = snap["pivot"]
 	_battler_baseline.clear()
 
 
@@ -684,6 +709,8 @@ func _restore_scaled_battlers() -> void:
 			node.scale = node.get_meta("_anim_mon_scale")
 		if node.has_meta("_anim_mon_rotation"):
 			node.rotation = node.get_meta("_anim_mon_rotation")
+		if node.has_meta("_anim_mon_pivot"):
+			node.pivot_offset = node.get_meta("_anim_mon_pivot")
 
 
 func background_changed() -> bool:

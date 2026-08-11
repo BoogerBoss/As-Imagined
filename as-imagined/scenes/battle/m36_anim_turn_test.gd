@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 34
+const EXPECTED_TOTAL := 43
 
 
 func _ready() -> void:
@@ -45,6 +45,7 @@ func _ready() -> void:
 	_test_section_d_a_real_consumer_reads_it()
 	_test_section_e_affine_rotation_unit()
 	_test_section_f_aim_rotation_offset()
+	_test_section_g_battler_pivot()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -528,3 +529,104 @@ func _test_section_f_aim_rotation_offset() -> void:
 	_chk("F.04 the needle is a quarter turn OFF the raw travel angle, not equal to it (%.1f deg)"
 			% rad_to_deg(delta), absf(absf(delta) - PI * 0.5) < 0.35)
 	stage.layer_node.free()
+
+
+# ── Section G: the battler transform anchor (M36P) ─────────────────────────
+#
+# ⚠️ **A `Control` ROTATES AND SCALES ABOUT `pivot_offset`, WHICH DEFAULTS TO
+# `(0, 0)` — THE TOP-LEFT CORNER.** Battler sprites are 320-357px TextureRects
+# with no pivot set, so every battler deform pivoted at the corner and the mon
+# lurched across the screen. Source is centre-based by construction and calls
+# `CalcCenterToCornerVec` (`battle_anim_mons.c:1239`) precisely to stop a
+# sprite jumping. Reported from play: "the subject snaps about 5-10% lower/
+# right as the animation starts and snaps back after."
+#
+# ⚠️ **THE FIXTURE MUST HAVE A NON-ZERO SIZE.** With `size == (0,0)` the
+# corrected pivot IS `(0,0)`, so the correct and broken implementations agree
+# and the assertion proves nothing — the rule-(13) trap, and the one this
+# section was most likely to fall into.
+
+const _PIVOT_BOX := Vector2(320.0, 320.0)
+
+
+func _make_battler_stage() -> FakeStage:
+	var st := FakeStage.new()
+	for i in range(4):
+		var n: Control = st.nodes[i]
+		n.size = _PIVOT_BOX
+		n.pivot_offset = Vector2.ZERO   # the shipped default
+	return st
+
+
+func _test_section_g_battler_pivot() -> void:
+	var stage := _make_battler_stage()
+	var node: Control = stage.nodes[AnimStage.ANIM_ATTACKER]
+	_chk("G.01 the fixture has a real size, so the two pivots CAN disagree",
+			node.size.x > 1.0)
+
+	var vm := AnimScriptVM.new()
+	vm.registry = AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(vm.registry)
+	vm.stage = stage
+	# `start()` is what captures the baseline and installs the pivot.
+	var ok: bool = vm.start("gBattleAnimMove_Pound")
+	_chk("G.02 the VM starts", ok)
+	_chk("G.03 starting a run centres every battler's pivot",
+			node.pivot_offset.is_equal_approx(_PIVOT_BOX * 0.5))
+
+	# THE discriminator. A pure deform must not move the sprite's centre —
+	# true at the centre pivot, false at the corner. "It rotated" would pass
+	# under the bug, so the assertion is on the CENTRE, not on the transform.
+	# ⚠️ `get_global_rect()` is the UNROTATED layout rect — for a rotated
+	# Control its origin traces an arc, so its "centre" moves even when the
+	# visual centre does not. The first draft of this section asserted on it
+	# and failed against a CORRECT fix. Transform the box centre through the
+	# node's own transform instead.
+	var before: Vector2 = node.get_global_transform() * (node.size * 0.5)
+	node.rotation = deg_to_rad(30.0)
+	var after_rot: Vector2 = node.get_global_transform() * (node.size * 0.5)
+	_chk("G.04 a pure ROTATION leaves the centre where it was (moved %.1f px)"
+			% before.distance_to(after_rot),
+			before.distance_to(after_rot) < 1.0)
+	node.rotation = 0.0
+	node.scale = Vector2(1.3, 1.3)
+	var after_scale: Vector2 = node.get_global_transform() * (node.size * 0.5)
+	_chk("G.05 a pure SCALE leaves the centre where it was (moved %.1f px)"
+			% before.distance_to(after_scale),
+			before.distance_to(after_scale) < 1.0)
+	node.scale = Vector2.ONE
+
+	# ⚠️ RESTORED, not zeroed. The battle screen's recall deliberately sets a
+	# BOTTOM-CENTRE pivot and never restores it, so a run that clobbered the
+	# pivot to centre would silently change how the next recall collapses.
+	var bottom_centre := Vector2(_PIVOT_BOX.x * 0.5, _PIVOT_BOX.y)
+	var stage2 := _make_battler_stage()
+	var node2: Control = stage2.nodes[AnimStage.ANIM_ATTACKER]
+	node2.pivot_offset = bottom_centre
+	var vm2 := AnimScriptVM.new()
+	vm2.registry = vm.registry
+	vm2.stage = stage2
+	vm2.start("gBattleAnimMove_Pound")
+	_chk("G.06 the run still centres it while it owns the battler",
+			node2.pivot_offset.is_equal_approx(_PIVOT_BOX * 0.5))
+	while vm2.is_running():
+		vm2.step()
+	_chk("G.07 and hands the recall's BOTTOM-CENTRE pivot back, not a centred one",
+			node2.pivot_offset.is_equal_approx(bottom_centre))
+
+	# MonScale enforces it too, for a behavior reached without a VM run.
+	var stage3 := _make_battler_stage()
+	var node3: Control = stage3.nodes[AnimStage.ANIM_ATTACKER]
+	var deform := AnimBehaviors.MonScale.new(node3)
+	_chk("G.08 MonScale centres the pivot on its own",
+			node3.pivot_offset.is_equal_approx(_PIVOT_BOX * 0.5))
+	var c3: Vector2 = node3.get_global_transform() * (node3.size * 0.5)
+	deform.apply(Vector2(1.4, 1.4), deg_to_rad(20.0))
+	var c3b: Vector2 = node3.get_global_transform() * (node3.size * 0.5)
+	deform.restore()
+	_chk("G.09 a MonScale deform holds the centre too (moved %.1f px)"
+			% c3.distance_to(c3b), c3.distance_to(c3b) < 1.0)
+
+	stage.layer_node.free()
+	stage2.layer_node.free()
+	stage3.layer_node.free()
