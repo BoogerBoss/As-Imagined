@@ -62,7 +62,26 @@ const STRING_CONTEXT := {
 }
 
 ## Tokens whose 0 IS the right answer rather than a fallthrough.
-const LEGIT_ZERO := ["FALSE", "NO", "NONE", "NULL"]
+##
+## ⚠️ **THIS LIST IS THE AUDIT'S ONE STRUCTURAL BLIND SPOT, and it cannot be
+## fixed from here.** `_literal` answers with an int, so "resolved to 0" and
+## "fell through to 0" are the same value — a constant whose real value IS zero
+## is indistinguishable from one nothing knows about. `MON_GIVEN_TO_PARTY` is
+## the worked example: it was reported before `[M27S]` fixed its two siblings
+## and it is reported after, because 0 was correct all along. Every entry here
+## is therefore a JUDGEMENT that had to be checked against source, not a
+## detection. Closing the blind spot properly would mean `_literal` returning a
+## found/not-found pair rather than a bare int — a change to a function on the
+## hot path of every script, for a handful of tokens.
+const LEGIT_ZERO := [
+	"FALSE", "NO", "NONE", "NULL",
+	"MON_GIVEN_TO_PARTY",  # include/constants/pokemon.h:167 — genuinely 0
+	# ⚠️ Its sibling FEMALE was a REAL bug (read 0, should be 1) while this
+	# one was correct all along — the two sat side by side in the same
+	# comparison, which is why only half of it looked wrong. See
+	# `ScriptVM._literal`'s own note.
+	"MALE",                # PlayerIdentity.Gender.BOY — genuinely 0
+]
 
 
 ## Scan the corpus. `corridor_prefixes` are the script-label prefixes of maps
@@ -81,7 +100,15 @@ static func scan(ops_by_label: Dictionary,
 	for label in ops_by_label:
 		var in_corridor := false
 		for p in corridor_prefixes:
-			if String(label).begins_with(str(p)):
+			# ⚠️ **THE TRAILING `_` IS NOT COSMETIC — WITHOUT IT THIS TOOL LIES.**
+			# A bare `begins_with` makes the prefix `Route1` (from
+			# `Route1_Frlg`) match `Route105_OnLoad`, `Route114_OnTransition`
+			# and every other Hoenn route numbered 1xx; `Route2` likewise
+			# swallows `Route22`/`Route23`. That silently imported Hoenn
+			# content into the one list that is supposed to be actionable —
+			# `ABNORMAL_WEATHER_*` (16 tokens) was the tell. A label is
+			# `<prefix>_EventScript_...`, so requiring the separator is exact.
+			if String(label).begins_with(str(p) + "_"):
 				in_corridor = true
 				break
 		for entry in ops_by_label[label]:

@@ -75,12 +75,12 @@ const MAP_DATA_ASSERTIONS := 8
 ## BC (the connections view, offset editor + legend toggle, 6) and
 ## BD (Part B behaviour override + hiding the metatile brush, 7) and
 ## BE (I6a mart stock through the compiler, 6).
-const EXPECTED_TOTAL := 632
+const EXPECTED_TOTAL := 634
 
 ## [M27S] Distinct unresolved symbolic constants reachable from a baked map.
 ## ⚠️ A BASELINE TO SHRINK, not a target to meet — see `_test_m27s_corpus_audit`.
 ## Measured 2026-08-10. If this grows, a new constant is silently reading 0.
-const CORRIDOR_UNRESOLVED_BASELINE := 139
+const CORRIDOR_UNRESOLVED_BASELINE := 30
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -4877,16 +4877,51 @@ func _test_m27s_corpus_audit() -> void:
 			and not ScriptAudit.is_reportable("PARTY_SIZE")
 			and not ScriptAudit.is_reportable("YES"))
 
-	# The real finds, named so the baseline says what it is protecting rather
-	# than just holding a number. Each is a NUMERIC comparison silently reading
-	# 0 — see the M27S roadmap entry for what each one breaks.
-	var real := ["REQUIRED_CAUGHT_MONS", "B_OUTCOME_WON", "PARTY_NOTHING_CHOSEN",
-			"MON_GIVEN_TO_PC", "SIGN_LADY_READY"]
+	# The real finds STILL OUTSTANDING, named so the baseline says what it is
+	# protecting rather than just holding a number. Both are the file-scoped
+	# `.equ` class `[M27I I3b]` deferred — they need `gen_map_scripts.py` to
+	# resolve `.equ`/`.set` WITH FILE SCOPE (a global table is wrong:
+	# REQUIRED_CAUGHT_MONS is declared three times with three different values)
+	# plus a corpus regeneration, so they are not one-line fixes.
+	var real := ["REQUIRED_SEEN_MONS", "SIGN_LADY_READY"]
 	var found_all := true
 	for t in real:
 		if not corridor.has(t):
 			found_all = false
 	_chk("BF.07 the known real finds are still detected", found_all)
+	# ⚠️ THE FIXES THEMSELVES, pinned by VALUE rather than by absence from the
+	# report. "No longer reported" would also pass if the whitelist had simply
+	# swallowed them; only the real number proves the constant resolves.
+	# ⚠️ B_OUTCOME_* DELEGATES to BattleOutcome, whose constants are already
+	# source-exact — asserted against those members, not re-typed literals, so
+	# this cannot drift from the numbering the battle engine branches on.
+	_chk("BF.09 the M27S one-line fixes resolve to their real source values",
+			ScriptVM._literal("PARTY_NOTHING_CHOSEN") == 0xFF
+			and ScriptVM._literal("MON_GIVEN_TO_PC") == 1
+			and ScriptVM._literal("MON_CANT_GIVE") == 2
+			and ScriptVM._literal("B_OUTCOME_WON") == BattleOutcome.WON
+			and ScriptVM._literal("B_OUTCOME_CAUGHT") == BattleOutcome.CAUGHT
+			and ScriptVM._literal("B_OUTCOME_FORFEITED") == BattleOutcome.FORFEITED
+			# ⚠️ FEMALE read 0 and belongs beside MALE in the SAME comparison in
+			# PalletTown_PlayersHouse_1F — a boy matched both branches, a girl
+			# neither. Delegated to PlayerIdentity.Gender, already source-exact.
+			and ScriptVM._literal("FEMALE") == PlayerIdentity.Gender.GIRL
+			# MOVE_* resolved in `_move_id` but not in `_literal`, so
+			# `buffermovename` worked and `setvar` stored 0.
+			and ScriptVM._literal("MOVE_ICE_BEAM") > 0
+			# ⚠️ MOVEMENT_TYPE_* must NOT be caught by the MOVE_ prefix.
+			and ScriptVM._literal("MOVEMENT_TYPE_FACE_UP") == 0)
+	# ⚠️ The audit's own blind spot, asserted so it stays a known limitation
+	# rather than being rediscovered as a bug: a constant whose REAL value is 0
+	# is indistinguishable from one that fell through, so it lives in
+	# LEGIT_ZERO by judgement. See ScriptAudit.LEGIT_ZERO.
+	_chk("BF.10 a genuinely-zero constant is excluded by judgement, not detection",
+			ScriptVM._literal("MON_GIVEN_TO_PARTY") == 0
+			and not ScriptAudit.is_reportable("MON_GIVEN_TO_PARTY")
+			# MALE is the sharper case: its SIBLING in the same comparison was
+			# a real bug, and this one was right all along.
+			and ScriptVM._literal("MALE") == PlayerIdentity.Gender.BOY
+			and not ScriptAudit.is_reportable("MALE"))
 	# ⚠️ Shrinking this is the point. If it GREW, a new unresolved constant
 	# reached the corridor — find it with ScriptAudit.format(corridor).
 	_chk("BF.08 the corridor baseline has not grown (%d, expected %d)"

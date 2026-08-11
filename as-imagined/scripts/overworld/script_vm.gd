@@ -146,6 +146,29 @@ var diagnostic: String = ""
 var pending_pages: PackedStringArray = PackedStringArray()
 var pending_page_index: int = 0
 
+## ⚠️ **[Bugfix, live-reported: "no 'received Oak's Parcel' after the Viridian
+## Mart script"] SET BY THE OPCODES THAT SHOW TEXT WITHOUT A `waitbuttonpress`
+## BEHIND THEM.** A compiled `msgbox` is `message`/`waitmessage`/
+## `waitbuttonpress`, and it is that third op — not the first — that holds the
+## box open. `giveitem`/`finditem`/`giveitem_msg` are NOT compiled chains: this
+## project reproduces `STD_OBTAIN_ITEM`'s decision structure natively (see
+## `_obtain_item`), so there is no `waitbuttonpress` in the op stream and the
+## VM ran straight on to the next opcode. In the Mart's own script the next
+## three are `setvar`/`releaseall`/`end`, so the script FINISHED and
+## `ScriptDriver.finish()` closed the box — the message existed for about one
+## frame.
+##
+## When set, `resume()` converts the WAIT_MESSAGE it is clearing into a
+## WAIT_BUTTON instead of NONE, which is precisely what a `waitbuttonpress`
+## would have done had one been in the stream.
+##
+## ⚠️ Disclosed divergence for `giveitem_msg` specifically: source's
+## `Std_ReceivedItem` holds on `waitfanfare` rather than on a keypress, so it
+## auto-advances once the key-item jingle ends. This project's fanfare is a
+## fire-and-forget cue with no script-visible length, so a keypress stands in.
+## A press is a divergence; a message nobody can read is a defect.
+var pending_button_after_message: bool = false
+
 ## [M27F Stage 2] Set when `trainerbattle_single` pauses on WAIT_BATTLE, so the
 ## scene can start the battle without the VM knowing what a battle is.
 ##
@@ -157,6 +180,54 @@ var pending_trainer_key: String = ""
 var pending_battle_intro: String = ""
 var pending_battle_defeat_text: String = ""
 var pending_battle_script: String = ""
+
+## ⚠️ **[Bugfix, live-reported: "if Gary wins he doesn't say his alternate
+## dialogue, he still acts as if he lost"] THE GAP IS WIDER THAN THE REPORT AND
+## RUNS IN BOTH DIRECTIONS.** `pending_battle_defeat_text` above — the trainer's
+## own line when the PLAYER wins ("WHAT? Unbelievable! I picked the wrong
+## POKéMON!") — has been carried since Stage 2 and consumed by NOTHING; and
+## `trainerbattle_earlyrival`'s fourth argument, the line when the player LOSES
+## ("{RIVAL}: Yeah! Am I great or what?"), was parsed and discarded outright. So
+## every trainer battle in Kanto ended in silence whichever way it went, and the
+## rival's script then ran straight into its shared "Okay! I'll make my POKéMON
+## battle to toughen it up!" — which is what reads as him acting like he lost.
+##
+## Source shows both IN the battle, from `GetTrainerWonSpeech` /
+## `GetTrainerLoseText` (`battle_message.c`), so both are handed to the battle
+## screen rather than printed in the field box afterwards. The overworld expands
+## and forwards them through `BattleSetupContext`, which is the only channel
+## reliably populated before the screen's own `_ready` runs.
+var pending_battle_victory_text: String = ""
+
+## ⚠️ **`BATTLE_TYPE_FIRST_BATTLE`, and it is a real flag rather than a label.**
+## `BattleSetup_ConfigureTrainerBattle` sets it when an EARLY_RIVAL battle's own
+## flags carry `RIVAL_BATTLE_TUTORIAL` (`battle_setup.c:1324`), which in FRLG is
+## what turns Oak into a narrator for the whole fight. Carried here so the
+## battle screen can show his lines; the test is source's own `& 3`, not an
+## equality, so a hypothetical HEAL_AFTER-only battle would also qualify exactly
+## as it does upstream. The corridor's two call sites are the lab (3, tutorial)
+## and Route 22 (0, not).
+var pending_battle_first_battle: bool = false
+
+## ⚠️ **`trainerbattle_earlyrival` SPECIFICALLY — it is the one battle family
+## whose OUTCOME is readable by the script afterwards.** `CB2_EndTrainerBattle`
+## writes `gSpecialVar_Result = TRUE` when the player was defeated and `FALSE`
+## otherwise (`battle_setup.c:1447-1465`), and does it BEFORE the heal-vs-whiteout
+## decision, so the value is set even on the branch that never returns.
+##
+## This project wrote it nowhere, which made a post-battle win/loss branch
+## **unauthorable**: a script could ask the question and would always get 0
+## (= FALSE = "you won"). Recorded as its own flag rather than reusing
+## `pending_battle_always_continues`, which also covers `trainerbattle_no_intro`
+## — source's write is gated on `TRAINER_BATTLE_EARLY_RIVAL` alone.
+##
+## ⚠️ **NO CORPUS SCRIPT READS IT — measured, all 6 earlyrival sites region-wide
+## (3 in Oak's Lab, 3 on Route 22), none followed by a `VAR_RESULT` test.** So
+## this changes no imported behaviour whatsoever; it exists so authored dialogue
+## in `field_script_source/` CAN branch on the outcome. FRLG itself gives the
+## same "Okay! I'll make my POKéMON battle to toughen it up!" exit line whether
+## you won or lost, and that is source-accurate rather than a gap.
+var pending_battle_early_rival: bool = false
 
 ## [trainerbattle_earlyrival] `trainerbattle_no_intro`/`trainerbattle_earlyrival`
 ## both compile to the SAME shared handler, `EventScript_DoNoIntroTrainerBattle`
@@ -356,6 +427,19 @@ func _init(source: ScriptSource, flags: FlagStore) -> void:
 	_flags = flags
 
 
+## [Bugfix, live-reported] Raw pages for a text LABEL, unexpanded.
+##
+## `_source` is private and stays that way; this is the one narrow read a caller
+## legitimately needs — the driver hands a trainer's win/lose speech to the
+## battle screen at battle START, so the pages have to be resolvable without the
+## VM having reached a `message` opcode for them. Deliberately returns raw pages
+## and leaves expansion to the caller, which owns the buffers.
+func source_pages_for(label: String) -> PackedStringArray:
+	if _source == null or label == "":
+		return PackedStringArray()
+	return _source.pages_for(label)
+
+
 ## Begin a script. Returns false (and sets UNRESOLVED + diagnostic) if the label
 ## does not exist.
 ##
@@ -379,6 +463,9 @@ func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	pending_trainer_key = ""
 	pending_battle_intro = ""
 	pending_battle_defeat_text = ""
+	pending_battle_victory_text = ""
+	pending_battle_first_battle = false
+	pending_battle_early_rival = false
 	pending_battle_script = ""
 	pending_battle_always_continues = false
 	# ⚠️ .clear(), not `= []` — assigning an untyped array to a typed one
@@ -424,6 +511,14 @@ func resume() -> void:
 			and pause_reason != Pause.WAIT_NAMING \
 			and pause_reason != Pause.WAIT_PARTY_CHOICE \
 			and pause_reason != Pause.WAIT_NATIVE:
+		# [Bugfix, live-reported] The synthetic `waitbuttonpress` an opcode that
+		# reproduces a standard script's decision structure never gets for free —
+		# see `pending_button_after_message`'s own doc comment. Consumed here so
+		# it can only ever hold ONE message.
+		if pause_reason == Pause.WAIT_MESSAGE and pending_button_after_message:
+			pending_button_after_message = false
+			pause_reason = Pause.WAIT_BUTTON
+			return
 		pause_reason = Pause.NONE
 
 
@@ -446,12 +541,39 @@ func step() -> bool:
 	pc += 1
 
 	match current_op:
-		"lock", "lockall", "release", "releaseall", "closemessage", \
+		"lock", "lockall", "release", "releaseall", \
 		"waitmessage", "textcolor", "delay", "faceplayer", "famechecker":
 			# Stage 1 no-ops at the VM level: the CALLER owns locking input,
 			# facing the player and clearing the box, because those are scene
 			# concerns. Listed explicitly rather than falling through to
 			# UNKNOWN_OP so a real gap stays distinguishable from a known no-op.
+			return true
+
+		# ⚠️ **[Bugfix, live-reported: "I have to press enter before the rival
+		# selects his pokemon, otherwise he just stands at the pokeball waiting
+		# for my button press"] `closemessage` WAS A NO-OP AND IT IS NOT ONE.**
+		# Source's `ScrCmd_closemessage` calls `HideFieldMessageBox` — a real
+		# act — and the comment above claiming "the CALLER owns clearing the
+		# box" was only ever true by accident: the caller closes the box when
+		# `MessageBox.advance()` runs out of pages, which happens on the
+		# `waitbuttonpress` that terminates a `msgbox` chain. A `message` /
+		# `waitmessage` chain with NO `waitbuttonpress` — which is how every
+		# fanfare beat in the corpus is written — has nothing to run out of, so
+		# its box stayed open for the rest of the script.
+		#
+		# The visible damage was one step downstream: `EventScript_ChoseStarter`
+		# leaves "{PLAYER} received {MON} from OAK!" on screen, then walks the
+		# rival to his ball and prints "I'll take this one then!" — and the
+		# driver's WAIT_MESSAGE branch used to skip opening a box that was
+		# already open, so the rival's line never appeared and the script sat on
+		# WAIT_BUTTON waiting for a press to dismiss the STALE page. Fixed at
+		# both ends: this closes the box, and the driver now always opens.
+		#
+		# Queued rather than acted on, for the same reason `removeobject` is:
+		# the VM cannot reach the scene tree. The driver drains this after every
+		# step, so the close lands in the order the script wrote it.
+		"closemessage":
+			pending_object_ops.append({"op": "close_message"})
 			return true
 
 		# [Map scripts] Region/Pokédex area-reveal bookkeeping
@@ -1528,10 +1650,16 @@ func step() -> bool:
 		# handler `trainerbattle_no_intro` uses above — same no-intro-message
 		# shape, same unconditional-fallthrough-on-win shape.
 		#
-		# `victory_text` (the rival's own in-battle "won't lose" quote,
-		# `GetTrainerWonSpeech`) is BATTLE-side presentation this project's
-		# overworld VM has no seam for and doesn't need one for — the field
-		# script's own control flow never branches on it.
+		# ⚠️ **`victory_text` IS NOW CARRIED, AND THE COMMENT THAT USED TO STAND
+		# HERE WAS WRONG IN ITS CONCLUSION.** It said the fourth argument was
+		# "BATTLE-side presentation this project's overworld VM has no seam for
+		# and doesn't need one for — the field script's own control flow never
+		# branches on it." The second half is true and the first half was a
+		# statement about the seam not existing YET, recorded as though it never
+		# needed to. Reported from play: losing to the rival was silent, and his
+		# post-battle script then read as though he had lost. The seam is
+		# `pending_battle_victory_text` -> `BattleSetupContext` -> the battle
+		# screen; see that field's own doc comment.
 		#
 		# ⚠️ **`flags` (RIVAL_BATTLE_HEAL_AFTER/RIVAL_BATTLE_TUTORIAL) IS NOT
 		# PRESENTATION — IT IS REAL CONTROL FLOW, AND THE ORIGINAL COMMENT
@@ -1547,8 +1675,10 @@ func step() -> bool:
 				pause_reason = Pause.UNKNOWN_OP
 				diagnostic = "trainerbattle_earlyrival needs 3+ args, got %d" % args.size()
 				return false
+			var rival_flags := _literal(str(args[1]))
 			return _start_trainer_battle(str(args[0]), "", str(args[2]), "", false, true,
-					bool(_literal(str(args[1])) & 1))
+					bool(rival_flags & 1), _script_arg(args, 3),
+					bool(rival_flags & _literal("RIVAL_BATTLE_TUTORIAL")), true)
 
 		# [Map scripts] `checkplayergender` — writes VAR_RESULT with the
 		# player's chosen gender (`ScrCmd_checkplayergender`, `scrcmd.c`).
@@ -1697,10 +1827,19 @@ func _trainer_battle(args: Array) -> bool:
 ## internal check does not open a rematch that shouldn't be reachable.
 func _start_trainer_battle(trainer: String, intro_label: String, defeat_label: String,
 		continuation_label: String, skip_already_beaten_check: bool,
-		always_continues: bool = false, heal_after: bool = false) -> bool:
+		always_continues: bool = false, heal_after: bool = false,
+		victory_label: String = "", first_battle: bool = false,
+		early_rival: bool = false) -> bool:
 	pending_trainer_key = trainer
 	pending_battle_intro = intro_label
 	pending_battle_defeat_text = defeat_label
+	pending_battle_victory_text = victory_label
+	pending_battle_first_battle = first_battle
+	# ⚠️ Set from the SAME parameter list as everything else here rather than by
+	# the opcode, so it resets to false for every non-earlyrival variant that
+	# funnels through — the identical stale-value hazard `pending_battle_heal_
+	# after`'s own comment records one field above.
+	pending_battle_early_rival = early_rival
 	pending_battle_script = continuation_label
 	pending_battle_always_continues = always_continues
 	# [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
@@ -1748,6 +1887,16 @@ static func _script_arg(args: Array, i: int) -> String:
 func resume_after_battle(won: bool) -> void:
 	if pause_reason != Pause.WAIT_BATTLE:
 		return
+	# ⚠️ **THE OUTCOME, MADE READABLE BY THE SCRIPT — see
+	# `pending_battle_early_rival`.** Written FIRST, above the loss-stop branch
+	# below, because source writes it before its own heal-vs-whiteout decision
+	# and therefore sets it even on the path that never comes back.
+	#
+	# ⚠️ POLARITY IS SOURCE'S AND READS BACKWARDS: **TRUE means the PLAYER LOST.**
+	# `gSpecialVar_Result = TRUE` sits inside `if (IsPlayerDefeated(...))`. A
+	# script branching the intuitive way round would congratulate you for losing.
+	if pending_battle_early_rival:
+		_set_result_value(0 if won else 1)
 	# [Bugfix, scoped for "we'll definitely need a don't-whiteout-and-heal
 	# option"] A heal-after LOSS reaches the exact same fallthrough a WIN
 	# does — see `pending_battle_heal_after`'s own doc comment. By the time
@@ -2187,6 +2336,13 @@ func _obtain_item(args: Array) -> bool:
 	pending_pages = pages
 	pending_page_index = 0
 	pause_reason = Pause.WAIT_MESSAGE
+	# ⚠️ **WITHOUT THIS THE OBTAIN MESSAGE IS VISIBLE FOR ONE FRAME.** Source's
+	# `EventScript_ObtainedItem` ends `msgbox gText_PutItemInPocket,
+	# MSGBOX_DEFAULT` — a real keypress wait — and `Std_ReceivedItem` holds on
+	# `waitfanfare`. Neither is in the op stream here, because this function
+	# reproduces those scripts' DECISION STRUCTURE rather than running them, so
+	# the wait has to be re-supplied at the one place that knows it is owed.
+	pending_button_after_message = true
 	return true
 
 
@@ -2424,6 +2580,89 @@ static func _literal(tok: String) -> int:
 		# Pallet Town Lab tutorial battle passes `RIVAL_BATTLE_TUTORIAL`.
 		"RIVAL_BATTLE_HEAL_AFTER": return 1  # include/constants/battle.h:161
 		"RIVAL_BATTLE_TUTORIAL": return 3    # include/constants/battle.h:162
+		# ⚠️ **[M27S] ALL THREE GROUPS BELOW WERE FOUND BY THE CORPUS AUDIT,
+		# NOT BY PLAYING** — the first time this bug class has been caught
+		# before it cost a playtest. Each is a NUMERIC comparison that was
+		# silently reading 0. See the M27S roadmap block.
+		#
+		# `PARTY_NOTHING_CHOSEN` (0xFF, `include/constants/party_menu.h:5`).
+		# ⚠️ THE WRITE HALF WAS ALREADY RIGHT AND THE READ HALF WAS NOT:
+		# `[M27G G2]` correctly writes 255 into VAR_0x8004 on a cancel, but a
+		# script comparing against the symbolic constant read 0 — so
+		# `goto_if_eq VAR_0x8004, PARTY_NOTHING_CHOSEN` never matched a real
+		# cancel. Half-fixed is the shape this whole audit exists to catch.
+		"PARTY_NOTHING_CHOSEN": return 0xFF
+		# `givemon`'s own three-way result (`include/constants/pokemon.h:167`).
+		# ⚠️ Same half-fixed shape: `[M27K K-c2]` fixed the WRITE side (0/1/2
+		# rather than a boolean) and the constants still read 0, so
+		# `goto_if_eq VAR_RESULT, MON_GIVEN_TO_PC` took the PARTY branch.
+		# MON_GIVEN_TO_PARTY was accidentally correct, being 0 anyway — which
+		# is exactly why nobody noticed the other two.
+		"MON_GIVEN_TO_PARTY": return 0
+		"MON_GIVEN_TO_PC": return 1
+		"MON_CANT_GIVE": return 2
+		# Battle outcomes (`include/constants/battle.h:165`). ⚠️ DELEGATED to
+		# `BattleOutcome`, never re-typed: its own constants are already
+		# source-exact (WON 1 / LOST 2 / DREW 3 / RAN 4 / CAUGHT 7 /
+		# FORFEITED 9), and a second hand-kept copy of a numbering the battle
+		# engine also branches on is the drift this project has paid for
+		# before. The four without a `BattleOutcome` member are spelled out
+		# because no equivalent exists to delegate to.
+		"B_OUTCOME_WON": return BattleOutcome.WON
+		"B_OUTCOME_LOST": return BattleOutcome.LOST
+		"B_OUTCOME_DREW": return BattleOutcome.DREW
+		"B_OUTCOME_RAN": return BattleOutcome.RAN
+		"B_OUTCOME_CAUGHT": return BattleOutcome.CAUGHT
+		"B_OUTCOME_FORFEITED": return BattleOutcome.FORFEITED
+		"B_OUTCOME_PLAYER_TELEPORTED": return 5
+		"B_OUTCOME_MON_FLED": return 6
+		"B_OUTCOME_NO_SAFARI_BALLS": return 8
+		"B_OUTCOME_MON_TELEPORTED": return 10
+		# ⚠️ **[M27S follow-up] `FEMALE` WAS READING 0, AND THE DAMAGE IS IN THE
+		# PLAYER'S OWN HOUSE.** `PalletTown_PlayersHouse_1F`'s Mom and TV both do
+		# `call_if_eq VAR_RESULT, MALE` then `call_if_eq VAR_RESULT, FEMALE`
+		# after `checkplayergender`. With both constants reading 0: a BOY
+		# (VAR_RESULT 0) matched BOTH branches and heard both lines, and a GIRL
+		# (1) matched NEITHER and heard no gendered line at all. `MALE` was
+		# accidentally correct at 0, which is exactly why only half of it
+		# looked wrong. Delegated to `PlayerIdentity.Gender`, whose ordinals
+		# are already source-exact (`[M27F]`: BOY/GIRL are the same 0/1
+		# `gSaveBlock2Ptr->playerGender` stores) rather than re-typing them.
+		"MALE": return PlayerIdentity.Gender.BOY
+		"FEMALE": return PlayerIdentity.Gender.GIRL
+	# ⚠️ **[Bugfix, live-reported: "the rival walks in, glitches, then walks in
+	# again 3-4 times"; "Oak walks up and to the left 3 times in a row instead
+	# of once"] A DIRECTION CONSTANT IS A REAL VALUE, AND EVERY ONE OF THEM
+	# RESOLVED TO 0.** Same silent-at-every-call-site shape as YES/NO and
+	# SPECIES_* above, and worse in its consequences, because the corpus's
+	# dominant use is a FOUR-WAY DISPATCH on the player's own facing:
+	#
+	#     call_if_eq VAR_FACING, DIR_NORTH, ...RivalEnterNorth
+	#     call_if_eq VAR_FACING, DIR_SOUTH, ...RivalEnterSouth
+	#     call_if_eq VAR_FACING, DIR_EAST,  ...RivalEnterEastWest
+	#     call_if_eq VAR_FACING, DIR_WEST,  ...RivalEnterEastWest
+	#
+	# With every `DIR_*` resolving to 0 AND `VAR_FACING` unset (also 0), all
+	# FOUR arms matched — so the cutscene played every variant of itself back
+	# to back. `PalletTown_ProfessorOaksLab_EventScript_DeliverParcel` alone
+	# carries SEVEN such groups, which is exactly the reported symptom.
+	#
+	# Values are source's own `enum Direction` (`include/constants/global.h:203`),
+	# NOT `StepResolver.Dir` — the two disagree (source starts at DIR_NONE=0 and
+	# orders S/N/W/E from 1), and a script comparing against the wrong encoding
+	# would dispatch to the wrong arm rather than to none of them. See
+	# `Overworld.SOURCE_DIR` for the one place the two are bridged.
+	if tok.begins_with("DIR_") or tok == "CARDINAL_DIRECTION_COUNT":
+		match tok:
+			"DIR_NONE": return 0
+			"DIR_SOUTH": return 1
+			"DIR_NORTH": return 2
+			"DIR_WEST": return 3
+			"DIR_EAST": return 4
+			"CARDINAL_DIRECTION_COUNT", "DIR_SOUTHWEST": return 5
+			"DIR_SOUTHEAST": return 6
+			"DIR_NORTHWEST": return 7
+			"DIR_NORTHEAST": return 8
 	# ⚠️ [M27K K-a] A SPECIES CONSTANT IS A REAL VALUE, AND 295 CORPUS ARGS ARE
 	# ONE. Before this they all resolved to 0 through the fallthrough below —
 	# `setvar PLAYER_STARTER_SPECIES, SPECIES_BULBASAUR` stored nothing, so the
@@ -2435,6 +2674,20 @@ static func _literal(tok: String) -> int:
 	if tok.begins_with("SPECIES_"):
 		var dex := PokemonRegistry.species_id_of(tok)
 		return dex if dex > 0 else 0
+	# ⚠️ **[M27S follow-up] THE THIRD HALF-FIXED CONSTANT, and the shape is now
+	# a pattern worth naming.** `_move_id()` already resolves `MOVE_*` through
+	# this exact call — so `buffermovename STR_VAR_2, MOVE_ICE_BEAM` worked
+	# while `setvar VAR_X, MOVE_ICE_BEAM` stored 0, because `setvar` goes
+	# through `_literal` and nothing here knew about moves. Handled in the
+	# SPECIFIC accessor, missing from the GENERAL resolver — the same shape as
+	# `[M27G G2]`'s PARTY_NOTHING_CHOSEN and `[M27K K-c2]`'s MON_GIVEN_TO_PC.
+	# Celadon's Game Corner TM prizes are the corridor's own consumers.
+	#
+	# ⚠️ No collision with `MOVEMENT_TYPE_*`: that is `MOVEM…`, and this tests
+	# for the underscore at index 4.
+	if tok.begins_with("MOVE_"):
+		var mid := PokemonRegistry.move_id_of(tok)
+		return mid if mid > 0 else 0
 	# [Corridor op-code scope] `setmetatile`'s own metatileId argument is a
 	# METATILE_<Tileset>_<Name> constant, never a raw int in the corpus —
 	# same shape as SPECIES_ above, resolved through the generated
