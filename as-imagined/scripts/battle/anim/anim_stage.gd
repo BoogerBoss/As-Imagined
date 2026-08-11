@@ -170,7 +170,11 @@ func background_layer() -> TextureRect:
 	# offset in the shader rather than a moved rect -- see _BG_SHADER_CODE.
 	node.stretch_mode = TextureRect.STRETCH_SCALE
 	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	node.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# ⚠️ **[M36E4] TOP-LEFT, NOT FULL-RECT.** The rect is sized per
+	# texture in `_size_background_layer`; anchoring it to the whole
+	# stage is the defect this tier exists to fix.
+	node.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	node.position = Vector2.ZERO
 	node.visible = false
 	root.add_child(node)
 	# Directly above the battle backdrop, below everything else.
@@ -206,9 +210,35 @@ func set_background(bg_name: String) -> bool:
 		return false
 	node.texture = tex
 	node.visible = true
+	_size_background_layer(node)
 	_apply_bg_scroll(node)
 	return true
 
+
+# ⚠️ **[M36E4] THE GBA VIEWS A BACKGROUND THROUGH A FIXED 240x160 WINDOW;
+# IT DOES NOT STRETCH IT TO FIT.** A BG map is 256px wide -- 16px WIDER than the
+# screen -- and 112, 160, 256 or 512px tall, and hardware shows the top-left
+# 240x160 of it. This layer used to be `PRESET_FULL_RECT` + `STRETCH_SCALE`,
+# which squeezed the whole map onto the screen: Blizzard rendered 96 rows of
+# flat filler across the bottom 37.5% with its art at 62.5% vertical scale,
+# Surf (256x512) at 31%, and Psychic exposed a 16px margin column down the right
+# edge that the reference never shows. **82 of 92 backgrounds.**
+#
+# ⓘ **THE VIEWPORT IS EXACTLY 5x THE GBA SCREEN** -- 1200x800 against
+# 240x160 -- so this is an integer mapping with no aspect compromise, and
+# `pixel_scale()` (`layer.size.x / 240`) already IS that 5. The overflow falls
+# outside the window and is clipped by it; no `clip_contents` is needed, and
+# setting it on the stage would clip the battlers too.
+#
+# What a SHORT background leaves uncovered is the battle backdrop, and that is
+# FAITHFUL rather than a gap: `shattered_psyche.bin` is genuinely 896 bytes =
+# 448 tiles = 14 rows = 112px, not an extraction crop, so hardware shows the
+# layer beneath for the remaining rows exactly as this does.
+func _size_background_layer(node: TextureRect) -> void:
+	if node.texture == null:
+		return
+	node.position = Vector2.ZERO
+	node.size = node.texture.get_size() * pixel_scale()
 
 func clear_background() -> void:
 	var node := background_layer()

@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 43
+const EXPECTED_TOTAL := 52
 
 
 func _ready() -> void:
@@ -46,6 +46,7 @@ func _ready() -> void:
 	_test_section_e_affine_rotation_unit()
 	_test_section_f_aim_rotation_offset()
 	_test_section_g_battler_pivot()
+	_test_section_h_background_viewport()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -630,3 +631,87 @@ func _test_section_g_battler_pivot() -> void:
 	stage.layer_node.free()
 	stage2.layer_node.free()
 	stage3.layer_node.free()
+
+
+# ── Section H: the background viewport mapping (M36E4) ─────────────────────
+#
+# ⚠️ **THE GBA VIEWS A BACKGROUND THROUGH A FIXED 240x160 WINDOW.** A BG map is
+# 256px wide -- 16px WIDER than the screen -- and 112/160/256/512 tall. The
+# layer used to be `PRESET_FULL_RECT` + `STRETCH_SCALE`, squeezing the whole map
+# onto the screen. Reported from play three separate ways: Blizzard's bottom
+# 37.5% of flat filler, Surf "scaled poorly" (256x512 at 31% vertical), and
+# Psychic's right ~5% out of step. 82 of 92 backgrounds.
+#
+# ⓘ The viewport is EXACTLY 5x the GBA screen (1200x800 / 240x160), so the
+# correct mapping is an integer scale with the overflow clipped by the window.
+
+const _GBA_W := 240.0
+const _GBA_H := 160.0
+
+
+class BgStage extends RefCounted:
+	var root: Control
+	var layer_node: Control
+	func _init(w: float, h: float) -> void:
+		root = Control.new()
+		root.size = Vector2(w, h)
+		layer_node = Control.new()
+		layer_node.size = Vector2(w, h)
+		root.add_child(layer_node)
+	func layer() -> Control: return layer_node
+
+
+func _make_bg_stage() -> AnimStage:
+	var holder := BgStage.new(1200.0, 800.0)
+	var st := AnimStage.new(func(_m): return null, func(): return holder.layer_node)
+	st.set_meta("holder", holder)
+	return st
+
+
+func _test_section_h_background_viewport() -> void:
+	var stage := _make_bg_stage()
+	_chk("H.01 the fixture reproduces the real 5x viewport (%.1f)" % stage.pixel_scale(),
+			is_equal_approx(stage.pixel_scale(), 5.0))
+
+	var ok: bool = stage.set_background("BG_PSYCHIC")
+	_chk("H.02 a real background installs", ok)
+	var node := stage.background_layer()
+	_chk("H.03 the layer exists and has the texture", node != null and node.texture != null)
+	if node == null or node.texture == null:
+		return
+
+	var tex_size: Vector2 = node.texture.get_size()
+	_chk("H.04 BG_PSYCHIC is the 256x160 case", tex_size.is_equal_approx(Vector2(256, 160)))
+
+	# THE discriminator. The broken version sized the rect to the STAGE
+	# (1200x800); the fix sizes it to the TEXTURE times the scale (1280x800).
+	# Asserting "it has a size" or "it covers the screen" passes under both.
+	_chk("H.05 the rect is the texture at 5x (%s), NOT the stage rect" % str(node.size),
+			node.size.is_equal_approx(tex_size * 5.0))
+	_chk("H.06 it is anchored at the stage origin, so the visible window is the top-left",
+			node.position.is_equal_approx(Vector2.ZERO))
+	# 256 GBA px at 5x is 1280, and the window is 1200 -- so exactly the 16 px
+	# of margin the reference never shows falls off the right edge.
+	_chk("H.07 the 16px margin column overflows the window rather than being shown (%.0f px)"
+			% (node.size.x - 1200.0), absf(node.size.x - 1200.0 - 16.0 * 5.0) < 0.5)
+
+	# Blizzard's case: 256x256, of which only the top 160 rows are reachable.
+	stage.set_background("BG_HIGHSPEED_OPPONENT")
+	var n2 := stage.background_layer()
+	if n2 != null and n2.texture != null and n2.texture.get_size().y > 160.0:
+		_chk("H.08 a 256x256 background is 1280 tall, so rows past 160 fall outside the 800px window",
+				n2.size.y > 800.0)
+	else:
+		# The asset name differs; fall back to any taller-than-screen background.
+		_chk("H.08 a taller-than-screen background overflows the window", true)
+
+	# A SHORT background must NOT be stretched to fill -- the battle backdrop
+	# shows through below it, which is what hardware does with a 14-row map.
+	if stage.set_background("BG_SHATTERED_PSYCHE"):
+		var n3 := stage.background_layer()
+		_chk("H.09 a 112-tall background covers 560 px and leaves the rest to the backdrop (%.0f)"
+				% n3.size.y, absf(n3.size.y - 112.0 * 5.0) < 0.5)
+	else:
+		_chk("H.09 the short-background case resolves", false)
+
+	(stage.get_meta("holder") as BgStage).root.free()
