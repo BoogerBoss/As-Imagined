@@ -595,6 +595,29 @@ var _actor_sides: Dictionary = {}
 var _current_actor_index: int = 0
 var _is_advancing: bool = false
 
+## [M36 anim-turn fix] `gBattleScripting.animTurn` — how many animations this
+## move use has already played. Read by the battle screen at `move_executed`
+## time and handed to `AnimScriptVM.move_turn`, where `choosetwoturnanim` and
+## `jumpifmoveturn` branch on it. **36 move animations read this**, in two
+## families: multi-hit moves alternate (Comet Punch left/right fist) and
+## two-turn moves pick charge-vs-release (`SolarBeamSetUp`/`SolarBeamUnleash`).
+##
+## Source: reset per move use in `Cmd_attackcanceler`
+## (`battle_script_commands.c:5999`), `= 1` on a two-turn release turn
+## (`BattleScript_TwoTurnMovesSecondTurnRet: setbyte sB_ANIM_TURN, 1`,
+## `battle_scripts_1.s:1867-1868`), and incremented per animation played
+## (`:1447`).
+##
+## ⚠️ **IT IS NOT INCREMENTED PER `move_executed` EMIT, AND THAT IS
+## DELIBERATE.** This project emits `move_executed` once per TARGET, so a
+## doubles spread move emits 2-3 times for ONE animation — incrementing there
+## would advance the counter per target and hand a spread move the wrong arm.
+## Source keeps `animTurn` (per animation) and `animTargetsHit` (per target)
+## as separate counters for exactly this reason. It is therefore advanced only
+## where an animation SEQUENCE genuinely repeats within one move use, which is
+## the multi-hit loop, plus the explicit two-turn set.
+var anim_turn: int = 0
+
 # M14a: number of active Pokémon per side (1 = singles, 2 = doubles).
 # Governs combatant layout: _combatants[side * _active_per_side + field_slot].
 var _active_per_side: int = 1
@@ -1887,6 +1910,13 @@ func _phase_action_execution() -> void:
 
 	var actor: BattlePokemon = _turn_order[_current_actor_index]
 
+	# [M36 anim-turn fix] Source resets this at the start of every move use
+	# (`Cmd_attackcanceler`, battle_script_commands.c:5999). This function is
+	# entered once per actor per turn and every move-execution path sits under
+	# it, so it is the one place that corresponds — a switch or item action
+	# resetting it too is harmless, since nothing reads it on those paths.
+	anim_turn = 0
+
 	# M9/M14a: check if this actor chose to switch this turn.
 	# Use combatant index (not side) to look up switch slots and invoke the switch.
 	var actor_idx: int = _actor_indices.get(actor, _combatants.find(actor))
@@ -2483,6 +2513,14 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 		else:
+			# [M36 anim-turn fix] The RELEASE turn. Source's own
+			# `BattleScript_TwoTurnMovesSecondTurnRet` opens with
+			# `setbyte sB_ANIM_TURN, 1` (battle_scripts_1.s:1867-1868), which
+			# is what makes `choosetwoturnanim` take its SECOND label here —
+			# `SolarBeamUnleash` rather than `SolarBeamSetUp`. The charge turn
+			# above deliberately leaves it at the 0 the phase reset set, so
+			# that one plays the SetUp arm.
+			anim_turn = 1
 			attacker.charging_move = null
 			attacker.semi_invulnerable = MoveData.SEMI_INV_NONE
 
@@ -10657,6 +10695,13 @@ func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 				attacker, target, move, false, helping_hand, this_power_override, true, me_first)
 		total_damage += dmg
 		hits_landed += 1
+		# [M36 anim-turn fix] AFTER the hit, so hit 1 reads 0 and hit 2 reads
+		# 1 — `choosetwoturnanim` branches on `& 1`, which is what alternates
+		# Comet Punch's left and right fist. A Triple Kick hit that MISSES
+		# breaks above this line and correctly does not advance, matching
+		# source incrementing only where an animation actually played
+		# (battle_script_commands.c:1447).
+		anim_turn += 1
 
 		if had_standing_sub:
 			if target.substitute_hp <= 0:

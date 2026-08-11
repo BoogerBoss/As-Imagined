@@ -3679,17 +3679,26 @@ func _partner_of(mon: BattlePokemon) -> BattlePokemon:
 	return null
 
 
-# gAnimMoveTurn: the engine increments this per attackanimation, so two-turn
-# moves alternate charge/unleash and multi-hit moves vary per hit. This
-# project has no such counter yet, so it is derived from the attacker's
-# charging state -- correct for the two-turn case (the only one a script
-# branches on via choosetwoturnanim) and 0 otherwise. A real per-hit counter
-# arrives with M36C's multi-hit work; recorded here so it is not mistaken
-# for complete.
-func _anim_turn_for(attacker: BattlePokemon) -> int:
-	if attacker == null:
-		return 0
-	return 1 if attacker.charging_move != null else 0
+# gAnimMoveTurn — read from `BattleManager.anim_turn`, which owns it because
+# the counter is a property of the MOVE USE (charge-vs-release, hit number),
+# and only the engine knows those. See that field's own doc comment for the
+# source citations and for why it is not advanced per `move_executed`.
+#
+# ⚠️ **THIS REPLACED A DERIVED BOOLEAN THAT WAS WRONG BOTH WAYS, and the way
+# it was wrong is worth keeping.** It used to return
+# `1 if attacker.charging_move != null else 0`, whose comment claimed it was
+# "correct for the two-turn case". It was INVERTED there — `charging_move` is
+# assigned three lines before the charge turn's own `move_executed`, so the
+# charge turn read 1 and played `SolarBeamUnleash` while the release turn read
+# 0 and played `SolarBeamSetUp` — and it was a CONSTANT 0 for multi-hit, so
+# Comet Punch played its left fist on every hit. Reported from play, both
+# symptoms, one line. A guard on `AnimScriptVM.move_turn` existed and passed
+# throughout, because nothing tested what this fed into it.
+#
+# Falls back to 0 with no BattleManager: `_bm` is `@onready`, so it is null on
+# an off-tree instance, which several suites construct deliberately.
+func _anim_turn_for(_attacker: BattlePokemon) -> int:
+	return _bm.anim_turn if _bm != null else 0
 
 
 # Pumps a VM at the real GBA frame rate until it finishes. Runs inside an
