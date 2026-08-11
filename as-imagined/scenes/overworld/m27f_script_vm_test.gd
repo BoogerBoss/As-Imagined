@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 310
+const EXPECTED_TOTAL := 314
 
 var _total := 0
 var _failed := 0
@@ -1254,7 +1254,7 @@ func _test_trainer_battle_family() -> void:
 	# end to end through the real EndRivalBattle chain.
 	if not (FileAccess.file_exists("res://data/map_scripts.json")
 			and FileAccess.file_exists("res://data/map_texts.json")):
-		_gated += 4
+		_gated += 8
 		return
 	var ops_er: Dictionary = JSON.parse_string(
 			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
@@ -1283,6 +1283,53 @@ func _test_trainer_battle_family() -> void:
 	_chk("L.24c -- and the party was genuinely healed by the real "
 			+ "HealPlayerParty special this chain calls",
 			party_real.members[0].current_hp == party_real.members[0].max_hp)
+	# ⚠️ **THE OUTCOME MUST BE READABLE BY THE SCRIPT, AND IT WAS NOT.**
+	# `CB2_EndTrainerBattle` writes `gSpecialVar_Result` after every EARLY_RIVAL
+	# battle (`battle_setup.c:1447-1465`); this project wrote it nowhere, so an
+	# authored win/loss branch would always have read 0 and always taken the
+	# "you won" arm. Asserted on the REAL compiled script rather than a fixture
+	# because that is the shape anyone authoring the branch will actually hit.
+	#
+	# ⚠️ Polarity is source's and reads backwards: TRUE (1) means the PLAYER
+	# LOST. L.24e is the discriminator — without it a write that always stored
+	# the same value would pass L.24d.
+	_chk("L.24d a WIN writes VAR_RESULT = FALSE (source polarity: TRUE means "
+			+ "the player was defeated, not that they won)",
+			flags_real.var_get("VAR_RESULT") == 0)
+	var flags_lost := FlagStore.new()
+	var party_lost := BattleParty.new()
+	party_lost.members = [PokemonFactory.create_battle_pokemon(1, 5)]
+	var vm_lost := ScriptVM.new(_src(ops_er, texts_er), flags_lost)
+	vm_lost.party = party_lost
+	vm_lost.start("PalletTown_ProfessorOaksLab_EventScript_RivalBattleBulbasaur")
+	_drive(vm_lost)
+	vm_lost.resume_after_battle(false)
+	_chk("L.24e ...and a LOSS writes TRUE -- the discriminator, and the whole "
+			+ "point: this is what makes an authored loss branch possible",
+			flags_lost.var_get("VAR_RESULT") == 1)
+	# The heal-after bit is what lets a loss continue at all, so the loss branch
+	# a script would author is genuinely reachable rather than theoretical.
+	_drive(vm_lost)
+	_chk("L.24f -- and the loss still runs the chain to DONE, because "
+			+ "RIVAL_BATTLE_TUTORIAL carries RIVAL_BATTLE_HEAL_AFTER "
+			+ "(diagnostic if not: '%s')" % vm_lost.diagnostic,
+			vm_lost.pause_reason == ScriptVM.Pause.DONE)
+	# ⚠️ NEGATIVE CONTROL. `trainerbattle_single` is not the early-rival family,
+	# and source's write is gated on `TRAINER_BATTLE_EARLY_RIVAL` specifically —
+	# so an ordinary trainer must leave VAR_RESULT alone. Seeded with a sentinel
+	# no battle would produce, or "unwritten" and "written 0" are indistinguishable.
+	var flags_plain := FlagStore.new()
+	flags_plain.var_set("VAR_RESULT", 77)
+	var vm_plain := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_single", ["TRAINER_GRUNT", "Intro", "Defeat"]),
+				_op("end")],
+	}, texts), flags_plain)
+	vm_plain.start("A")
+	_run(vm_plain)
+	vm_plain.resume_after_battle(true)
+	_chk("L.24g a plain trainerbattle_single does NOT touch VAR_RESULT -- "
+			+ "source gates the write on TRAINER_BATTLE_EARLY_RIVAL alone",
+			flags_plain.var_get("VAR_RESULT") == 77)
 
 
 ## Section M -- the small opcode batch: checkplayergender, random,

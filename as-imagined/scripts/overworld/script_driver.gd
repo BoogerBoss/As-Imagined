@@ -213,8 +213,18 @@ func drive() -> void:
 			# `message` only OPENS the box. The compiled msgbox chain is
 			# message -> waitmessage -> waitbuttonpress, so the waiting belongs
 			# to WAIT_BUTTON below; resuming here is what lets the VM reach it.
-			if not _ow._box.is_open:
-				_ow._box.open(expanded_pages())
+			#
+			# ⚠️ **UNCONDITIONAL, AND IT USED TO BE GATED ON `not is_open`.**
+			# That gate made a `message` issued while an earlier box was still up
+			# show NOTHING — the new pages were dropped on the floor and the old
+			# ones stayed on screen, so the script then blocked on WAIT_BUTTON
+			# waiting for the player to dismiss text that had already been read.
+			# Reported from play as the rival standing at his Poké Ball until a
+			# keypress. Safe to open every time because WAIT_MESSAGE is entered
+			# exactly once per `message` opcode: `vm.resume()` on the line below
+			# clears it in the same frame it was set, so this branch can never
+			# re-run against the same op and re-type a page mid-read.
+			_ow._box.open(expanded_pages())
 			vm.resume()
 
 		ScriptVM.Pause.WAIT_BUTTON:
@@ -282,6 +292,16 @@ func drive() -> void:
 					_ow._box.close()
 					vm.pending_pages = PackedStringArray()
 				return
+			# [Bugfix, live-reported] The trainer's own win/lose speech, and
+			# whether Oak narrates. Handed over HERE rather than read off the VM
+			# by the battle screen, because the screen must not know a script VM
+			# exists — the same seam `pending_trainer_key` already crosses.
+			# Expanded now, while the buffers still hold this script's own
+			# `{RIVAL}` / `{PLAYER}` values.
+			_ow.set_script_battle_speech(
+					_expand_label(vm.pending_battle_defeat_text),
+					_expand_label(vm.pending_battle_victory_text),
+					vm.pending_battle_first_battle)
 			if not _ow.start_script_battle(vm.pending_trainer_key):
 				# Cannot start (no resolvable party, no scene). End the script
 				# rather than retrying this branch every frame forever.
@@ -427,6 +447,22 @@ func expanded_pages() -> PackedStringArray:
 	return out
 
 
+## [Bugfix, live-reported] Resolve a text LABEL to expanded pages.
+##
+## The sibling of `expanded_pages` above, for text the VM is carrying by NAME
+## rather than having already loaded — a trainer's win/lose speech is handed to
+## the battle screen at battle start, long before anything would `message` it.
+## Expanded here, not at the destination: `{RIVAL}` and `{PLAYER}` resolve
+## against THIS script's buffers, and the battle screen has none.
+func _expand_label(label: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	if vm == null or label == "":
+		return out
+	for page in vm.source_pages_for(label):
+		out.append(vm.buffers.expand(str(page)))
+	return out
+
+
 ## Start every movement the script has asked for since the last drain.
 ##
 ## Targets are LOCALIDs, not node paths — map data, resolved here rather than in
@@ -520,6 +556,30 @@ func apply_pending_object_ops() -> void:
 				if e2 != null:
 					e2.movement_type = str(op.get("value", ""))
 					_record_override(e2, "movement_type", e2.movement_type)
+					# ⚠️ **[Bugfix, live-reported: "after walking you into the
+					# lab Oak stays facing north rather than facing the player
+					# when delivering his pick-your-pokemon speech"] A FIXED
+					# MOVEMENT TYPE IS A FACING, AND ASSIGNING THE STRING ALONE
+					# CHANGED NOTHING VISIBLE.** In source this op writes the
+					# object's TEMPLATE, and the facing lands when the object is
+					# next spawned from it (`SetObjectEventDirection` with
+					# `GetInitialMoveTypeFacingDirection`). The corpus idiom is
+					# exactly that — `removeobject` / `setobjectxyperm` /
+					# `setobjectmovementtype` / `clearflag`, i.e. hide, move,
+					# retype, re-show — and `ChooseStarterScene` uses it to park
+					# Oak at the head of the room facing DOWN after his six-tile
+					# walk UP. `NPC._facing_from_movement_type()` only ever runs
+					# on an entity's very first `tick`, so a retype after that
+					# left him facing whichever way he last walked.
+					#
+					# Only the four `MOVEMENT_TYPE_FACE_*` types name a
+					# direction; `initial_facing()` answers SOUTH for everything
+					# else, and applying that to a LOOK_AROUND or WANDER retype
+					# would snap an NPC that source leaves alone (those pick
+					# their own direction on their next tick).
+					if MovementTypes.FIXED_FACING.has(e2.movement_type):
+						e2.set_facing(e2.facing_from_movement_type())
+						_record_override(e2, "facing", e2.facing())
 			"turn":
 				if not DIR_TOKEN.has(str(op.get("dir", ""))):
 					continue
@@ -552,6 +612,15 @@ func apply_pending_object_ops() -> void:
 			"player_visible":
 				if _ow._player != null:
 					_ow._player.visible = bool(op.get("value", true))
+			# [Bugfix, live-reported] `closemessage` — see that opcode's own doc
+			# comment in `ScriptVM` for the whole story. Idempotent: `close()`
+			# returns immediately when the box is already shut, which is the
+			# common case (a `msgbox` chain's own final keypress already closed
+			# it), so the 400-odd redundant `closemessage`s in the corpus cost
+			# nothing.
+			"close_message":
+				if _ow._box != null:
+					_ow._box.close()
 			# [Bugfix] Queued by a plain `setflag`/`clearflag` in `ScriptVM` —
 			# see that opcode's own doc comment. A generic flag write can
 			# affect ANY loaded entity's `visibility_flag`, not just the one

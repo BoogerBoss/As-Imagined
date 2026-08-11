@@ -134,8 +134,35 @@ static func make_sprite(graphics_id: String, facing: String) -> Sprite2D:
 	# A person is 16x32 on a 16x16 tile, so the sprite stands UP out of its
 	# cell with its feet on it rather than being centred in it.
 	spr.centered = false
-	spr.position = Vector2((CELL - size.x) * 0.5, CELL - size.y)
+	spr.position = Vector2((CELL - size.x) * 0.5, CELL - size.y) \
+			+ Vector2(DRAW_OFFSET.get(graphics_id, Vector2i.ZERO))
 	return spr
+
+
+## ⚠️ **[Bugfix, live-reported: "the town map in the rival's house is too far
+## left, move it right to be centrally located on a grid tile"] AUTHORED NUDGES,
+## AND THIS ONE IS A DELIBERATE DIVERGENCE FROM SOURCE — Rob's call, 2026-08-11.**
+##
+## The placement formula above is source-exact and reproduces the defect: source
+## puts an object event's sprite CENTRE on its cell centre (`sprite->x += 8` with
+## `centerToCornerVecX = -(width >> 1)`, `event_object_movement.c:1881-1884`), so
+## a 32-wide frame straddles half a tile either side.
+##
+## That is invisible for people sprites, whose art fills the frame — but
+## `OBJ_EVENT_GFX_TOWN_MAP` is a 32x16 frame whose art occupies **only columns
+## 3-15** (measured; the right half is fully transparent). Centring the FRAME
+## therefore puts the ART's own centre at cell_px+1 against a cell centre of
+## cell_px+8: seven pixels left, which is what reads as off-grid.
+##
+## +7 puts the art's centre on the cell's. FRLG has the same misalignment; this
+## project chooses not to. **Do not "correct" this back against the reference** —
+## it will look like drift and is not.
+##
+## Keyed per graphics id so a future nudge is one row rather than a special case
+## in the formula, and so the 384 sprites that need nothing pay nothing.
+const DRAW_OFFSET := {
+	"OBJ_EVENT_GFX_TOWN_MAP": Vector2i(7, 0),
+}
 
 
 ## Build this entity's sprite, if it has one.

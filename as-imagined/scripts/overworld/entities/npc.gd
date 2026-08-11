@@ -155,7 +155,7 @@ func tick(delta: float, rng: RandomNumberGenerator) -> Vector2i:
 	if not _spawned:
 		_spawned = true
 		_spawn_cell = cell
-		_facing = _facing_from_movement_type()
+		_facing = facing_from_movement_type()
 	var choices := direction_choices()
 	if choices.is_empty():
 		return cell
@@ -170,7 +170,13 @@ func tick(delta: float, rng: RandomNumberGenerator) -> Vector2i:
 	return cell + StepResolver.STEP[dir]
 
 
-func _facing_from_movement_type() -> int:
+## [Bugfix, live-reported: Oak stays facing north through his starter speech]
+## PUBLIC because `setobjectmovementtype` needs it too — source's own retype
+## lands its facing when the object next spawns from its template, and this is
+## the equivalent. It used to be private and called from exactly one place
+## (`tick`'s first-run branch), which is why a mid-cutscene retype changed the
+## string and nothing else.
+func facing_from_movement_type() -> int:
 	match initial_facing():
 		"NORTH": return StepResolver.Dir.NORTH
 		"WEST": return StepResolver.Dir.WEST

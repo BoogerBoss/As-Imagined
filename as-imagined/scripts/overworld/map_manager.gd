@@ -176,6 +176,24 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	# the save and is layered back on load. Same shape as `entity_visible`
 	# reading a FLAG rather than the scene knowing it is hidden.
 	_apply_object_event_overrides(map_name, root)
+	# ⚠️ **[Bugfix, live-reported: "you can walk right through the sign girl when
+	# she is in her alternate position near the north entrance to Pallet"]
+	# REBUILT BECAUSE THE LINE ABOVE MOVES ENTITIES AFTER `register_chunk` HAS
+	# ALREADY BUILT IT.** Occupancy is derived from the BAKED cells, and then
+	# `_apply_object_event_overrides` assigns `e.cell` directly — bypassing
+	# `move_entity`, which is the only writer that keeps the set in step — so a
+	# repositioned NPC left a phantom block on the tile she used to stand on and
+	# none on the one she now occupies. Exactly the symptom the `setobjectxyperm`
+	# handler's own doc comment predicts for a direct `e.cell` assignment; it was
+	# fixed there and reintroduced here by a different route.
+	#
+	# A full rebuild rather than an incremental update: this runs once per chunk
+	# load, the loop is over one map's entities, and the alternative needs the
+	# pre-override cell threaded out of a function whose whole job is to
+	# overwrite it. Gated on there being any override at all, so the ordinary
+	# load — no script has ever moved anything — pays nothing.
+	if ObjectEventState.has_any():
+		rebuild_occupancy(map_name)
 	# [Bugfix, live-reported: Oak's Lab starter ball / rival never disappear]
 	# `removeobject`/`addobject` only ever flipped the FLAG (`entity_visible()`'s
 	# own backing store) — nothing ever re-derived a node's `.visible` from it,
@@ -847,6 +865,30 @@ func entity_node_at(gcell: Vector2i) -> OverworldEntity:
 ## walks every coord_event at a position and returns the first one whose
 ## condition actually passes; this is the seam that lets callers reproduce
 ## that instead of trusting scene-tree order alone.
+##
+## ⚠️ **[Bugfix, live-reported: "clicking anywhere on the table in Oak's lab
+## reads 'that's Oak's last POKéMON' even if there is no longer a Poké Ball
+## there"] HIDDEN ENTITIES ARE SKIPPED, AND THEY USED NOT TO BE.** A
+## `removeobject` (and every `FLAG_HIDE_*`) only flips `.visible` and drops the
+## cell from the occupancy set — the node stays in the tree, which is what lets
+## `addobject` reverse it. This function answered with it anyway, so an
+## invisible Poké Ball still ran `EventScript_BulbasaurBall`, which by then
+## resolves to the `VAR_MAP_SCENE >= 3` arm: "That's PROF. OAK's last POKéMON."
+## Three balls become three ghosts on an empty table.
+##
+## Source cannot reach one: `GetObjectEventIdByPosition` searches only ACTIVE
+## object events, and a removed one is inactive. Keyed on `.visible` rather than
+## re-reading `FlagStore` because `apply_entity_visibility` already writes it
+## from exactly that flag, and a second derivation is a second thing to keep in
+## step.
+##
+## ⚠️ Warps, triggers and signs are unaffected: they carry no `visibility_flag`
+## (source's own `warp_events`/`coord_events`/`bg_events` arrays have no such
+## field), so `FlagStore.entity_visible` answers true and `.visible` stays true.
+## Disclosed edge: an NPC hidden mid-cutscene by `applymovement`'s own
+## `set_invisible` also stops answering here, where source's would still be
+## found — unreachable in practice, since a running script owns input and
+## nothing can press A at it.
 func entities_at(gcell: Vector2i) -> Array[OverworldEntity]:
 	var out: Array[OverworldEntity] = []
 	var map_name := chunk_owning(gcell)
@@ -858,7 +900,7 @@ func entities_at(gcell: Vector2i) -> Array[OverworldEntity]:
 	var local: Vector2i = gcell - Vector2i(_chunks[map_name]["origin"])
 	for n in root.find_children("*", "OverworldEntity", true, false):
 		var e := n as OverworldEntity
-		if e != null and e.cell == local:
+		if e != null and e.cell == local and e.visible:
 			out.append(e)
 	return out
 
