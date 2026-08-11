@@ -1020,7 +1020,16 @@ func _test_batch4_strike_family() -> void:
 			distinct.size() > 1)
 
 	# SpinningKickOrPunch SNAPS back to full size and zero rotation before it
-	# holds -- if the snap were missing it would vanish mid-shrink.
+	# holds -- if the snap were missing the fist would stay looming.
+	#
+	# ⚠️ **THIS ASSERTION USED TO READ "the kick shrinks while spinning" AND WAS
+	# BACKWARDS** (corrected 2026-08-11 with M36R's own direction fix). An
+	# affine table's xScale accumulator is an INVERSE scale, so Mega Punch's
+	# -4 makes the fist GROW. Source settles it by name: `gGrowAndShrink`
+	# opens (-4,-5) and `gShrinkAndGrow` opens (+4,+5)
+	# (battle_anim_effects_2.c:490-504). The old assertion was written from
+	# the implementation rather than from source, so it locked the inversion
+	# in and passed for years; it is rewritten, not relaxed.
 	var s2 := FakeStage.new()
 	var vm2 := _make_vm(s2)
 	vm2.args[3] = 10
@@ -1029,7 +1038,7 @@ func _test_batch4_strike_family() -> void:
 	var full := n2.scale if n2 != null else Vector2.ONE
 	_step(vm2, 6)
 	var mid := n2.scale if n2 != null and is_instance_valid(n2) else full
-	_chk("the kick shrinks while spinning", mid.x < full.x)
+	_chk("the kick GROWS while spinning (a negative xScale delta looms)", mid.x > full.x)
 	_step(vm2, 8)
 	_chk("...then snaps back to full size for the landing hold",
 			n2 != null and is_instance_valid(n2)
