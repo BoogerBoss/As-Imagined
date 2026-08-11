@@ -237,30 +237,37 @@ const _USED_MOVE_MESSAGE_SECONDS := 0.5
 ## against `sStep1Funcs` will find it short by 3.2 frames — that is intended,
 ## not drift.**
 ##
-## ⚠️ **THE CONSTANT IS NOT THE SPEED, AND THE DIFFERENCE IS BIG ENOUGH TO
-## MATTER — measured, by walking 12 tiles and timing between cell changes:**
+## ⚠️ **THE CONSTANT IS NOT THE SPEED, AND THE GAP IS FRAME-TIED — measured, by
+## timing every step start and every `_moving` -> false at two refresh rates:**
 ##
-##   | this constant | REAL frames/tile | vs an NPC |
-##   |---------------|------------------|-----------|
-##   | `9.6 / 60.0`  | 11.1             | 1.45x     |
-##   | `12.8 / 60.0` | **14.0**         | **1.15x** |
-##   | `16.0 / 60.0` | 17.3             | 0.93x     |
+##   | refresh | tween    | stall   | per tile | stall in render frames |
+##   |---------|----------|---------|----------|------------------------|
+##   | 60 Hz   | 200.1 ms | 33.1 ms | 233.2 ms | **1.99**               |
+##   | 144 Hz  | 208.2 ms | 14.0 ms | 222.2 ms | **2.02**               |
 ##
-## The extra ~1.2 frames is a real per-tile STALL that only this path has: the
-## step is a Tween, and the next step cannot start until `_process` sees
-## `_moving` go false on the FOLLOWING frame. `MovementRunner` has no such gap
-## (it measured 16.1 against source's 16, which is what validates the probe).
+## ⚠️ **EXACTLY TWO RENDER FRAMES AT BOTH RATES, WHICH MEANS THIS PATH IS
+## REFRESH-RATE DEPENDENT — the `[M26G4]` bug class this project has already
+## fought everywhere else.** The tween is wall clock and behaves; the stall is
+## not, so a tile costs 233 ms at 60 Hz and 222 ms at 144 Hz. **The player walks
+## 5% faster on a 144 Hz monitor**, and would be markedly slower at 30.
+##
+## The cause: the step is a Tween, and the next one cannot begin until a
+## `_process` OBSERVES `_moving` go false — which is two frames after the tween's
+## last step, because the callback that clears it does not run until after
+## `_process` has already passed. `MovementRunner` has no such gap: it measured
+## 16.1 frames against source's 16, which is what validates the probe.
 ##
 ## ⚠️ **SO `16.0 / 60.0` DOES NOT MAKE THE PLAYER SOURCE-EXACT — an earlier draft
 ## of this comment said it would, and the measurement says otherwise.** It
-## overshoots to 17.3 and leaves the player SLOWER than the NPCs he is walking
-## beside. Closing that properly means removing the one-frame stall, not raising
-## this number. Recorded rather than fixed: it is a change to the input step's
-## own scheduling, which is not what a feel-tuning ask should quietly drag in.
+## overshoots to 17.3 effective frames and leaves the player SLOWER than the
+## NPCs beside him. Closing that means starting the next step from the tween's
+## own completion instead of from a later `_process` poll — a change to this
+## path's SCHEDULING, deliberately not dragged into a feel-tuning ask.
 ##
-## The 12.8 midpoint was chosen on the constants and then confirmed on the
-## clock: the midpoint of the two REAL figures is 14.2 frames, and this measures
-## 14.0.
+## Effective figures at 60 Hz, for choosing a value: `9.6` -> 11.1 frames
+## (1.45x an NPC), `12.8` -> 14.0 (1.15x), `16.0` -> 17.3 (0.93x). The midpoint
+## was picked on the constants and then confirmed on the clock: the midpoint of
+## the two real figures is 14.2, and this measures 14.0.
 const _WALK_STEP_SECONDS := 12.8 / 60.0
 const _RUN_STEP_SECONDS := _WALK_STEP_SECONDS / 2.0
 
