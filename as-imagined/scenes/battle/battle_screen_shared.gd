@@ -816,6 +816,52 @@ var _winner_side: int = -1
 ## `BattleSetupContext.is_overworld_battle` true) is unaffected.
 var is_overworld_battle: bool = false
 
+## ⚠️ **[Bugfix, live-reported: "if Gary wins he doesn't say his alternate
+## dialogue, he still acts as if he lost"] THE TRAINER'S OWN POST-BATTLE
+## SPEECH — AND BOTH DIRECTIONS WERE SILENT, NOT JUST THE LOSS.** Source prints
+## one of these from `GetTrainerLoseText` / `GetTrainerWonSpeech`
+## (`battle_message.c`) at the end of every trainer battle. This project carried
+## the win-side text on the script VM since Stage 2 and consumed it nowhere, and
+## discarded the loss-side text at parse time.
+##
+## Already `{RIVAL}`/`{PLAYER}`-expanded by the overworld — this screen has no
+## text buffers and no idea a script VM exists. Empty for every wild, fixture
+## and simulator battle, which is what keeps those paths unchanged.
+##
+## ⚠️ Naming is source's and reads backwards until you know it: `_defeat_` is
+## what the trainer says about THEIR defeat, i.e. when the player WINS.
+var _script_defeat_pages: PackedStringArray = PackedStringArray()
+var _script_victory_pages: PackedStringArray = PackedStringArray()
+
+## ⚠️ **`BATTLE_TYPE_FIRST_BATTLE` — Oak narrates.** In FRLG the lab rival fight
+## runs on an entire alternate battle controller
+## (`battle_controller_oak_old_man.c`) with eight interjections and real
+## mechanical side-effects. **This project ships the OPENING AND CLOSING LINES
+## ONLY — Rob's scope call, 2026-08-11 — and that is a deliberate slice, not an
+## unfinished port.** Specifically NOT built, each with its source anchor so a
+## later session can pick them up rather than re-derive them:
+##   * `sText_InflictingDamageIsKey` — first damage dealt to the foe
+##     (`battle_controllers.c:2183`)
+##   * `sText_LoweringStats` — first stat drop landed (`:729`)
+##   * `sText_KeepAnEyeOnHP` / `sText_ForPetesSake`'s HP-restore arm (`:340`)
+##   * `sText_OakNoRunningFromATrainer` — a run attempt (`:743`)
+##   * the party-menu line (`party_menu.c:7489`)
+##   * `ShouldSkipFRLGAccuracyCheck` — the player's damaging moves cannot miss
+##     until Oak has said his first two lines (`battle_move_resolution.c:2155`)
+##   * the no-running block (`battle_main.c:3972`)
+## The last two are MECHANICS rather than text and would touch the accuracy and
+## escape pipelines the simulator shares, which is why they are the ones most
+## worth deciding deliberately rather than adding by momentum.
+var _first_battle_tutorial: bool = false
+
+## The two inputs the whiteout narration needs, handed over by the overworld at
+## battle-start time -- see `BattleSetupContext.whiteout_on_loss`/`party_level`
+## for each one's own reasoning, and `_log_battle_end_result` for the use.
+## Their defaults are the harmless ones for every non-overworld caller, which
+## never reaches the branch that reads them anyway.
+var _whiteout_on_loss: bool = true
+var _whiteout_party_level: int = 1
+
 # [M23.2 addendum] Log-ordering fix — see _flush_pending_effect_lines()'s own
 # doc comment for the full mechanism.
 var _pending_effect_lines: Array[String] = []
@@ -859,10 +905,16 @@ const _TEXT_REVEAL_SECONDS_PER_CHAR := 0.016745
 # battle_interface.c) advances maxHP/24 HP per frame with B_FAST_HP_DRAIN=
 # TRUE and B_HEALTHBAR_PIXELS=48 -- i.e. a full 0%<->100% traversal always
 # takes exactly 24 frames (~0.402s) regardless of the mon's own max HP,
-# scaled proportionally for partial drains. At the requested 2x speed: a
-# full-bar traversal takes ~0.201s. Drives the "hp_drain" beat's own tween
-# duration (this * abs(from_frac - to_frac)).
-const _HP_DRAIN_SECONDS_FULL_BAR := 0.201
+# scaled proportionally for partial drains. Drives the "hp_drain" beat's own
+# tween duration (this * abs(from_frac - to_frac)).
+#
+# Rob's call, after the KO-ordering fix made this bar's drain actually visible
+# for the first time on a finishing blow: slow it by ~33%. Held as a FRACTION
+# OF SOURCE'S OWN 0.402s rather than as a tweaked multiple of the previous
+# value, so the anchor survives the next adjustment — 0.402 * 2/3 = 0.268,
+# which is exactly +33.3% on the 0.201 it replaces and lands the project at
+# ~1.5x source pace instead of 2x.
+const _HP_DRAIN_SECONDS_FULL_BAR := 0.268
 
 # [EXP bar animation fix] Source drives the EXP bar through the same
 # MoveBattleBar/CalcNewBarValue machinery as the HP bar (battle_interface.c,
@@ -872,8 +924,15 @@ const _HP_DRAIN_SECONDS_FULL_BAR := 0.201
 # (per this project's own "port the behaviour, not the mechanism" rule) --
 # what a player sees is "the bar visibly fills, proportional to how far it
 # travels," which this reuses _HP_DRAIN_SECONDS_FULL_BAR's own proportional-
-# duration shape for, disclosed here as a simplification of the real
+# duration SHAPE for, disclosed here as a simplification of the real
 # variable-speed formula rather than a literal port of it.
+#
+# ⚠️ IT REUSES THE SHAPE, NOT THE NUMBER, AND THE TWO NO LONGER MATCH. They
+# happened to share 0.201 until Rob slowed the HP bar to 0.268; this one was
+# deliberately left alone, since nothing about the EXP bar was reported as too
+# fast and the two bars are seen at completely different moments. Do not
+# "restore consistency" between them without being asked -- they are separate
+# constants precisely so they can be tuned separately.
 const _EXP_DRAIN_SECONDS_FULL_BAR := 0.201
 
 # [M26o] How long the party-status ball row stays visible once shown, before
@@ -1209,6 +1268,11 @@ var _pending_beats: Array[Dictionary] = []
 ## still mid-tween -- without this, both calls would iterate the SAME
 ## `_pending_beats` array concurrently and double-play every beat.
 var _pacing_active := false
+
+## Emitted when a `_run_message_pacing()` drain finishes. Exists solely so a
+## re-entrant call can await the drain already in flight instead of racing it --
+## see that function's own comment for the KO-ordering bug that needed.
+signal _pacing_finished
 
 ## [M27R 7a-3b] The battle's own sound player.
 ##
@@ -1767,6 +1831,27 @@ var _anim_dispatcher: AnimDispatcher = null
 # guessed.
 signal anim_script_started(move_id: int)
 signal anim_script_finished(move_id: int, frames: int)
+
+## ⚠️ **[Bugfix, live-reported: Oak's speech "goes by super fast"] THE PLAYER
+## PRESSED A ON A DIALOGUE PAGE.** Fired from `_unhandled_input`, awaited by the
+## `wait_press` arm of the text beat — the battle screen's first input-gated
+## pause. See that arm for why it is opt-in rather than applied to every line.
+signal message_press
+
+## True only while a beat is actually blocked on the signal above. ⚠️ It is what
+## makes the interception NARROW: `_unhandled_input`'s existing `ui_accept` arm
+## runs `_confirm_cursor_selection()`, so without this flag a press meant to turn
+## a dialogue page would also activate whatever menu button the cursor happens to
+## be parked on.
+var _await_message_press: bool = false
+
+## The reveal tween of the page currently being typed, while that page is
+## press-gated. ⚠️ Held so a press can SKIP the typing rather than being
+## swallowed — `MessageBox.advance()` already draws exactly this line in the
+## overworld ("source lets you skip"), and without it the first press of a
+## two-page speech lands during the reveal, does nothing, and the player is left
+## pressing A at a box that has already finished waiting. Found by probe.
+var _message_reveal_tween: Tween = null
 var _anim_behaviors := AnimBehaviorRegistry.new()
 
 # [M26c-4] TARGET_SELECT click-to-target — real health-box hover zones
@@ -1872,6 +1957,19 @@ func _ready() -> void:
 		background_id = BattleSetupContext.background_id
 		opp_trainer_key = BattleSetupContext.opp_trainer_key
 		is_overworld_battle = BattleSetupContext.is_overworld_battle
+		# [Bugfix, live-reported] The trainer's own win/lose speech and Oak's
+		# tutorial flag. Captured here with everything else and for the same
+		# reason — `clear()` on the next line wipes the statics, and reading
+		# them later gets the reset value. That exact mistake is what the
+		# `is_wild_battle` note above records.
+		_script_defeat_pages = BattleSetupContext.script_defeat_pages
+		_script_victory_pages = BattleSetupContext.script_victory_pages
+		_first_battle_tutorial = BattleSetupContext.first_battle_tutorial
+		# The whiteout narration's own two inputs, captured here with everything
+		# else and for the same reason -- `clear()` on the next line wipes the
+		# statics. See `_log_battle_end_result` for what they decide.
+		_whiteout_on_loss = BattleSetupContext.whiteout_on_loss
+		_whiteout_party_level = BattleSetupContext.party_level
 		BattleSetupContext.clear()
 	else:
 		is_doubles_battle = _build_teams()
@@ -2121,9 +2219,19 @@ func _ready() -> void:
 	# Deliberately skipped under --autoplay / off-tree, where the send-out
 	# animations bypass themselves and nothing would ever re-show these.
 	if not (_is_autoplay_run or not is_inside_tree()):
+		# ⚠️ A WILD FOE IS ALREADY ON THE FIELD AND STAYS THERE. Source draws
+		# it at BATTLE_INTRO_STATE_DRAW_SPRITES — the first visual phase,
+		# before any text — because there is no trainer to send it out later
+		# (`battle_main.c:3446`, `EmitLoadMonSprite`). Hiding it here and
+		# revealing it at the dismiss step would make it pop into existence
+		# mid-intro. The PLAYER's side is cleared either way: their own throw
+		# is real in both battle kinds.
 		_set_opponent_mon_sprites_visible(false)
 		_set_player_mon_sprites_visible(false)
 		_set_health_panels_visible(false)
+		if _bm != null and _bm.is_wild_battle:
+			_set_opponent_mon_sprites_visible(true)
+			_set_side_health_panels_visible(false, true)
 		# [Intro menu-artifact fix] The ActionPanel needs the same
 		# treatment: without this, the .tscn's authored placeholder menu
 		# (default font/chrome, no Switch, "..." prompt) sits in plain view
@@ -2184,6 +2292,19 @@ func _ready() -> void:
 	# (wrongly-ordered) first intro drain had.
 	_restore_battle_start_beats(battle_start_beats)
 	await _run_message_pacing()
+
+	# ⚠️ **[Bugfix, live-reported: "there is supposed to be an Oak speech in the
+	# middle of the first rival fight"] HERE, AFTER BOTH SEND-OUTS AND BEFORE
+	# THE FIRST MENU — which is source's own placement, not a convenient one.**
+	# `battle_controller_oak_old_man.c:406` swaps the controller to
+	# `PrintOakText_ForPetesSake` from inside `HandleInputChooseAction`, i.e.
+	# Oak speaks the instant the player would first be asked to choose, so the
+	# speech lands between "Go! BULBASAUR!" and the FIGHT menu rather than over
+	# the intro. Printing it earlier would talk over the send-outs it is
+	# reacting to.
+	if _first_battle_tutorial:
+		_queue_oak_tutorial(_OAK_FIRST_BATTLE_INTRO)
+		await _run_message_pacing()
 
 	# [Autoplay] No existing CLI-arg/env-var convention exists anywhere in
 	# this codebase for a headless-vs-interactive toggle — every one of the
@@ -2300,7 +2421,7 @@ signal battle_finished(outcome: int)
 
 func _on_battle_ended(winner_side: int) -> void:
 	_winner_side = winner_side
-	_log("You win!" if winner_side == 0 else "You lose!")
+	_log_battle_end_result(winner_side)
 	_clear_active_hit_effects()
 	# [M26c-4] Defensive, matching _clear_active_hit_effects' own precedent
 	# just above -- a focus tween is one more Tween object that could
@@ -2337,6 +2458,73 @@ func _on_battle_ended(winner_side: int) -> void:
 	if _bm != null and _bm.caught_pokemon != null:
 		outcome = BattleOutcome.CAUGHT
 	_return_to_overworld_if_pending(outcome)
+
+
+## The closing line, which is NOT the same sentence in both halves of this
+## project — reported from play as "it says You win at the end of a wild battle
+## which is not matching source".
+##
+## ⚠️ **SOURCE PRINTS NOTHING AT ALL WHEN YOU BEAT A WILD POKÉMON.**
+## `HandleEndTurn_BattleWon` (`battle_main.c`) branches three ways, and the
+## non-trainer arm is a bare `gBattlescriptCurrInstr =
+## BattleScript_PayDayMoneyAndPickUpItems` — no victory string anywhere on it.
+## The trainer arm reaches `BattleScript_LocalTrainerBattleWon`, whose text is
+## "You defeated {trainer}!" and which `_show_trainer_battle_end` already
+## queues; a generic "You win!" on top of it was a second, invented line.
+##
+## The loss arm is `BattleScript_LocalBattleLost`, and it is THREE lines, not
+## one (`data/battle_scripts_1.s:2914-2930`, taking the `B_WHITEOUT_MONEY >=
+## GEN_4` arm this project's config selects):
+##
+##     getmoneyreward                                <- deduction, first
+##     printstring STRINGID_PLAYERWHITEOUT           "You have no more Pokémon that can fight!"
+##     jumpifbattletype BATTLE_TYPE_TRAINER, ...End
+##     printstring STRINGID_PLAYERWHITEOUT2_WILD     "You panicked and dropped ¥{n}…"
+##     printstring STRINGID_PLAYERWHITEOUT3          "You were overwhelmed by your defeat!"
+##   ...End:
+##     printstring STRINGID_PLAYERWHITEOUT2_TRAINER  "You gave ¥{n} to the winner…"
+##     printstring STRINGID_PLAYERWHITEOUT3
+##
+## ⚠️ THE MIDDLE LINE BRANCHES ON WILD-VS-TRAINER — the same distinction the win
+## arm makes, arriving from the other direction — while the third is
+## unconditional on both. Strings at `battle_message.c:209-212`.
+##
+## ⚠️ AND THE WHOLE BLOCK SITS BEHIND `jumpifnowhiteout` (`:2912`): a rival fight
+## you are MEANT to lose heals you and narrates none of it. That is
+## `_whiteout_on_loss`, handed over at battle start because it lives on the
+## overworld's `ScriptVM` and this screen cannot reach one.
+##
+## ⚠️ **THE ¥ FIGURE GOES THROUGH `OverworldSession.whiteout_payout`, THE SAME
+## FUNCTION THE OVERWORLD LATER CHARGES WITH.** Source computes and deducts in
+## `getmoneyreward`, the first instruction of that script; this project moved the
+## deduction to the battle-RETURN path (`[M27O O3]`), so the narration and the
+## charge now sit on opposite sides of the battle boundary. One shared function
+## is what keeps them honest — and the clamp is why it matters rather than being
+## tidiness: the payout is `min(asked, wallet.money)`, so a screen with its own
+## copy of the formula could print "You gave ¥2400 to the winner…" while the
+## player was actually charged the ¥900 they had. The text drains here, in
+## `_on_battle_ended`, strictly before `_return_to_overworld_if_pending` hands
+## control back, so the wallet is untouched at the moment this reads it.
+##
+## ⚠️ THE SIMULATOR KEEPS ITS OWN WORDING, DELIBERATELY. A non-overworld battle
+## ends on this project's own invented Play Again screen, which has no source
+## counterpart at all (recorded under M35: source has no battle-end screen —
+## it fades straight back to the overworld), so there is nothing to be faithful
+## to and "You win!"/"You lose!" is the honest framing for it.
+func _log_battle_end_result(winner_side: int) -> void:
+	if not overlay_mode:
+		_log("You win!" if winner_side == 0 else "You lose!")
+		return
+	if winner_side == 0 or not _whiteout_on_loss:
+		return
+	_log("You have no more Pokémon that can fight!")
+	var payout: int = OverworldSession.whiteout_payout(_whiteout_party_level)
+	var is_wild: bool = _bm != null and _bm.is_wild_battle
+	if is_wild:
+		_log("You panicked and dropped ¥%d…" % payout)
+	else:
+		_log("You gave ¥%d to the winner…" % payout)
+	_log("You were overwhelmed by your defeat!")
 
 
 ## [M27D D5] Hand control back to the overworld, if that is where we came from.
@@ -2384,16 +2572,23 @@ func _return_to_overworld_if_pending(outcome: int) -> void:
 # are out of scope per Rob's own call). The trainer simply stays on screen
 # as the battle ends.
 #
-# TEXT, disclosed gap: the trainer's actual speech (STRINGID_TRAINER1LOSE
-# TEXT / ...WINTEXT) resolves to `{B_TRAINER1_LOSE_TEXT}`, a placeholder
-# filled from the MAP SCRIPT that started the battle -- `trainerbattle_
-# single TRAINER_X, <intro_text>, <lose_text>` (asm/macros/event.inc:787).
-# It is per-encounter authored dialogue, not trainer data, so it is NOT in
-# `trainers.party` and this project has no source for it. Deliberately not
-# pulled rather than merely unbuilt: it is Hoenn dialogue bound to an
-# overworld this project doesn't have, for a game whose own Kanto roster
-# will be authored, so importing it would be actively wrong. The generic
-# "You defeated ...!" line IS a real template and is reproduced.
+# ⚠️ **TEXT — THIS GAP IS CLOSED, AND THE NOTE THAT STOOD HERE HAS EXPIRED.**
+# It read: the trainer's speech (STRINGID_TRAINER1LOSETEXT / ...WINTEXT)
+# resolves to `{B_TRAINER1_LOSE_TEXT}`, filled from the MAP SCRIPT that
+# started the battle (`trainerbattle_single TRAINER_X, <intro>, <lose>`,
+# asm/macros/event.inc:787), so it is per-encounter authored dialogue rather
+# than trainer data — "this project has no source for it ... it is Hoenn
+# dialogue bound to an overworld this project doesn't have."
+#
+# Every clause of that was true when written and the last one is now false:
+# `[M27F]` built the overworld, `field_script_source/` is the authored Kanto
+# corpus, and the script VM has been carrying `pending_battle_defeat_text`
+# from that very argument ever since — with nothing reading it. So the text
+# was not missing, it was arriving and being dropped. Reported from play as
+# the rival saying nothing after winning. See `_script_defeat_pages`.
+#
+# What is still true and still deliberate: nothing is imported from Hoenn.
+# The pages come from whichever script started THIS battle, or are empty.
 func _show_trainer_battle_end(winner_side: int) -> void:
 	if _opponent_trainer_sprite == null:
 		return
@@ -2406,6 +2601,16 @@ func _show_trainer_battle_end(winner_side: int) -> void:
 		# this project has the data for.
 		# `sText_PlayerDefeatedLinkTrainerTrainer1` = "You defeated
 		# {B_TRAINER1_NAME_WITH_CLASS}!" (src/battle_message.c:88).
+		#
+		# ⚠️ **THIS BEAT IS NOW DRAINED (below the off-tree guard), AND IT USED
+		# NOT TO BE — WHICH MEANT IT NEVER SHOWED ON THE OVERLAY PATH.**
+		# Queueing a beat only makes it eligible; something has to
+		# `await _run_message_pacing()`. `_on_battle_ended` drains BEFORE
+		# calling this function and then goes straight on to
+		# `_return_to_overworld_if_pending`, which emits `battle_finished` and
+		# lets the overworld free this whole screen — so the drain that would
+		# eventually have run, as `_dispatch_move`'s await chain unwound, came
+		# after the node was already gone.
 		_queue_text_beat("You defeated %s!" % _trainer_name_with_class(trainer))
 
 	# Clear the slot on BOTH paths, which is a deliberate divergence from
@@ -2428,6 +2633,14 @@ func _show_trainer_battle_end(winner_side: int) -> void:
 	if _is_autoplay_run or not is_inside_tree():
 		return
 
+	# The win line prints BEFORE the trainer walks back on, which is source's
+	# own order (`BattleScript_LocalBattleWonLoseTexts` prints, then
+	# `trainerslidein`). Below the guard above deliberately: off-tree and under
+	# --autoplay `_run_message_pacing` clears the queue rather than playing it,
+	# so draining above the guard would make the beat unobservable to a test
+	# that has no message box to read anyway.
+	await _run_message_pacing()
+
 	var rest_x := _opponent_trainer_sprite.position.x
 	_opponent_trainer_sprite.position.x = rest_x + _TRAINER_SLIDE_DISTANCE
 	_opponent_trainer_sprite.visible = true
@@ -2436,6 +2649,33 @@ func _show_trainer_battle_end(winner_side: int) -> void:
 			_TRAINER_SLIDE_IN_SECONDS)
 	await slide_in.finished
 	# Left standing deliberately -- see the no-slide-out note above.
+
+	# ⚠️ **[Bugfix, live-reported: "if Gary wins he doesn't say his alternate
+	# dialogue, he still acts as if he lost"] THE TRAINER'S OWN SPEECH, AND IT
+	# WAS SILENT IN BOTH DIRECTIONS — the report only noticed the loss side.**
+	# Source prints one of these right here, AFTER the slide-in
+	# (`BattleScript_LocalBattleWonLoseTexts` / `..._LocalBattleLostPrintTrainers
+	# WinText`, data/battle_scripts_1.s), which is what makes it read as the
+	# trainer speaking rather than as a caption.
+	#
+	# ⚠️ Naming reads backwards until you know it is source's: `_defeat_pages`
+	# is what the trainer says about THEIR OWN defeat, i.e. on a player WIN.
+	# Both are empty for every wild, fixture and simulator battle, so this is a
+	# no-op on those paths rather than a new branch in them.
+	if winner_side == 0:
+		_queue_page_beats(_script_defeat_pages)
+	else:
+		_queue_page_beats(_script_victory_pages)
+
+	# Oak's closing verdict, on the one battle he narrates. AFTER the rival's
+	# own line, matching source's controller order — the rival reacts to the
+	# battle, then Oak comments on the pair of them. See
+	# `_first_battle_tutorial` for what this slice deliberately leaves out.
+	if _first_battle_tutorial:
+		_queue_oak_tutorial(_OAK_FIRST_BATTLE_WIN if winner_side == 0
+				else _OAK_FIRST_BATTLE_LOSS)
+
+	await _run_message_pacing()
 
 
 # "{B_TRAINER1_NAME_WITH_CLASS}" -- the class prefix plus the name, e.g.
@@ -4465,6 +4705,34 @@ static func _format_debug_breakdown(attacker: BattlePokemon, defender: BattlePok
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# ⚠️ **[Bugfix, live-reported: Oak's speech "goes by super fast"] FIRST, AND
+	# IT CONSUMES THE EVENT.** A dialogue page is waiting on A, and every other
+	# `ui_accept` arm in this function drives a MENU — `_confirm_cursor_selection`
+	# below would fire on whatever button the cursor is parked on while the box
+	# is up. So this returns rather than falling through, and marks the event
+	# handled so nothing further down the tree sees it either.
+	#
+	# Narrow by construction: `_await_message_press` is true only for the exact
+	# span of one awaited page.
+	if _await_message_press and event.is_action_pressed("ui_accept"):
+		# ⚠️ TWO MEANINGS FOR ONE PRESS, and this is `MessageBox.advance()`'s own
+		# split: mid-reveal it SKIPS the typing, and once the page is fully shown
+		# it TURNS it. Collapsing them would make every early press vanish.
+		# ⚠️ **KEYED ON THE HANDLE BEING SET, NOT ON `is_running()` — measured.**
+		# A Tween created this frame reports `is_running() == false` until it
+		# first steps, so an `is_running()` test drops a press landing on the
+		# very first frame of a page: the handler took the else-arm, emitted at
+		# nothing (the coroutine is not awaiting yet, it is still revealing), and
+		# the press vanished. The handle is assigned and cleared by the reveal
+		# loop itself, so its non-null span IS "this page is still typing".
+		if _message_reveal_tween != null and is_instance_valid(_message_reveal_tween):
+			_message_reveal_tween.kill()
+			_message_label.visible_ratio = 1.0
+		else:
+			message_press.emit()
+		get_viewport().set_input_as_handled()
+		return
+
 	# [M25d] Raw keycode check rather than an InputMap action -- this
 	# project has no [input] section/action convention established yet
 	# anywhere (confirmed via direct project.godot inspection before adding
@@ -5195,7 +5463,32 @@ func _exit_message_mode() -> void:
 # get_tree()/create_tween() both need a live tree) — the one precedent this
 # codebase already established for this exact class of bypass.
 func _run_message_pacing() -> void:
+	# ⚠️ **A RE-ENTRANT CALL WAITS FOR THE DRAIN IN FLIGHT. IT MUST NOT RETURN
+	# IMMEDIATELY, AND DOING SO WAS A REAL, VISIBLE BUG.**
+	#
+	# Reported from play: "opponent HP drains fully BEFORE the attack animation
+	# that would KO." Traced with a per-beat timestamp print — on a
+	# battle-ending KO the beats drain in the right ORDER (anim at t+0.8s,
+	# hp_drain at t+3.3s), but `_refresh_ui()` ran at t+0.0s with
+	# `_pacing_active` already true, and `_refresh_ui` -> `_refresh_battlefield_
+	# side` -> `panel.refresh(...)` SNAPS every HP bar to its current value. The
+	# bar was therefore already empty before the animation started, and the
+	# hp_drain beat later read `from_frac` off that same emptied bar (see its
+	# own comment for why it must), so its tween had zero distance to travel
+	# and never showed.
+	#
+	# The path is specific to a KO that ENDS the battle, which is why it took
+	# real play to find: `_on_battle_ended` drains the queue itself (see its own
+	# comment for why it must), so `_dispatch_move`'s trailing
+	# `await _run_message_pacing()` was the re-entrant one — it returned
+	# instantly and let the very next line, `_refresh_ui()`, run over the top of
+	# a drain that had not started.
+	#
+	# The guard's original purpose is unchanged: never iterate `_pending_beats`
+	# concurrently. It just has to make the second caller WAIT rather than
+	# proceed.
 	if _pacing_active:
+		await _pacing_finished
 		return
 	if _pending_beats.is_empty():
 		return
@@ -5211,13 +5504,53 @@ func _run_message_pacing() -> void:
 				var text: String = beat.get("text", "")
 				_message_label.text = text
 				_message_label.visible_ratio = 0.0
+				var wants_press := bool(beat.get("wait_press", false))
 				var reveal_time: float = text.length() * _TEXT_REVEAL_SECONDS_PER_CHAR
 				if reveal_time > 0.0:
 					var reveal_tween := create_tween()
 					reveal_tween.tween_property(_message_label, "visible_ratio", 1.0, reveal_time)
-					await reveal_tween.finished
-				else:
-					_message_label.visible_ratio = 1.0
+					if wants_press:
+						# ⚠️ ARMED FOR THE WHOLE REVEAL, not just after it — a
+						# press during typing is a SKIP, and arming late is what
+						# made the probe lose one. POLLED rather than awaiting
+						# `finished`, because a killed Tween never emits it and
+						# the skip works by killing this one.
+						_await_message_press = true
+						_message_reveal_tween = reveal_tween
+						while reveal_tween.is_valid() and reveal_tween.is_running():
+							await get_tree().process_frame
+						_message_reveal_tween = null
+					else:
+						await reveal_tween.finished
+				_message_label.visible_ratio = 1.0
+				# ⚠️ **[Bugfix, live-reported: "Oak\'s intro speech for the rival
+				# battle doesn\'t wait for a button press and therefore goes by
+				# super fast"] THE TWELFTH BEAT KIND\'S WHOLE POINT: THIS IS THE
+				# FIRST THING IN THE BATTLE SCREEN THAT WAITS ON INPUT.**
+				# Every other beat holds on a `create_timer` — right for
+				# narration the engine generates ("Bulbasaur used TACKLE!") and
+				# wrong for authored DIALOGUE, where source\'s `\\p` is literally a
+				# press-A page boundary (`sText_ForPetesSake` alone carries four).
+				# A timed hold turns a seven-page speech into a flicker.
+				#
+				# ⚠️ Deliberately OPT-IN rather than applied to every text beat.
+				# The timed pacing of the battle log is M25c\'s own design and
+				# Rob\'s approved feel; only real dialogue — Oak\'s tutorial and a
+				# trainer\'s win/lose speech — is `\\p`-paged in source.
+				#
+				# ⚠️ Cannot hang the battle: `_run_message_pacing` returns above
+				# without playing anything when off-tree or under `--autoplay`,
+				# so the await is only ever reached where a real player can
+				# answer it.
+				#
+				# ⚠️ **THIS IS THE MECHANISM `[M26B8]` SCOPED AS ITS BLOCKER 2**
+				# ("NO BEAT KIND WAITS ON INPUT ... a keypress-gated beat is
+				# genuinely new machinery"). The level-up stat window needs the
+				# same thing and can reuse this rather than building a second.
+				if wants_press:
+					_await_message_press = true
+					await message_press
+					_await_message_press = false
 				var hold: float = beat.get("hold", 0.0)
 				if hold > 0.0:
 					await get_tree().create_timer(hold).timeout
@@ -5267,8 +5600,31 @@ func _run_message_pacing() -> void:
 			"hp_drain":
 				var bar: TextureProgressBar = beat.get("bar", null)
 				if bar != null:
-					var from_frac: float = beat.get("from_frac", 0.0)
+					# ⚠️ **[Bugfix, live-reported: "when a Pokemon loses all its
+					# HP the bar very quickly fills back up to about 20 percent
+					# then goes to 0"] THE QUEUED `from_frac` IS WRONG WHENEVER
+					# THE HIT OVERKILLS, WHICH IS MOST FATAL HITS.** It is
+					# reconstructed at queue time as
+					# `min(1.0, (current_hp + damage) / max_hp)`, and `damage` is
+					# the RAW roll while `current_hp` was already clamped at 0 —
+					# so a 4 HP Pokémon taking a 6-damage hit reconstructs a
+					# pre-hit fraction of 6/max, not 4/max. The bar was showing
+					# the true 4/max, so assigning the reconstruction JUMPED IT
+					# UP before draining. The true pre-hit HP is not recoverable
+					# from the signal: only the bar still knows it.
+					#
+					# So the bar's own displayed value IS the starting value, and
+					# that is source's shape rather than a workaround —
+					# `MoveBattleBar` animates from `currValue`, whatever is
+					# currently drawn, toward the new one. Read as a FRACTION
+					# because the bar carries two unit systems: `refresh()` sets
+					# `max_value = max_hp` with `value = current_hp` (absolute),
+					# while this beat works in 0..1, and a turn alternates
+					# between them.
 					var to_frac: float = beat.get("to_frac", 0.0)
+					var from_frac: float = beat.get("from_frac", 0.0)
+					if bar.max_value > 0.0:
+						from_frac = clampf(bar.value / bar.max_value, 0.0, 1.0)
 					bar.max_value = 1.0
 					bar.value = from_frac
 					bar.tint_progress = beat.get("color", Color(1, 1, 1))
@@ -5350,6 +5706,10 @@ func _run_message_pacing() -> void:
 	_pending_beats.clear()
 	_pacing_active = false
 	_exit_message_mode()
+	# Releases every re-entrant caller parked at the top of this function.
+	# Emitted AFTER the flag clears, so a handler that immediately queues more
+	# beats and calls back in starts a fresh drain rather than parking forever.
+	_pacing_finished.emit()
 
 
 # [M26o] Compact 6-pokéball party status row. Ball state priority mirrors
@@ -5620,6 +5980,23 @@ func _hide_party_status_rows() -> void:
 
 
 func _show_party_status_summary() -> void:
+	# ⚠️ A WILD BATTLE HAS NO BATTLE-START SUMMARY AT ALL — NEITHER SIDE.
+	# Reported from play ("6 pokeball slide in shows for opponent in wild
+	# battles when it shouldn't"), and source skips the whole phase in one
+	# line, with its own comment saying so: BATTLE_INTRO_STATE_DRAW_SPRITES
+	# ends `else /* Skip party summary since it is a wild battle. */
+	# gBattleStruct->eventState.battleIntro = BATTLE_INTRO_STATE_INTRO_TEXT;`
+	# (`battle_main.c:3487`), jumping past DRAW_PARTY_SUMMARY entirely. The
+	# player's row goes with it — a lone wild Pokémon has no roster to show,
+	# and source does not show yours to it either.
+	#
+	# ⚠️ SCOPED TO THE BATTLE-START CALL ONLY. Mid-battle rows are a different
+	# mechanism and stay: source's switch scripts run `drawpartystatussummary
+	# BS_ATTACKER` unconditionally, so switching in a wild battle still draws
+	# the switching side's row (the "party_summary_show" beat, which does not
+	# come through here).
+	if _bm != null and _bm.is_wild_battle:
+		return
 	_refresh_party_status_row(_party_status_opponent, _opp_party)
 	_refresh_party_status_row(_party_status_player, _player_party)
 	if _is_autoplay_run or not is_inside_tree():
@@ -5786,10 +6163,18 @@ func _set_player_mon_sprites_visible(vis: bool) -> void:
 # Pokemon's send-out, so showing them before anyone has been sent out is the
 # same bug in a different node. Each _play_send_out reveals its own again.
 func _set_health_panels_visible(vis: bool) -> void:
-	for panels: Array in [_opp_panels, _ply_panels]:
-		for panel: Variant in panels:
-			if panel != null and is_instance_valid(panel):
-				(panel as CanvasItem).visible = vis
+	_set_side_health_panels_visible(false, vis)
+	_set_side_health_panels_visible(true, vis)
+
+
+# One side's health boxes. Split out of _set_health_panels_visible above for
+# the wild-battle intro, which clears the field and then puts the opponent's
+# half straight back — see that call site for why.
+func _set_side_health_panels_visible(is_player: bool, vis: bool) -> void:
+	var panels: Array = _ply_panels if is_player else _opp_panels
+	for panel: Variant in panels:
+		if panel != null and is_instance_valid(panel):
+			(panel as CanvasItem).visible = vis
 
 
 func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
@@ -5807,6 +6192,36 @@ func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
 # Y moves. Reuses the same AtlasTexture-region mechanism the idle bob has
 # used since Phase 4c — this is not new infrastructure, just more frames
 # and a timed sequence rather than a two-state toggle.
+# ⚠️ A WILD POKÉMON HAS NO BALL, SO IT NEITHER EMERGES FROM ONE NOR GOES
+# BACK INTO ONE. Reported from play ("wild pokemon plays pokeball entry and
+# exit animation for opponent when it shouldn't"), and source agrees on both
+# halves:
+#
+#   * ENTRY — `DoBattleIntro`'s own BATTLE_INTRO_STATE_DRAW_SPRITES branches
+#     on `gBattleTypeFlags & BATTLE_TYPE_TRAINER` (`battle_main.c:3441-3452`):
+#     a trainer's lead gets `EmitDrawTrainerPic` and, later,
+#     `EmitIntroTrainerBallThrow` (BATTLE_INTRO_STATE_TRAINER_1_SEND_OUT_ANIM,
+#     `:3569`), while a wild mon gets `EmitLoadMonSprite` — it is simply
+#     DRAWN, at the earliest visual phase, with no throw at all. The wild path
+#     then jumps WAIT_FOR_INTRO_TEXT straight past both send-out states
+#     (`:3552`).
+#   * EXIT — `ReturnMonToBall` fires only for a living switch-out, and a wild
+#     Pokémon never switches. Its faint is `SpriteCB_AnimFaintOpponent`, the
+#     sink-and-vanish already cited on _RECALL_BALL_LEAD_FRAMES above.
+#
+# This does NOT touch the PLAYER-side faint recall, which is Rob's own
+# deliberate, disclosed invention (same citation block) — that stays exactly
+# as it was for every battle kind.
+#
+# Takes the resolved slot dictionary rather than a BattlePokemon because both
+# call sites already hold one, and by beat-drain time the mon may have left
+# the field (see _play_recall_to_ball's own pre_found note).
+func _is_ball_less_wild_foe(found: Dictionary) -> bool:
+	if _bm == null or not _bm.is_wild_battle:
+		return false
+	return not found.get("is_player", false)
+
+
 # [M26B3-6a] Plays the recall on whichever slot the given mon occupies.
 # Returns immediately (doing nothing visible) when there is no live tree or
 # under --autoplay, matching every other animation helper in this file.
@@ -5834,6 +6249,11 @@ func _play_recall_to_ball(mon: BattlePokemon, pre_found: Dictionary = {}) -> voi
 		sprite.visible = false
 		if panel != null:
 			(panel as CanvasItem).visible = false
+		return
+
+	# A wild foe sinks and vanishes instead — see _is_ball_less_wild_foe.
+	if _is_ball_less_wild_foe(found):
+		await _play_faint_sink(sprite, panel)
 		return
 
 	# [Rob's review] The ball sits at the BOTTOM of the sprite, not its
@@ -5905,6 +6325,51 @@ func _play_recall_to_ball(mon: BattlePokemon, pre_found: Dictionary = {}) -> voi
 		ball.queue_free()
 
 
+# Source's own faint animation, used here only for a ball-less wild foe.
+# `SpriteCB_FaintSlideAnim` (`battle_main.c:2799`) is a pure `y2 += 5` per
+# frame — no ball, no shrink, no palette fade. At a 64px GBA sprite that is
+# ~13 frames to travel its own height, which is what _FAINT_SINK_FRAMES is.
+#
+# ⚠️ DISCLOSED DIVERGENCE: the opponent variant `SpriteCB_AnimFaintOpponent`
+# doesn't slide at all — it ERASES the sprite's own bottom rows each step
+# ("a smooth illusion of mon falling down", its own comment), i.e. the mon
+# sinks behind the ground line rather than travelling past it. This project
+# draws battlers as plain TextureRects with no ground mask to sink behind, so
+# a literal slide would drop a fully-drawn sprite through the platform and
+# out the bottom of the stage. The alpha fade below stands in for the erase;
+# it is the compromise, not a missed detail.
+const _FAINT_SINK_FRAMES := 13
+
+func _play_faint_sink(sprite: TextureRect, panel: Node) -> void:
+	# The same off-tree/--autoplay bypass every animation helper in this file
+	# has. _play_recall_to_ball already returns before reaching here in both
+	# cases, so this is defence in depth rather than a live path -- but it is
+	# also the only shape a headless suite can drive, since create_tween() is
+	# a Node method and does nothing off the tree.
+	if _is_autoplay_run or not is_inside_tree():
+		sprite.visible = false
+		if panel != null:
+			(panel as CanvasItem).visible = false
+		return
+
+	var start_pos := sprite.position
+	var start_mod := sprite.modulate
+	var seconds := _FAINT_SINK_FRAMES * _ANIM_FRAME_SECONDS
+	var sink := create_tween()
+	sink.set_parallel(true)
+	sink.tween_property(sprite, "position:y", start_pos.y + sprite.size.y, seconds)
+	sink.tween_property(sprite, "modulate:a", 0.0, seconds)
+	await sink.finished
+
+	sprite.visible = false
+	if panel != null:
+		(panel as CanvasItem).visible = false
+	# Same reason the recall restores its own scale: the mon is hidden, not
+	# destroyed, so the slot has to be reusable.
+	sprite.position = start_pos
+	sprite.modulate = start_mod
+
+
 # [M26B3-6b] Throws a ball from `origin` to the given Pokemon's slot, opens
 # it, and grows the Pokemon out of it. The reverse of _play_recall_to_ball,
 # and it reuses that function's own ball sprite, particle burst and fade
@@ -5919,7 +6384,10 @@ func _play_send_out(mon: BattlePokemon) -> void:
 	var sprite: TextureRect = found["sprite"]
 	var panel: Node = found["panel"]
 
-	if _is_autoplay_run or not is_inside_tree():
+	# A wild foe is DRAWN onto the field, never thrown — see
+	# _is_ball_less_wild_foe. Shares the bypass with --autoplay/off-tree
+	# because the end state is identical: sprite and health box simply on.
+	if _is_autoplay_run or not is_inside_tree() or _is_ball_less_wild_foe(found):
 		sprite.visible = true
 		if panel != null:
 			(panel as CanvasItem).visible = true
@@ -7536,8 +8004,80 @@ func _join_mon_names(names: Array[String]) -> String:
 # thing appending a bare text beat when B3-2 wrote it. B3-4 needs the same
 # one-line append for its own post-battle line, so the shape is shared
 # rather than copied.
-func _queue_text_beat(text: String) -> void:
-	_pending_beats.append({"kind": "text", "text": text})
+## `wait_press` opts this line into the input-gated pause — see the text beat\'s
+## own `wait_press` arm in `_run_message_pacing`. Default false, so every
+## existing caller (the battle log\'s engine-generated narration) keeps M25c\'s
+## timed pacing untouched.
+func _queue_text_beat(text: String, wait_press: bool = false) -> void:
+	_pending_beats.append({"kind": "text", "text": text, "wait_press": wait_press})
+
+
+## [Bugfix, live-reported] Queue an already-expanded page set as text beats.
+##
+## One beat per page, because a `\p` in source IS a "press A" boundary and the
+## text pipeline has already split on it — collapsing the pages into one beat
+## would print a four-page speech as a single wall.
+## ⚠️ PRESS-GATED. These pages came from a `\\p`-split authored msgbox, and `\\p`
+## IS the press-A boundary — timing them out would race the player through the
+## one thing in the battle they are meant to read.
+func _queue_page_beats(pages: PackedStringArray) -> void:
+	for page in pages:
+		_queue_text_beat(page, true)
+
+
+# ── [Bugfix, live-reported: "there is supposed to be an Oak speech in the
+# middle of the first rival fight"] BATTLE_TYPE_FIRST_BATTLE, OPENING AND
+# CLOSING LINES ONLY (Rob's scope call — see `_first_battle_tutorial`'s own
+# doc comment for the full list of what is deliberately NOT built).
+#
+# Verbatim from `src/battle_controller_oak_old_man.c:52-60`, including the `\p`
+# page breaks, which are real "press A" boundaries rather than formatting.
+# `{B_PLAYER_NAME}` is source's own battle-side placeholder and is substituted
+# at print time from the live identity, so a renamed player is never stale.
+const _OAK_FIRST_BATTLE_INTRO := [
+	"OAK: Oh, for Pete's sake…\nSo pushy, as always.",
+	"{B_PLAYER_NAME}.",
+	"You've never had a POKéMON battle\nbefore, have you?",
+	# ⚠️ Three separate source strings, not one: `sText_ForPetesSake`'s tail,
+	# then `sText_TheTrainerThat`, then `sText_TryBattling`. They are printed
+	# back to back by the same controller state, so they read as one speech.
+	"A POKéMON battle is when TRAINERS\npit their POKéMON against each\nother.",
+	"The TRAINER that makes the other\nTRAINER's POKéMON faint by lowering\ntheir HP to “0,” wins.",
+	"But rather than talking about it,\nyou'll learn more from experience.",
+	"Try battling and see for yourself.",
+]
+
+## `sText_WinEarnsPrizeMoney`.
+const _OAK_FIRST_BATTLE_WIN := [
+	"OAK: Hm! Excellent!",
+	"If you win, you earn prize money,\nand your POKéMON will grow!",
+	"Battle other TRAINERS and make\nyour POKéMON strong!",
+]
+
+## `sText_HowDissapointing` — source's own spelling of the symbol, kept so a
+## grep against the reference finds it.
+const _OAK_FIRST_BATTLE_LOSS := [
+	"OAK: Hm…\nHow disappointing…",
+	"If you win, you earn prize money,\nand your POKéMON grow.",
+	"But if you lose, {B_PLAYER_NAME}, you end\nup paying prize money…",
+	"However, since you had no warning\nthis time, I'll pay for you.",
+	"But things won't be this way once\nyou step outside these doors.",
+	"That's why you must strengthen your\nPOKéMON by battling wild POKéMON.",
+]
+
+
+## Queue Oak's tutorial lines, substituting the live player name.
+##
+## ⚠️ `{B_PLAYER_NAME}` is substituted HERE rather than by the overworld's text
+## buffers, because these strings are battle-side constants that never pass
+## through a script VM. `TextBuffers.active_identity()` is the same accessor the
+## field uses, so the two halves cannot disagree about who the player is.
+func _queue_oak_tutorial(lines: Array) -> void:
+	var who := TextBuffers.active_identity().display_name()
+	for line in lines:
+		# ⚠️ PRESS-GATED — reported from play as the speech flying past. Each
+		# entry here is one of source\'s own `\\p` pages, so one press each.
+		_queue_text_beat(str(line).replace("{B_PLAYER_NAME}", who), true)
 
 
 

@@ -170,35 +170,44 @@ func _update_status_icon(status: int) -> void:
 	_status_atlas.region = Rect2(0, row * _STATUS_ICON_SIZE.y, _STATUS_ICON_SIZE.x, _STATUS_ICON_SIZE.y)
 
 
-# Extracted verbatim from battle_screen.gd's own _position_gender_label —
-# see this file's own top-of-file doc comment for why name-length handling
-# itself is out of scope here.
+# The GENDER glyph follows the name — extracted verbatim from
+# battle_screen.gd's own _position_gender_label — but the LEVEL does not.
+#
+# ⚠️ THE LEVEL IS RIGHT-ALIGNED AT A FIXED EDGE AND MUST NOT FOLLOW THE NAME.
+# The extracted-verbatim helper this replaces placed the level immediately
+# after the name/gender run (`content_right + gap * 2.5`, clamped only so it
+# could not leave the box), so "Lv50" sat in a different place for a
+# three-letter name than for a twelve-letter one — reported from play, and
+# confirmed wrong against source: UpdateLvlInHealthbox (battle_interface.c:
+# 862) prints at `32 - width` on the player side and `24 - width` on the
+# opponent's, i.e. a FIXED right edge minus the text's own width, with the
+# name never consulted. Every one of the four panel .tscn variants already
+# authors LevelLabel with horizontal_alignment = 2 (RIGHT) and its own real
+# right edge for that variant's art; the old helper simply overwrote all of
+# it at runtime (including flipping the alignment back to LEFT). So the fix
+# is to stop repositioning the node at all and let the authored geometry
+# stand — which is also why nothing here needs a per-variant edge constant.
+#
+# Disclosed consequence: a long enough name plus a gender glyph can now run
+# under the level text rather than pushing it aside. Source has the same
+# exposure and answers it by capping names at 10 characters; this project's
+# own display_name() allows 12 (see [M27K K-b]'s own POKEMON_NAME_LENGTH
+# note), so the overlap is reachable here in a way it is not there.
 func _position_gender_and_level(name_text: String, gender_glyph: String, level_text: String) -> void:
 	_gender_label.text = gender_glyph
+	_level_label.text = level_text
 	var font: Font = _name_label.get_theme_font("font")
 	if font == null:
+		return
+	if gender_glyph.is_empty():
 		return
 	var font_size: int = _name_label.get_theme_font_size("font_size")
 	var name_width: float = font.get_string_size(name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var gap: float = font_size * 0.15
-	var content_right: float = _name_label.offset_left + name_width
-	if not gender_glyph.is_empty():
-		_gender_label.offset_top = _name_label.offset_top
-		_gender_label.offset_bottom = _name_label.offset_bottom
-		_gender_label.offset_left = _name_label.offset_left + name_width + gap
-		_gender_label.offset_right = _gender_label.offset_left + font_size * 1.2
-		content_right = _gender_label.offset_right
-	var level_width: float = font.get_string_size(level_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var desired_left: float = content_right + gap * 2.5
-	var max_left: float = INF
-	if _background != null:
-		max_left = _background.offset_right - level_width - gap
-	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_level_label.offset_top = _name_label.offset_top
-	_level_label.offset_bottom = _name_label.offset_bottom
-	_level_label.offset_left = minf(desired_left, max_left)
-	_level_label.offset_right = _level_label.offset_left + font_size * 4.0
-	_level_label.text = level_text
+	_gender_label.offset_top = _name_label.offset_top
+	_gender_label.offset_bottom = _name_label.offset_bottom
+	_gender_label.offset_left = _name_label.offset_left + name_width + gap
+	_gender_label.offset_right = _gender_label.offset_left + font_size * 1.2
 
 
 # [Doubles-split roadmap, step 5] Public accessor -- message-pacing's

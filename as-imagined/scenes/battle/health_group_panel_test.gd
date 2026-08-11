@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_player_variant_has_exp_nodes()
 	_test_player_variant_default_databox_and_status()
 	_test_player_variant_ready_configures_exp_fill()
+	_test_exp_fill_sits_inside_the_databox_groove()
 	_test_player_variant_refresh_sets_hp_number_and_exp()
 	_test_player_variant_refresh_without_exp_fraction_leaves_exp_value_untouched()
 	_test_opponent_variant_refresh_tolerates_missing_exp_fraction_arg()
@@ -160,8 +161,21 @@ func _test_refresh_gender_glyph_positions_after_name() -> void:
 	_chk("gender glyph text set", gender_label.text == "♂")
 	_chk("gender label starts at/after the name's own right edge",
 			gender_label.offset_left >= name_label.offset_left)
-	_chk("level label starts at/after the gender label's own right edge",
-			level_label.offset_left >= gender_label.offset_right)
+	# [EXP/level alignment fix] The level is RIGHT-aligned at the .tscn's own
+	# authored edge and no longer chases the name+gender run, matching
+	# UpdateLvlInHealthbox's own `32 - width` (battle_interface.c:862). The
+	# assertion this replaces was `level_label.offset_left >=
+	# gender_label.offset_right`, which encoded exactly the reported bug.
+	# A LEFT alignment would silently reintroduce it, so pin the alignment
+	# rather than only the offsets.
+	_chk("level label is right-aligned, not positioned after the gender label",
+			level_label.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT)
+	var long_panel := _make_panel()
+	long_panel.refresh("Charizard-Mega", "♂", "Lv100", BattlePokemon.STATUS_NONE, 1, 1, Color.WHITE)
+	var long_level: Label = long_panel.get_node("LevelLabel")
+	_chk("level label's own right edge is identical for a short and a long name",
+			long_level.offset_right == level_label.offset_right)
+	long_panel.queue_free()
 	panel.queue_free()
 
 
@@ -229,6 +243,43 @@ func _test_player_variant_default_databox_and_status() -> void:
 	_chk("player variant's default status_sheet is the player status pull (status.png, not status2.png)",
 			(status_icon.texture as AtlasTexture).atlas == panel.status_sheet
 			and "battle_ui/interface/status.png" in panel.status_sheet.resource_path)
+	panel.queue_free()
+
+
+func _test_exp_fill_sits_inside_the_databox_groove() -> void:
+	# [EXP/level alignment fix] Reported from play as "the exp bar isn't
+	# filling — I think the bar animation is just hidden or misaligned". It
+	# was filling; it was drawn 16px tall over an 8px groove and 4px too
+	# high, so the cyan band spilled across the box's own bottom bevel and
+	# read as a rendering fault rather than a bar.
+	#
+	# The groove is MEASURED off databox_player.png, not eyeballed: its
+	# striped interior is source-pixel x [62, 232) by y [78, 82), and the
+	# Background rect draws that 260x84 art at exactly 2x, so the panel-local
+	# rect is background_origin + 2 * groove. Asserted as that derivation
+	# rather than as four literals, so re-authoring the Background (a
+	# reposition in the editor, a different art size) moves the expectation
+	# with it instead of turning this into a stale-number failure.
+	var panel := _make_player_panel()
+	var bg: TextureRect = panel.get_node("Background")
+	var exp_fill: TextureProgressBar = panel.get_node("ExpFill")
+	var scale := 2.0
+	var ox: float = bg.offset_left
+	var oy: float = bg.offset_top
+	_chk("ExpFill left edge is the groove's own left edge",
+			is_equal_approx(exp_fill.offset_left, ox + 62.0 * scale))
+	_chk("ExpFill right edge is the groove's own right edge",
+			is_equal_approx(exp_fill.offset_right, ox + 232.0 * scale))
+	_chk("ExpFill top edge is the groove's own top edge",
+			is_equal_approx(exp_fill.offset_top, oy + 78.0 * scale))
+	_chk("ExpFill bottom edge is the groove's own bottom edge",
+			is_equal_approx(exp_fill.offset_bottom, oy + 82.0 * scale))
+	# The old geometry reached its right edge via scale.x = 0.92 on an
+	# over-wide rect, which is why the four offsets alone did not describe
+	# where the bar actually drew. A non-unit scale here would make every
+	# assertion above a half-truth.
+	_chk("ExpFill is not scaled -- its offsets ARE its drawn rect",
+			exp_fill.scale.is_equal_approx(Vector2.ONE))
 	panel.queue_free()
 
 

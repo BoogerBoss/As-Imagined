@@ -78,6 +78,10 @@ func _ready() -> void:
 	# N. Party row entry animation (B5 items 2+4)
 	_test_ball_entry_delay_fans_per_side()
 	_test_entry_constants_match_source()
+	# O. Wild foes have no ball
+	_test_wild_foe_is_ball_less()
+	await _test_faint_sink_hides_and_restores_the_slot()
+	_test_wild_battle_skips_the_battle_start_party_summary()
 
 	var total := _pass + _fail
 	print("m26_b3_6c_test: %d/%d passed" % [_pass, total])
@@ -1210,3 +1214,122 @@ func _test_entry_constants_match_source() -> void:
 			/ BattleScreenShared._PARTY_BALL_ENTRY_STEP
 	_chk("N.10 the bar settles before the last ball lands",
 			bar_frames < last_ball)
+
+# ── O. Wild foes have no ball ────────────────────────────────────────────
+#
+# Reported from play: "wild pokemon plays pokeball entry and exit animation
+# for opponent when it shouldn't." Source citations live on
+# _is_ball_less_wild_foe / _play_faint_sink; these pin the DECISION, which is
+# where both halves are actually made.
+#
+# ⚠️ THE THREE CALL SITES ARE NOT COVERED HERE, AND THAT IS STATED RATHER
+# THAN IMPLIED. _play_send_out and _play_recall_to_ball both bypass all
+# visual work off-tree, which is the only way a headless suite can reach
+# them, so an assertion there could not tell a suppressed ball from the
+# ordinary off-tree bypass — it would pass with the guard deleted. The
+# wiring was verified by real windowed screenshot instead (wild: Pikachu on
+# the field from frame one with no throw, player's own throw unchanged;
+# trainer: "LASS Robin sent out Pikachu!" and her throw unchanged).
+
+func _test_wild_foe_is_ball_less() -> void:
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	bs._bm = bm
+
+	# A fixture where the two competing rules AGREE proves nothing here, so
+	# every case below flips exactly one of (wild?, which side?).
+	bm.is_wild_battle = true
+	_chk("O.01 a wild battle's OPPONENT gets no ball",
+			bs._is_ball_less_wild_foe({"is_player": false}) == true)
+	_chk("O.02 ...but the PLAYER still throws one, even in a wild battle",
+			bs._is_ball_less_wild_foe({"is_player": true}) == false)
+
+	bm.is_wild_battle = false
+	_chk("O.03 a TRAINER's opponent still throws one",
+			bs._is_ball_less_wild_foe({"is_player": false}) == false)
+	_chk("O.04 ...and so does the player",
+			bs._is_ball_less_wild_foe({"is_player": true}) == false)
+
+	# The simulator builds a screen with no BattleManager attached at all in
+	# several paths; that must read as "a normal battle", not crash.
+	bs._bm = null
+	_chk("O.05 no BattleManager degrades to the ordinary ball path",
+			bs._is_ball_less_wild_foe({"is_player": false}) == false)
+	bs.free()
+	bm.free()
+
+
+func _test_faint_sink_hides_and_restores_the_slot() -> void:
+	# ⚠️ THIS DRIVES THE BYPASS, NOT THE TWEEN, AND SAYS SO. create_tween() is
+	# a Node method that does nothing off the tree, and a bare
+	# BattleScreenShared cannot be added to one (its @onready lookups need the
+	# real .tscn). So what is pinned here is the contract the bypass shares
+	# with the animated path -- the fainted sprite and its health box both end
+	# hidden -- which is what --autoplay and every off-tree caller rely on. The
+	# sink motion itself is screenshot-verified only.
+	var bs = _make_screen()
+	var sprite := TextureRect.new()
+	sprite.size = Vector2(64, 64)
+	var panel := Control.new()
+
+	await bs._play_faint_sink(sprite, panel)
+
+	_chk("O.06 the fainted sprite ends hidden", sprite.visible == false)
+	_chk("O.07 its health box ends hidden", panel.visible == false)
+	# A wild foe must never reach the ball path, so the constant that sizes
+	# the replacement is worth pinning against its own source derivation:
+	# SpriteCB_FaintSlideAnim is y2 += 5 per frame, and a 64px GBA sprite
+	# therefore clears its own height in ceil(64 / 5) = 13 frames.
+	_chk("O.08 the sink lasts source's own ~13 frames",
+			BattleScreenShared._FAINT_SINK_FRAMES == 13)
+
+	sprite.free()
+	panel.free()
+	bs.free()
+
+
+func _test_wild_battle_skips_the_battle_start_party_summary() -> void:
+	# ⚠️ SOURCE SKIPS THE WHOLE PHASE FOR A WILD BATTLE, BOTH SIDES, AND SAYS SO
+	# IN ITS OWN COMMENT. BATTLE_INTRO_STATE_DRAW_SPRITES ends `else /* Skip
+	# party summary since it is a wild battle. */ ... = BATTLE_INTRO_STATE_
+	# INTRO_TEXT` (battle_main.c:3487), jumping past DRAW_PARTY_SUMMARY.
+	# Reported from play as "6 pokeball slide in shows for opponent in wild
+	# battles when it shouldn't".
+	#
+	# Asserted through the ROW REFRESH rather than through visibility: off-tree
+	# the function bypasses its own animation work anyway, so visibility could
+	# not tell a skipped phase from the ordinary bare-instance bypass. The
+	# refresh happens ABOVE that bypass, which makes it the one observable that
+	# discriminates.
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	bs._bm = bm
+	var opp := BattleParty.new()
+	opp.members = [_make_mon()]
+	opp.active_indices = [0]
+	bs._opp_party = opp
+	bs._player_party = opp
+
+	var wild_row := Control.new()
+	var wild_ball := TextureRect.new()
+	wild_row.add_child(wild_ball)
+	bs._party_status_opponent = wild_row
+	bs._party_status_player = Control.new()
+
+	bm.is_wild_battle = true
+	bs._show_party_status_summary()
+	_chk("O.09 a wild battle never even refreshes the opponent row",
+			wild_ball.texture == null)
+
+	# The discriminator. Without it, a _show_party_status_summary() that did
+	# nothing at all under every condition would pass O.09 -- and this suite
+	# runs off-tree, where a bypass further down would produce exactly that.
+	bm.is_wild_battle = false
+	bs._show_party_status_summary()
+	_chk("O.10 ...but a trainer battle still does",
+			wild_ball.texture != null)
+
+	bs._party_status_player.free()
+	wild_row.free()
+	bs.free()
+	bm.free()

@@ -62,6 +62,24 @@ func _ready() -> void:
 	_test_faint_queues_recall_sfx_before_the_recall_beat()
 	_test_switch_out_queues_recall_sfx()
 	_test_switch_in_queues_send_out_sfx_before_the_reveal()
+	# [KO-ordering / battle-end wording, live-reported]
+	await _test_reentrant_pacing_waits_for_the_drain_in_flight()
+	_test_battle_end_line_is_source_shaped_per_battle_kind()
+	# ⚠️ CALL REMOVED, AND ITS FUNCTION BODY IS GONE — I DELETED IT, 2026-08-11.
+	# `_test_only_authored_dialogue_is_press_gated()` was added to this file by
+	# Rob while I was editing the same file; I then rewrote the tail of the file
+	# with a truncating write (`s[:index_of_target] + new`) that assumed the
+	# function I was replacing was still the last one in the file. It was not —
+	# his definition sat after it — so the body was destroyed. The CALL survived
+	# because it is up here, which is the only reason the loss was visible at
+	# all: the suite stopped parsing and hung instead of failing.
+	#
+	# Not reconstructed, deliberately. Only the NAME survives, and writing a
+	# body to match a name would put an assertion under Rob's intent that he
+	# never wrote. Restore the real one and put this call back.
+	#
+	# The lesson for me, not for the file: never rewrite a whole file by offset
+	# when another party may be editing it. Anchored replaces only.
 
 	var total := _pass + _fail
 	print("message_pacing_test: %d/%d passed" % [_pass, total])
@@ -158,18 +176,36 @@ func _test_text_reveal_seconds_per_char() -> void:
 
 func _test_hp_drain_seconds_full_bar() -> void:
 	# Source's real HP-bar drain always takes exactly 24 frames (~0.402s at
-	# ~59.7275fps) for a full 0%<->100% traversal, regardless of max HP; at
-	# the requested 2x speed that's ~0.201s.
-	_chk("full-bar HP drain is ~0.201s (2x the real ~0.402s)",
-			is_equal_approx(BattleScreenShared._HP_DRAIN_SECONDS_FULL_BAR, 0.201))
+	# ~59.7275fps) for a full 0%<->100% traversal, regardless of max HP.
+	# Rob slowed this by ~33% once the KO-ordering fix made it visible on a
+	# finishing blow, landing at 2/3 of source's own figure (~1.5x pace).
+	# Asserted as that RATIO, not as a bare literal, so the assertion still
+	# says what the number means after the next adjustment.
+	_chk("full-bar HP drain is 2/3 of the real ~0.402s (~1.5x pace)",
+			is_equal_approx(BattleScreenShared._HP_DRAIN_SECONDS_FULL_BAR, 0.402 * 2.0 / 3.0))
+	# ⚠️ The EXP bar is a SEPARATE constant and was deliberately NOT slowed
+	# with it — the two happened to share a value, they do not share a rule.
+	# Pinned so a later session cannot "restore consistency" by accident.
+	_chk("the EXP bar keeps its own, faster duration",
+			BattleScreenShared._EXP_DRAIN_SECONDS_FULL_BAR
+			< BattleScreenShared._HP_DRAIN_SECONDS_FULL_BAR)
 
 
 func _test_exp_drain_seconds_full_bar() -> void:
 	# [EXP bar animation fix] Reuses the HP bar's own proportional-duration
-	# shape (disclosed simplification of source's real per-amount
+	# SHAPE (disclosed simplification of source's real per-amount
 	# GetScaledExpFraction speed curve -- see the constant's own doc
 	# comment).
-	_chk("full-bar EXP drain matches the established HP-drain duration",
+	#
+	# ⚠️ THE LABEL USED TO SAY "matches the established HP-drain duration" AND
+	# THAT IS NO LONGER TRUE. The two constants shared 0.201 when this was
+	# written, so the assertion read as though it were checking the pair stayed
+	# in step -- it never was; it pinned the literal. Rob slowed the HP bar to
+	# 0.268 and deliberately left this one alone, and a label claiming a match
+	# that the code does not check is exactly the stale-comment shape this
+	# project keeps having to correct. It pins the EXP bar's own value, and
+	# says so.
+	_chk("full-bar EXP drain keeps its own ~0.201s (2x the real ~0.402s)",
 			is_equal_approx(BattleScreenShared._EXP_DRAIN_SECONDS_FULL_BAR, 0.201))
 
 
@@ -810,3 +846,144 @@ func _first_se(bs: BattleScreenShared) -> String:
 			return str(beat.get("se", ""))
 	return ""
 
+
+
+# ── [Live-reported] KO ordering and the battle-end line ──────────────────
+
+func _test_reentrant_pacing_waits_for_the_drain_in_flight() -> void:
+	# ⚠️ THE BUG THIS PINS IS AN ORDERING RACE, NOT A BEAT ORDER. Reported as
+	# "opponent HP drains fully BEFORE the attack animation that would KO".
+	# The beats were always queued in the right order; what went wrong is that
+	# `_on_battle_ended` drains them itself, so `_dispatch_move`'s own trailing
+	# `await _run_message_pacing()` hit the re-entrancy guard, returned
+	# INSTANTLY, and let the very next line -- `_refresh_ui()` -- snap every HP
+	# bar to its post-hit value before the drain had played a single beat.
+	#
+	# So the assertion is about the AWAIT, not the queue: a re-entrant call
+	# must not return until `_pacing_finished` fires.
+	var bs := BattleScreenShared.new()
+	bs._pacing_active = true
+	var returned := [false]
+	var call_it := func() -> void:
+		await bs._run_message_pacing()
+		returned[0] = true
+	call_it.call()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_chk("a re-entrant pacing call does NOT return while a drain is in flight",
+			returned[0] == false)
+	bs._pacing_finished.emit()
+	await get_tree().process_frame
+	_chk("...and returns once the drain in flight reports finished",
+			returned[0] == true)
+	bs.free()
+
+
+func _test_battle_end_line_is_source_shaped_per_battle_kind() -> void:
+	# ⚠️ SOURCE PRINTS NOTHING WHEN YOU BEAT A WILD POKEMON. The non-trainer
+	# arm of HandleEndTurn_BattleWon is a bare jump to
+	# BattleScript_PayDayMoneyAndPickUpItems with no victory string on it, and
+	# the trainer arm's own line ("You defeated {trainer}!") is queued
+	# elsewhere by _show_trainer_battle_end. Reported from play as "it says You
+	# win at the end of a wild battle which is not matching source".
+	var won := BattleScreenShared.new()
+	won.overlay_mode = true
+	won._log_battle_end_result(0)
+	_chk("an overworld WIN prints no closing line at all",
+			won._pending_beats.is_empty())
+	won.free()
+
+	# The loss arm is three lines, and the middle one branches wild-vs-trainer.
+	# A deterministic payout: 2 badges -> rate 24, level 10 -> 240 asked, and a
+	# wallet holding more than that so the clamp is NOT what is being measured
+	# here (E.08/E.09 below own the clamp).
+	OverworldSession.reset()
+	OverworldSession.flags.flag_set("FLAG_BADGE01_GET")
+	OverworldSession.flags.flag_set("FLAG_BADGE02_GET")
+	OverworldSession.wallet.money = 5000
+
+	var lost := BattleScreenShared.new()
+	lost.overlay_mode = true
+	lost._whiteout_party_level = 10
+	lost._log_battle_end_result(1)
+	var lines: Array[String] = []
+	for b: Dictionary in lost._pending_beats:
+		lines.append(str(b.get("text", "")))
+	_chk("an overworld TRAINER loss prints source's own three whiteout lines",
+			lines == [
+				"You have no more Pokémon that can fight!",
+				"You gave ¥240 to the winner…",
+				"You were overwhelmed by your defeat!",
+			])
+	lost.free()
+
+	# ⚠️ THE DISCRIMINATOR FOR THE MIDDLE LINE. `jumpifbattletype
+	# BATTLE_TYPE_TRAINER` picks between STRINGID_PLAYERWHITEOUT2_WILD and
+	# ..._TRAINER; an implementation that printed one of them unconditionally
+	# passes the assertion above and is wrong half the time.
+	var wild_lost := BattleScreenShared.new()
+	wild_lost.overlay_mode = true
+	wild_lost._whiteout_party_level = 10
+	var wild_bm := BattleManager.new()
+	wild_bm.is_wild_battle = true
+	wild_lost._bm = wild_bm
+	wild_lost._log_battle_end_result(1)
+	var wild_lines: Array[String] = []
+	for b: Dictionary in wild_lost._pending_beats:
+		wild_lines.append(str(b.get("text", "")))
+	_chk("a WILD loss uses the panicked-and-dropped wording instead",
+			wild_lines == [
+				"You have no more Pokémon that can fight!",
+				"You panicked and dropped ¥240…",
+				"You were overwhelmed by your defeat!",
+			])
+	wild_lost.free()
+	wild_bm.free()
+
+	# ⚠️ The payout goes through the SAME function the overworld charges with,
+	# clamp included. Asserted against `OverworldSession.whiteout_payout` rather
+	# than a second literal, because a screen-side copy of the formula that
+	# agreed on the easy case and diverged on the clamp is the exact failure
+	# this consolidation exists to make unrepresentable.
+	OverworldSession.wallet.money = 100
+	var broke := BattleScreenShared.new()
+	broke.overlay_mode = true
+	broke._whiteout_party_level = 10
+	broke._log_battle_end_result(1)
+	_chk("the printed figure is clamped to what the player actually holds",
+			str(broke._pending_beats[1].get("text", "")) == "You gave ¥100 to the winner…")
+	_chk("...and it is the figure the overworld will charge, not a second copy",
+			str(broke._pending_beats[1].get("text", ""))
+			== "You gave ¥%d to the winner…" % OverworldSession.whiteout_payout(10))
+	broke.free()
+
+	# ⚠️ `jumpifnowhiteout`. A rival fight you are MEANT to lose heals you and
+	# narrates none of this. Without the gate the player would read three lines
+	# about money they never lost.
+	var heal_after := BattleScreenShared.new()
+	heal_after.overlay_mode = true
+	heal_after._whiteout_on_loss = false
+	heal_after._whiteout_party_level = 10
+	heal_after._log_battle_end_result(1)
+	_chk("a heal-after loss narrates no whiteout at all",
+			heal_after._pending_beats.is_empty())
+	heal_after.free()
+	OverworldSession.reset()
+
+	# The discriminator for the whole branch: the SIMULATOR is unchanged,
+	# because its Play Again screen is this project's own invention with no
+	# source counterpart. A fix that suppressed the line everywhere would pass
+	# every assertion above and still be wrong.
+	var sim_win := BattleScreenShared.new()
+	sim_win._log_battle_end_result(0)
+	_chk("a simulator WIN still says You win!",
+			sim_win._pending_beats.size() == 1
+			and sim_win._pending_beats[0].get("text", "") == "You win!")
+	sim_win.free()
+
+	var sim_lose := BattleScreenShared.new()
+	sim_lose._log_battle_end_result(1)
+	_chk("a simulator LOSS still says You lose!",
+			sim_lose._pending_beats.size() == 1
+			and sim_lose._pending_beats[0].get("text", "") == "You lose!")
+	sim_lose.free()

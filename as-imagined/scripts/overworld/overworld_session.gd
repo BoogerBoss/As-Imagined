@@ -49,6 +49,49 @@ static var wallet := Wallet.new()
 ## the first time you fought anything.
 static var identity := PlayerIdentity.new()
 
+## [M27O O3] `sWhiteOutBadgeMoney` (`battle_script_commands.c:315`), indexed by
+## how many badges the player holds — nine entries for 0 through 8.
+const WHITEOUT_BADGE_MONEY := [8, 16, 24, 36, 48, 64, 80, 100, 120]
+
+
+## What a whiteout costs, at `B_WHITEOUT_MONEY = GEN_LATEST`: the badge-scaled
+## rate times the player's highest party level, clamped to what they actually
+## hold (source: `if (!IsEnoughMoney(..)) money = GetMoney()`).
+##
+## Returns the REAL amount that will be taken, not the amount asked for — the
+## difference is the whole reason this is worth having in one place.
+##
+## ⚠️ **IT LIVES HERE, NOT ON `overworld.gd`, BECAUSE TWO DIFFERENT LAYERS NEED
+## THE SAME ANSWER AND ONLY ONE OF THEM CAN SEE THE FIELD SCENE.**
+## Source computes and deducts in one command — `getmoneyreward` is the first
+## instruction of `BattleScript_LocalBattleLostPrintWhiteOut`
+## (`data/battle_scripts_1.s:2915`), immediately before the three lines that
+## narrate it. This project deliberately moved the DEDUCTION to the overworld's
+## battle-return path (`[M27O O3]`), which left the NARRATION — printed by the
+## battle screen, before it ever hands control back — needing a figure it had no
+## way to compute: `scenes/overworld/overworld.gd` has no `class_name`, so
+## neither the table nor the old method was reachable from `battle_screen_shared
+## .gd` at all.
+##
+## The alternative was a second copy of the formula on the battle side, which is
+## the two-hand-kept-copies drift this project already paid for once with
+## `check_bake_diff`'s own normalisation rules — and it would fail in the
+## nastiest possible way here, since only the CLAMP diverges: a screen with its
+## own copy would happily print "You gave ¥2400 to the winner…" while the
+## overworld took the ¥900 the player actually had.
+##
+## `OverworldSession` is the right owner because it already holds BOTH statics
+## the formula reads — `flags` for the badge count, `wallet` for the clamp — so
+## nothing has to be threaded in, and it is globally reachable exactly the way
+## `BattleSetupContext` is.
+static func whiteout_payout(highest_level: int) -> int:
+	var badges: int = flags.badge_count()
+	# Explicit `: int` — indexing an untyped Array yields Variant, which `:=`
+	# cannot infer from. This project's own documented GDScript gotcha.
+	var asked: int = int(WHITEOUT_BADGE_MONEY[mini(badges, WHITEOUT_BADGE_MONEY.size() - 1)]) \
+			* maxi(1, highest_level)
+	return mini(asked, wallet.money)
+
 ## [M27O O4] The player's party, held ACROSS battles rather than rebuilt for
 ## each one.
 ##

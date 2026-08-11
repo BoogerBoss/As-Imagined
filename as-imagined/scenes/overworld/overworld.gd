@@ -347,9 +347,11 @@ var _fade: ColorRect
 ## hold the fade until the load reports done rather than raising this blindly.
 const FADE_SECONDS := 0.25
 
-## [M27O O3] `sWhiteOutBadgeMoney` (`battle_script_commands.c:315`), indexed by
-## how many badges the player holds — nine entries for 0 through 8.
-const WHITEOUT_BADGE_MONEY := [8, 16, 24, 36, 48, 64, 80, 100, 120]
+## [M27O O3] `sWhiteOutBadgeMoney`, moved to `OverworldSession` so the battle
+## screen can reach it too — see that class's own `whiteout_payout` for why.
+## Kept here as an alias because this file's existing citations and its suite
+## both name it, and a delegating const costs nothing.
+const WHITEOUT_BADGE_MONEY := OverworldSession.WHITEOUT_BADGE_MONEY
 
 ## [M27D D4/D5] Persistent flag/var state: beaten trainers, hidden entities,
 ## trigger gates.
@@ -394,6 +396,21 @@ const OPPOSITE_DIR := {
 	StepResolver.Dir.NORTH: StepResolver.Dir.SOUTH,
 	StepResolver.Dir.WEST: StepResolver.Dir.EAST,
 	StepResolver.Dir.EAST: StepResolver.Dir.WEST,
+}
+
+## ⚠️ **THE TWO DIRECTION ENCODINGS DISAGREE, AND THIS IS THE ONLY PLACE THEY
+## ARE BRIDGED.** `StepResolver.Dir` is this project's own 0-based S/N/W/E;
+## source's `enum Direction` (`include/constants/global.h:203`) starts at
+## `DIR_NONE = 0` and runs S/N/W/E from 1. A script comparing `VAR_FACING`
+## against `DIR_SOUTH` is comparing against a **1**, so publishing the raw
+## `_facing` would answer every four-way dispatch with a neighbour's arm —
+## visibly wrong in a different way from the all-arms-fire bug it replaces,
+## and harder to spot. See `_publish_facing`.
+const SOURCE_DIR := {
+	StepResolver.Dir.SOUTH: 1,
+	StepResolver.Dir.NORTH: 2,
+	StepResolver.Dir.WEST: 3,
+	StepResolver.Dir.EAST: 4,
 }
 
 ## The camera is NOT a child of the player, deliberately.
@@ -969,6 +986,30 @@ func _process(_delta: float) -> void:
 		_try_step(dir)
 		if _moving:
 			return
+		# ⚠️ **[Bugfix, live-reported: "when I change directions into a wall my
+		# character doesn't change direction until keypress release; in source
+		# you change direction on key press even if it makes you face a wall"]
+		# THE FACING WAS ALREADY CORRECT — NOBODY WAS DRAWING IT.** `_facing` is
+		# assigned two lines up and read correctly by `try_interact`, so the
+		# player really was facing the wall as far as every rule was concerned;
+		# only the SPRITE lagged. This file has exactly two places that draw the
+		# player (`_step_player` while `_moving`, `_face_player` at rest) and
+		# neither could run in this state: the rest arm above is gated on the
+		# direction being RELEASED, deliberately, so a held walk keeps its cycle
+		# running between tiles instead of leading with the same foot every step.
+		# A blocked step falls into the gap between the two.
+		#
+		# ⚠️ Reaching it only when the step FAILED is what keeps that gate
+		# intact. A successful step returns on the line above with `_moving`
+		# true, so the walk cycle is never touched here — which is the whole
+		# hazard `_process`'s own rest-on-release comment exists to describe.
+		# There is no cycle to preserve on a refused step: the player is standing
+		# still, which is exactly what `_face_player` draws.
+		#
+		# Source turns on the press too — `PlayerFaceDirection` runs off the
+		# input before any collision test, which is why walking at a wall in FRLG
+		# still turns you.
+		_face_player(dir)
 	if Input.is_action_just_pressed("ui_accept") and try_interact():
 		return
 
@@ -1095,6 +1136,23 @@ func _try_step(dir: int) -> void:
 		var jspr := _player_sprite()
 		if jspr != null:
 			_add_jump_arc(t, jspr, jspr.position.y, dur)
+	# ⚠️ **[Bugfix, live-reported: "there is no jump animation over ledges"] THE
+	# ARC WAS ALREADY WRITTEN AND THIS PATH SIMPLY NEVER CALLED IT.** The ledge
+	# hop had its own longer duration (0.26s) and its own sound since 7a-2, so it
+	# read as deliberate — but the player glided flat across two tiles.
+	#
+	# ⚠️ IT IS THE **HIGH** TABLE, NOT A SEPARATE LEDGE ONE. Source's
+	# `PlayerJumpLedge` issues `GetJump2MovementAction`, whose four handlers
+	# (`MovementAction_Jump2Down_Step0` and its three siblings,
+	# `event_object_movement.c:7538+`) all call `InitJumpRegular(...,
+	# JUMP_DISTANCE_FAR, JUMP_TYPE_HIGH)` — the SAME `sJumpY_High` the surf
+	# mount uses, differing only in DISTANCE. So the existing constant is
+	# correct here rather than merely close, and `_JUMP_Y_HIGH` now has two
+	# real consumers.
+	elif outcome == StepResolver.Outcome.LEDGE_JUMP:
+		var lspr := _player_sprite()
+		if lspr != null:
+			_add_jump_arc(t, lspr, lspr.position.y, dur)
 	# [M27C C5] THE WARP CHECK LIVES HERE, on the completion of a real step, and
 	# nowhere else. Source fires warps from `TryStartStepBasedScript` under
 	# `input->tookStep`, and that is the entire reason arriving on a warp tile
@@ -1816,10 +1874,36 @@ func start_script_battle(trainer_key: String) -> bool:
 	return _begin_battle(trainer_key, null)
 
 
+## [Bugfix, live-reported] Stage a script battle's own speech and tutorial flag.
+##
+## ⚠️ **STAGED ON A FIELD RATHER THAN WRITTEN STRAIGHT INTO
+## `BattleSetupContext`, AND THAT IS WHAT STOPS IT LEAKING.** The obvious
+## version writes the three statics here and lets `BattleSetupContext.clear()`
+## (in the battle screen's `_ready`) reset them — which is wrong twice: a battle
+## that never starts never clears them, and a wild encounter calls `set_pending`
+## rather than `clear`, so a rival's victory speech could surface at the end of
+## the next Pidgey. Held here instead and pushed by `_mount_battle`, which is
+## the single funnel every battle passes through and which now assigns all three
+## UNCONDITIONALLY — so the wild and trainer-sight paths overwrite them with
+## empties rather than inheriting whatever was left over.
+##
+## Consumed once: `_mount_battle` clears the staging after pushing it.
+var _pending_battle_speech := {}
+
+func set_script_battle_speech(defeat_pages: PackedStringArray,
+		victory_pages: PackedStringArray, first_battle: bool) -> void:
+	_pending_battle_speech = {
+		"defeat": defeat_pages,
+		"victory": victory_pages,
+		"first_battle": first_battle,
+	}
+
+
 ## Returns false WITHOUT having set `_in_battle` if the battle cannot start, so
 ## a caller polling every frame does not retry forever.
 func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
 	if trainer_key == "":
+		_pending_battle_speech = {}
 		return false
 	var opp := OverworldParty.build_trainer_party(trainer_key)
 	if opp == null:
@@ -1827,6 +1911,11 @@ func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
 		# an empty party, which would end instantly and read as an engine bug.
 		push_warning("overworld: %s has no resolvable party — battle not started"
 				% trainer_key)
+		# [Bugfix, live-reported] ⚠️ Drop the staged speech on the way out. This
+		# is the ONE failure path that returns before `_mount_battle`, which is
+		# where the staging is otherwise consumed — leaving it set would hand a
+		# rival's victory line to whatever battle happened to start next.
+		_pending_battle_speech = {}
 		return false
 	return _mount_battle(opp, trainer_key, t)
 
@@ -1865,6 +1954,11 @@ func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool
 	# `push_error`: this is a handled degrade, and `run_overworld_tests.sh`
 	# fails a run on ERROR lines, so a test exercising the guard would fail the
 	# whole suite rather than pass.
+	# [Bugfix, live-reported] Taken FIRST so every exit from this function, refusal
+	# included, leaves the staging empty — see `_pending_battle_speech`.
+	var speech: Dictionary = _pending_battle_speech
+	_pending_battle_speech = {}
+
 	if not _party_can_battle():
 		push_warning("overworld: refusing to start a battle with no usable "
 				+ "party — this would black-screen. Nothing was mounted.")
@@ -1906,6 +2000,25 @@ func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool
 	# time to tell a wild encounter from a simulator battle. Without it Run
 	# forfeits instead of fleeing, and a forfeit whites the player out.
 	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key, true)
+	# [Bugfix, live-reported] The trainer's own win/lose speech and Oak's
+	# tutorial flag, if a script staged any. ⚠️ ASSIGNED ON EVERY PATH, not just
+	# the script one — see `_pending_battle_speech` for why an unconditional
+	# overwrite is what keeps one battle's dialogue out of the next one's.
+	BattleSetupContext.script_defeat_pages = speech.get(
+			"defeat", PackedStringArray())
+	BattleSetupContext.script_victory_pages = speech.get(
+			"victory", PackedStringArray())
+	BattleSetupContext.first_battle_tutorial = bool(
+			speech.get("first_battle", false))
+	# The whiteout narration's own two inputs. ⚠️ ASSIGNED ON EVERY PATH for the
+	# same reason the speech fields above are: `whiteout_on_loss` defaults TRUE,
+	# so a heal-after battle that forgot to set it would narrate a whiteout that
+	# never happens — and one that set it and never reset would silence a real
+	# one later. `_battle_party_level` is the snapshot taken a few lines up and
+	# handed back out on `BattleOutcome`, so the figure the screen PRINTS and the
+	# figure this file later CHARGES are the same number by construction.
+	BattleSetupContext.whiteout_on_loss = not (_vm != null and _vm.pending_battle_heal_after)
+	BattleSetupContext.party_level = _battle_party_level
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
 	if packed == null:
@@ -2086,13 +2199,14 @@ func badge_count() -> int:
 	return flags.badge_count()
 
 
+## ⚠️ DELEGATES. The rule moved to `OverworldSession.whiteout_payout` so the
+## BATTLE SCREEN can call it too — it prints the "You gave ¥{n} to the winner…"
+## line before handing control back, and a second copy of the formula on that
+## side would diverge exactly where it hurts (the clamp). Kept as a thin
+## forwarder rather than deleted: this file is where the payout is APPLIED, and
+## its own suite reads it here.
 func whiteout_payout(highest_level: int) -> int:
-	var badges := badge_count()
-	# Explicit `: int` — indexing an untyped Array yields Variant, which `:=`
-	# cannot infer from. This project's own documented GDScript gotcha.
-	var asked: int = int(WHITEOUT_BADGE_MONEY[mini(badges, WHITEOUT_BADGE_MONEY.size() - 1)]) \
-			* maxi(1, highest_level)
-	return mini(asked, OverworldSession.wallet.money)
+	return OverworldSession.whiteout_payout(highest_level)
 
 
 ## [Bugfix, live-reported: a trainer's ORIGINAL spawn cell stays permanently
@@ -2223,7 +2337,34 @@ func try_interact() -> bool:
 	var e := hit.get("entity") as OverworldEntity
 	if e is NPC:
 		(e as NPC).set_facing(OPPOSITE_DIR.get(_facing, StepResolver.Dir.SOUTH))
+	_publish_facing()
 	return run_script(label, e)
+
+
+## [Bugfix, live-reported: the Sign Lady steps INTO the player; the rival's
+## entrance and Oak's walk-to-the-desk each play three or four times over]
+## Source's `gSpecialVar_Facing`, written at exactly the moments source writes
+## it — `TryGetObjectEventScript` / `GetInteractedObjectEventScript`
+## (`field_control_avatar.c:350, 362`) and `SetMsgSignPostAndVarFacing` (`:1329`),
+## i.e. **on an interaction, and nowhere else**.
+##
+## ⚠️ **IT WAS NEVER WRITTEN AT ALL, AND UNSET READS AS 0 — which is DIR_NONE,
+## a value no script ever tests for.** So every `call_if_eq VAR_FACING, DIR_x`
+## in the corpus compared 0 against 0 (see `ScriptVM._literal`'s own DIR_ note
+## for why the constants were 0 too) and fired unconditionally. Two different
+## reported bugs, one cause: the Sign Lady's `call_if_ne VAR_FACING, DIR_EAST`
+## took its "step LEFT out of the way" arm even when the player was standing to
+## her west, and the lab's parcel scene ran all four arms of all seven of its
+## dispatch groups.
+##
+## ⚠️ Deliberately NOT published on a step trigger or a map script. Source's
+## `TryStartCoordEventScript` does not touch it, and the one map script that
+## needs it (`PalletTown_ProfessorOaksLab_EventScript_EnterForNationalDexScene`)
+## sets it itself with a literal `setvar VAR_FACING, DIR_NORTH`. Publishing it
+## more widely would be a divergence dressed as a convenience.
+func _publish_facing() -> void:
+	if flags != null:
+		flags.var_set("VAR_FACING", SOURCE_DIR.get(_facing, 0))
 
 
 ## [M27G G4] Start a script. Forwards to the driver, which owns execution.
@@ -2233,6 +2374,30 @@ func try_interact() -> bool:
 ## `check_on_frame_map_script` and the warp arrival hooks — and those are all
 ## scene concerns. The seam is execution, not entry.
 func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
+	# ⚠️ **[Bugfix, live-reported: "I can select an item on the ground before my
+	# walk/turn animation finishes, leaving me frozen mid animation and facing
+	# the wrong direction"] THE WALK CYCLE IS PARKED HERE BECAUSE NOTHING ELSE
+	# EVER GETS THE CHANCE.** `_process` settles the player on its standing frame
+	# in exactly one place — the `elif _held_direction() < 0:` arm — and that arm
+	# is deliberately gated on the direction being RELEASED, so a held walk keeps
+	# its cycle running between tiles rather than leading with the same foot
+	# every step (see the comment at that call site).
+	#
+	# Walking into an item ball is the case where those two rules collide: the
+	# ball is solid, so `_try_step` refuses and leaves `_moving` false, and if
+	# the player is still leaning on the direction when they press A the script
+	# starts on a frame where nothing has rested the sprite. `_process` then
+	# returns at `if _vm != null:` for the whole conversation, so the mid-stride
+	# frame is held until the script ends — reading as a freeze, and drawing a
+	# stride frame while the logical facing says otherwise.
+	#
+	# Parking on entry is also what source does, not merely convenient: `lock` /
+	# `lockall` run `FreezeObjectEvents` + `PlayerFreeze`, and a frozen object
+	# event stops its animation on its standing frame. Those two opcodes are VM
+	# no-ops here precisely because locking is a scene concern, so this is where
+	# their visible half belongs.
+	if _player != null:
+		_face_player(_facing)
 	return _driver.run_script(label, p_subject)
 
 
@@ -2835,8 +3000,38 @@ func _exit_arrival(w: Variant) -> void:
 	_facing = dir
 	_reparent_for_elevation()
 	var t := create_tween()
-	_tween_player_position(t, manager.local_pixel_of(_cell), 0.16)
+	t.set_parallel(true)
+	_tween_player_position(t, manager.local_pixel_of(_cell), _WALK_STEP_SECONDS)
+	# ⚠️ **[Bugfix, live-reported: "there is no step animation on the forced step
+	# off of a door tile when exiting a building"] THE WALK CYCLE IS DRIVEN FROM
+	# INSIDE THE TWEEN, NOT FROM `_process`, AND THAT IS FORCED.** Both of the
+	# project's other stepping paths animate off a per-frame poll — the input
+	# step reads `if _moving:` in `_process`, scripted movement reads
+	# `MovementRunner.tick()` — and NEITHER is reachable here: `_process` returns
+	# at `if _vm != null: _drive_script(); return` several gates above the
+	# animation block, and a scripted `warp` leaves the VM parked on WAIT_WARP
+	# for exactly the span of this step. So a poll-based cycle would animate a
+	# door you walked into yourself and silently not animate one a cutscene
+	# walked you through, which is the harder of the two to notice.
+	#
+	# `secs` is elapsed wall clock rather than 0..1 progress so the per-frame
+	# delta `WalkAnim.step` wants falls straight out of it. `last` is an Array
+	# because a GDScript lambda captures a scalar BY VALUE — the assignment would
+	# mutate a private copy and every frame would report the full elapsed time as
+	# its own delta, running the cycle several times over in one tile.
+	var ticks := _player_step_ticks(_WALK_STEP_SECONDS)
+	var last := [0.0]
+	t.tween_method(
+			func(secs: float) -> void:
+				var d: float = secs - last[0]
+				last[0] = secs
+				_step_player(dir, ticks, d),
+			0.0, _WALK_STEP_SECONDS, _WALK_STEP_SECONDS)
 	await t.finished
+	# Settle on the standing frame. Without it the sprite is left on whichever
+	# stride frame the last tick happened to land on, which reads as a freeze
+	# rather than as an arrival.
+	_face_player(dir)
 
 
 ## [M27E E1b] Face water, press A, ride out — if the badge says so.
