@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 314
+const EXPECTED_TOTAL := 317
 
 var _total := 0
 var _failed := 0
@@ -2478,6 +2478,61 @@ func _test_m27g_g8_g9() -> void:
 	_run(vmf2)
 	_chk("S.17 with no registry it degrades to the old no-op rather than halting",
 			vmf2.pause_reason == ScriptVM.Pause.DONE)
+
+	# ⚠️ **[Bugfix, live-reported: "a quick flash of black in the bottom fifth of
+	# the screen on the Oak reveal"] `delay` AND `waitmessage` WERE NO-OPS —
+	# 6,516 AND 8,374 CORPUS USES.** Both sat in the Stage-1 no-op list and were
+	# harmless only while `closemessage` was one too: nothing closed the box, so
+	# it lingered whether or not the wait meant to hold it ever ran. Making
+	# `closemessage` real exposed both at once.
+	#
+	# Asserted as the DISPATCH DECISION, not the wait. The wait itself is real
+	# time inside a handler and needs a tree; it was verified by probe instead —
+	# the real `PalletTown_EventScript_OakTrigger`, measured end to end, box
+	# visible **0.01s before and 1.91s after** (typing plus `delay 85`'s own
+	# 1.42s). Recorded here so a green suite is not mistaken for coverage of the
+	# timing.
+	var vmd := ScriptVM.new(_src({
+		"A": [_op("delay", ["85"]), _op("end")],
+	}), FlagStore.new())
+	vmd.natives = reg2
+	vmd.start("A")
+	_run(vmd)
+	_chk("S.18 delay is no longer a no-op -- it waits, and carries its own frame "
+			+ "count rather than a fixed pause",
+			vmd.pause_reason == ScriptVM.Pause.WAIT_NATIVE
+			and vmd.pending_native == "Delay"
+			and int(vmd.pending_native_args[0]) == 85)
+	# ⚠️ **`waitmessage` IS STILL A NO-OP, DELIBERATELY, AND THIS PINS IT.**
+	# It was implemented alongside `delay` and WITHDRAWN: it takes
+	# `m27k_newgame_test` Section H from 67/67 to 61/67, isolated by reverting
+	# each opcode on its own. `delay` alone already gives the Oak reveal its full
+	# 1.43s of reading time with the typewriter finished, so nothing is owed.
+	# Asserted rather than merely commented so a future session cannot implement
+	# it, see a green suite here, and ship the Section H regression.
+	var vmw := ScriptVM.new(_src({
+		"A": [_op("waitmessage"), _op("setflag", ["F"]), _op("end")],
+	}), FlagStore.new())
+	vmw.natives = reg2
+	vmw.start("A")
+	_run(vmw)
+	_chk("S.19 waitmessage is STILL a no-op on purpose -- see the opcode for "
+			+ "what implementing it breaks and why delay alone suffices",
+			vmw.pause_reason == ScriptVM.Pause.DONE
+			and vmw.pending_native == "")
+
+	# ⚠️ THE DISCRIMINATOR, and it is the one that matters: 6,516 + 8,374 uses
+	# means a registry-less VM that HALTED on these would stop essentially every
+	# cutscene in the region. Degrading to the old no-op is what keeps a bare VM
+	# — every other section in this file — behaving exactly as before.
+	var vmd2 := ScriptVM.new(_src({
+		"A": [_op("delay", ["85"]), _op("setflag", ["F"]), _op("end")],
+	}), FlagStore.new())
+	vmd2.start("A")
+	_run(vmd2)
+	_chk("S.20 with no registry delay degrades to the old no-op and the script "
+			+ "still runs to the end",
+			vmd2.pause_reason == ScriptVM.Pause.DONE)
 
 
 ## --- T. [M27R Step 1] The five corridor movement actions ------------------

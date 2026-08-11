@@ -228,6 +228,35 @@ static func register_all(reg: NativeEventRegistry) -> void:
 		return null)
 
 
+	# --- [Bugfix, live-reported] delay ----------------------------------------
+	#
+	# ⚠️ **IT WAS A NO-OP, AND IT IS THE OAK-REVEAL BLACK FLASH.** See the
+	# opcode's own note in `ScriptVM`; in short, a cutscene that says "show this
+	# line, hold it for 85 frames, then close" ran all three instantly once
+	# `closemessage` became real.
+	#
+	# `delay` is 6,516 corpus uses, so this is cutscene PACING across the whole
+	# region rather than one scene's bug.
+	#
+	# ⚠️ A `WaitMessage` handler was written alongside this one and WITHDRAWN —
+	# it breaks `m27k_newgame_test` Section H. See the `waitmessage` opcode in
+	# `ScriptVM` for the measurement and why `delay` alone is sufficient.
+
+	# ⚠️ SECONDS, converted from source's frames at its own locked 60fps. Timing
+	# off `process_frame` would run ~10% fast at 144Hz and half speed at 30Hz —
+	# `[M26G4]` measured exactly that, and every discrete timer in this project
+	# has had to learn it once.
+	#
+	# ⚠️ Always finishes, which is the `native` contract: a suspended handler
+	# cannot be cancelled and would pin the scene. A timer cannot fail to fire,
+	# and a non-positive count returns without awaiting at all.
+	reg.register("Delay", func(driver, args) -> Variant:
+		var frames: int = int(args[0]) if args.size() > 0 else 0
+		if frames <= 0:
+			return null
+		await driver.scene().get_tree().create_timer(frames / 60.0).timeout
+		return null)
+
 	# --- [Corridor tail] party-count specials ----------------------------------
 	#
 	# ⚠️ All four are ONE-LINE PARTY READS, and G8 is what made them cheap: each

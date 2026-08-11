@@ -542,7 +542,7 @@ func step() -> bool:
 
 	match current_op:
 		"lock", "lockall", "release", "releaseall", \
-		"waitmessage", "textcolor", "delay", "faceplayer", "famechecker":
+		"waitmessage", "textcolor", "faceplayer", "famechecker":
 			# Stage 1 no-ops at the VM level: the CALLER owns locking input,
 			# facing the player and clearing the box, because those are scene
 			# concerns. Listed explicitly rather than falling through to
@@ -1127,6 +1127,64 @@ func step() -> bool:
 			pending_native_args = [str(args[0]) if args.size() > 0 else "FADE_TO_BLACK"]
 			pause_reason = Pause.WAIT_NATIVE
 			return false
+
+		# ⚠️ **[Bugfix, live-reported: "the bottom 10-20% of my screen has a quick
+		# flash of black when I trigger the Oak reveal"] `delay` WAS A NO-OP AND
+		# IT IS CUTSCENE PACING — 6,516 CORPUS USES.**
+		#
+		# It sat in the Stage-1 no-op list above from the beginning, and stayed
+		# harmless only because `closemessage` was a no-op too: a box nothing
+		# closed lingered regardless of whether the wait that was meant to hold
+		# it there ever ran. Making `closemessage` real exposed it immediately,
+		# and Oak's own trigger is the shape that shows it —
+		#
+		#     message PalletTown_Text_OakDontGoOut
+		#     waitmessage
+		#     delay 85          <- 1.4s of reading time
+		#     closemessage
+		#
+		# — so the box opened and shut inside a frame or two. A black flash in
+		# the bottom fifth of the screen is exactly the message panel's own
+		# footprint (164px of 768).
+		#
+		# ⚠️ FRAMES, NOT SECONDS, and converted rather than counted: source is
+		# 60fps-locked so `delay 85` is fixed wall clock, and `[M26G4]` measured
+		# frame-tied stepping running ~10% slow at 144Hz and half speed at 30Hz.
+		# Every other discrete timer in this project has had to learn that.
+		#
+		# Routed to a `native` handler rather than a new Pause kind — the same
+		# call `multichoicegrid` and `fadescreen` already made, and the reason
+		# G5 exists. Degrades to the old no-op when unregistered, so a bare VM
+		# in a test behaves exactly as before.
+		"delay":
+			if natives == null or not natives.has("Delay"):
+				return true
+			pending_native = "Delay"
+			pending_native_args = [_resolve_number(str(args[0])) if args.size() > 0 else 0]
+			pause_reason = Pause.WAIT_NATIVE
+			return false
+
+		# ⚠️ **`waitmessage` IS STILL A NO-OP, AND THAT IS NOW A MEASURED
+		# DECISION RATHER THAN AN OVERSIGHT — see the no-op list above.**
+		# Source's `ScrCmd_waitmessage` genuinely blocks until the text printer
+		# finishes (8,374 corpus uses), and it was implemented here as a `native`
+		# handler alongside `delay` — then withdrawn, because it breaks
+		# `m27k_newgame_test`'s Section H (67/67 -> 61/67, the naming-confirmation
+		# yes/no never reaching the state H.02 asserts). Isolated by reverting
+		# each opcode independently: `delay` alone is clean, `waitmessage` alone
+		# reproduces the six failures.
+		#
+		# ⚠️ **AND IT IS NOT NEEDED FOR THE BUG IT WAS ADDED FOR.** Measured on
+		# the real `PalletTown_EventScript_OakTrigger`: with `delay` real and
+		# this left alone, the box is visible **1.43s** and the typewriter has
+		# already finished when `closemessage` lands. `delay 85` is 1.42s, so the
+		# reading time source asks for is the reading time the player gets.
+		#
+		# It stays a no-op deliberately rather than half-built. The driver's own
+		# WAIT_YES_NO branch already carries a hand-rolled version of this wait
+		# for the one chain that provably needed it, so the gap is narrower than
+		# the use count suggests. **Whoever picks it up should start from why
+		# Section H breaks — that is the real finding here, not the opcode.**
 
 		# [M27G G5] `native "Handler"[, arg...]` — hand control to registered
 		# Godot code and resume when it reports back.
