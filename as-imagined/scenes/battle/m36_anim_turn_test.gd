@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 20
+const EXPECTED_TOTAL := 33
 
 
 func _ready() -> void:
@@ -43,6 +43,8 @@ func _ready() -> void:
 	_test_section_b_two_turn_charge_then_release()
 	_test_section_c_the_screen_seam()
 	_test_section_d_a_real_consumer_reads_it()
+	_test_section_e_affine_rotation_unit()
+	_test_section_f_aim_rotation_offset()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -358,3 +360,164 @@ func _test_section_d_a_real_consumer_reads_it() -> void:
 
 	(even_r["stage"] as FakeStage).layer_node.free()
 	(odd_r["stage"] as FakeStage).layer_node.free()
+
+
+# ── Section E: the affine-anim rotation unit ────────────────────────────────
+#
+# ⚠️ **AN AFFINE TABLE'S ROTATION IS A `u8` THAT SOURCE SHIFTS LEFT 8 BITS**
+# (`ApplyAffineAnimFrameRelativeAndUpdateMatrix`, `sprite.c:1327`), a DIFFERENT
+# unit from `SetSpriteRotScale`'s already-16-bit argument. The port fed the raw
+# byte through, making every affine-driven spin 256x too slow — Mega Punch's
+# fist turned 5.5 degrees across its approach where source turns it 1406.
+#
+# Reported from play as "mega kick and punch don't have any rotations", and the
+# first diagnosis of it here was WRONG: it called the spin subtle by design,
+# reasoning from the wrong unit. These assertions pin the real rate so that
+# cannot recur.
+
+const _MEGA_SPIN_FRAMES := 50          # gMegaPunchKickSpriteTemplate's args[3]
+const _MEGA_ROT_PER_FRAME := 20        # sAffineAnim_MegaPunchKick's `rot`
+
+
+# ⚠️ **DRIVEN, NOT COMPUTED. A FIRST DRAFT OF THIS SECTION WAS VACUOUS AND ONLY
+# INJECTION FOUND IT** — it asserted `_MEGA_ROT_PER_FRAME << 8` (the test's own
+# arithmetic) and `_affine_loop_delta`'s return value, both of which stay true
+# with `_spinning_kick_or_punch` reverted to the raw byte and to a hardcoded
+# -8. It was a guard on the callee, blind to the caller: the exact shape this
+# suite's own section C exists to cover. These spawn the behavior and measure
+# the sprite.
+func _spin_mega_punch(frames: int) -> Dictionary:
+	var registry := AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(registry)
+	var stage := FakeStage.new()
+	var vm := AnimScriptVM.new()
+	vm.registry = registry
+	vm.stage = stage
+	vm.state = AnimScriptVM.State.RUNNING
+	# Mega Punch's own args: [0, 0, 0, 50].
+	vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 0; vm.args[3] = _MEGA_SPIN_FRAMES
+	var template := "gMegaPunchKickSpriteTemplate"
+	registry.get_behavior("AnimSpinningKickOrPunch").call(vm, {
+		"template": template,
+		"template_data": AnimData.template(template),
+		"blend": {"eva": 16, "evb": 0}})
+	var fist: AnimSprite = null
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite:
+			fist = child
+			break
+	for _f in range(frames):
+		vm._step_behaviors()
+	return {"stage": stage, "sprite": fist}
+
+
+func _test_section_e_affine_rotation_unit() -> void:
+	var r := _spin_mega_punch(10)
+	var fist: AnimSprite = r["sprite"]
+	_chk("E.01 the fist spawns", fist != null)
+	if fist == null:
+		(r["stage"] as FakeStage).layer_node.free()
+		return
+
+	# THE discriminator for the missing shift. Both versions rotate; only the
+	# MAGNITUDE separates them, and the broken one is 256x smaller — so
+	# "it rotated" would pass under the bug, and did.
+	var deg: float = absf(rad_to_deg(fist.rotation))
+	_chk("E.02 ten frames is ~281 deg of spin, not ~1.1 (got %.1f)" % deg,
+			deg > 200.0)
+	_chk("E.03 and it is not the 256x-too-slow value (got %.2f)" % deg, deg > 5.0)
+
+	# ⚠️ RATIO, not absolute. A sprite's base scale is the stage's pixel scale
+	# (~4.27), so an absolute threshold measures the canvas rather than the
+	# shrink — the first draft of E.04 asserted ~0.84 against a value of 3.6,
+	# and the first draft of E.05 would have passed at the -8 clamp too.
+	var base: float = (_spin_mega_punch(0)["sprite"] as AnimSprite).scale.x
+	# THE discriminator for the wrong table. At the correct -4 the fist is at
+	# 0.844 of base after 10 frames; at the inlined -8 it is 0.688. Both are
+	# "shrinking", so only the rate tells them apart.
+	var sc: float = fist.scale.x / base
+	_chk("E.04 the shrink follows Mega Punch's own -4 table (0.844 of base), not -8 (0.688) — got %.3f" % sc,
+			absf(sc - 0.84375) < 0.02)
+	(r["stage"] as FakeStage).layer_node.free()
+
+	# And the end state: at -4 the fist is still visible; at -8 it would have
+	# been clamped to the 5% floor for the last 18 frames of the spin.
+	var r2 := _spin_mega_punch(_MEGA_SPIN_FRAMES)
+	var fist2: AnimSprite = r2["sprite"]
+	if fist2 != null:
+		# At -4 this ends at 0.219 of base; at -8 it is pinned to the 0.05
+		# clamp. Comparing to base is what separates them.
+		var end_ratio: float = fist2.scale.x / base
+		_chk("E.05 after a full 50-frame spin the fist is 0.219 of base, not the 0.05 clamp (%.3f)"
+				% end_ratio, end_ratio > 0.15)
+		var turns: float = absf(rad_to_deg(fist2.rotation)) / 360.0
+		_chk("E.06 the full spin is ~3.9 turns (got %.2f)" % turns,
+				turns > 3.5 and turns < 4.3)
+	else:
+		_chk("E.05 after a full spin the fist is still visible", false)
+		_chk("E.06 the full spin is ~3.9 turns", false)
+	(r2["stage"] as FakeStage).layer_node.free()
+
+	# The table is READ, not inlined — because one behavior serves two
+	# templates whose tables genuinely disagree. A fixture where they agreed
+	# could not tell "reads the table" from "inlined one of them".
+	var mega := AnimBehaviors._affine_loop_delta({"template": "gMegaPunchKickSpriteTemplate"})
+	var hand := AnimBehaviors._affine_loop_delta({"template": "gSpinningHandOrFootSpriteTemplate"})
+	_chk("E.07 the two templates' tables DISAGREE on shrink (-4 vs -8): %s vs %s"
+			% [mega.get("scale"), hand.get("scale")],
+			int(mega.get("scale", 0)) == -4 and int(hand.get("scale", 0)) == -8)
+	_chk("E.08 both carry the same rotation delta, so only shrink distinguishes them",
+			int(mega.get("rot", 0)) == 20 and int(hand.get("rot", 0)) == 20)
+	_chk("E.09 an unknown template yields no deltas rather than a wrong one",
+			AnimBehaviors._affine_loop_delta({"template": "gNotARealTemplate"}).is_empty())
+
+
+# ── Section F: the sprite-aim rotation offset ───────────────────────────────
+#
+# A projectile drawn along the VERTICAL axis needs a quarter turn to point
+# along a travel angle measured from +X. Source applies `rot += 0xC000`; two of
+# this file's four aiming rotators did and two did not, so Poison Sting's
+# needle flew sideways. Confirmed against the art: `needle.png` is a vertical
+# shaft.
+
+func _test_section_f_aim_rotation_offset() -> void:
+	_chk("F.01 the shared offset is a quarter turn (0xC000)",
+			AnimBehaviors._AIM_ROTATION_OFFSET == 0xC000)
+	# One value, one home — the coin's private copy now aliases it, so the two
+	# cannot drift apart.
+	_chk("F.02 the coin's constant is the SAME value, not a second copy",
+			AnimBehaviors._COIN_ROTATION_OFFSET == AnimBehaviors._AIM_ROTATION_OFFSET)
+
+	var stage := FakeStage.new()
+	var registry := AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(registry)
+	var vm := AnimScriptVM.new()
+	vm.registry = registry
+	vm.stage = stage
+	vm.state = AnimScriptVM.State.RUNNING
+	# Poison Sting's own args: [20, 0, -8, 0, 20].
+	vm.args[0] = 20; vm.args[1] = 0; vm.args[2] = -8; vm.args[3] = 0; vm.args[4] = 20
+	var template := "gLinearStingerSpriteTemplate"
+	registry.get_behavior("AnimTranslateStinger").call(vm, {
+		"template": template,
+		"template_data": AnimData.template(template),
+		"blend": {"eva": 16, "evb": 0}})
+	var needle: AnimSprite = null
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite:
+			needle = child
+			break
+	_chk("F.03 the stinger spawns", needle != null)
+	if needle == null:
+		stage.layer_node.free()
+		return
+	# THE discriminator. The raw travel angle between this fixture's attacker
+	# and target is what the BROKEN version produced; the fix differs from it
+	# by exactly a quarter turn. Asserting "it has some rotation" would pass
+	# under the bug, since the broken version also set one.
+	var travel: float = (stage.center_of(AnimStage.ANIM_TARGET)
+			- stage.center_of(AnimStage.ANIM_ATTACKER)).angle()
+	var delta: float = wrapf(needle.rotation - travel, -PI, PI)
+	_chk("F.04 the needle is a quarter turn OFF the raw travel angle, not equal to it (%.1f deg)"
+			% rad_to_deg(delta), absf(absf(delta) - PI * 0.5) < 0.35)
+	stage.layer_node.free()

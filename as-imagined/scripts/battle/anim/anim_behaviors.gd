@@ -2046,6 +2046,29 @@ static func _bone_hit_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	_linear_travel(vm, node, start, finish_pos, maxi(1, vm.args[4]))
 
 
+# ⚠️ **THE SPRITE-AIM OFFSET. A PROJECTILE THAT AIMS ITSELF NEEDS THIS OR IT
+# FLIES SIDEWAYS.** Source applies `rot += 0xC000` after computing the travel
+# angle (`AnimTranslateStinger` battle_anim_bug.c:385, `AnimMissileArc_Step`
+# :~430), because the art is drawn along the VERTICAL axis while the computed
+# angle is measured from +X. Confirmed by looking at the art rather than
+# inferring it: `needle.png` is a 16x16 vertical shaft.
+#
+# Reported from play: "poison sting has the animation object not rotated
+# properly." Two of this file's four aiming rotators applied the offset
+# (`_coin_throw`, `_sky_attack_bird`) and two did not (`_translate_stinger`,
+# `_missile_arc`), so the needle stayed upright while travelling sideways.
+#
+# ⚠️ **`+atan2` IS CORRECT AND SOURCE'S `ArcTan2Neg` IS NOT AN EXTRA SIGN FLIP
+# TO PORT.** `ArcTan2` is BIOS SWI 0x0A, which measures CCW in a **y-up**
+# frame; the GBA screen is y-down, so feeding it a screen `dy` mirrors the
+# answer and `ArcTan2Neg`'s negation puts it back. Godot's `Vector2.angle()`
+# is already the screen-space angle, so the two cancel and only the offset is
+# owed. This was derived rather than assumed, and it is corroborated by the
+# two rotators that already ship with `+atan2` plus this offset and look
+# right.
+const _AIM_ROTATION_OFFSET := 0xC000
+
+
 # AnimTranslateStinger (battle_anim_bug.c:350). args: 0/1 start, 2/3 target
 # offsets, 4 duration. Like the missile, but ROTATED to face its direction of
 # travel -- a stinger that flew sideways would read as a bug.
@@ -2060,7 +2083,8 @@ static func _translate_stinger(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			+ Vector2(float(vm.args[2]) * _facing(vm), float(vm.args[3])) \
 				* scale
 	node.centre = start
-	node.rotation = (finish_pos - start).angle()
+	node.rotation = (finish_pos - start).angle() \
+			+ _gba_rot_to_radians(_AIM_ROTATION_OFFSET)
 	_linear_travel(vm, node, start, finish_pos, maxi(1, vm.args[4]))
 
 
@@ -2103,7 +2127,8 @@ static func _missile_arc(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		var ahead: Vector2 = arc_at.call(minf(1.0, f + 1.0 / float(duration)))
 		node.centre = pos
 		if not ahead.is_equal_approx(pos):
-			node.rotation = (ahead - pos).angle()
+			node.rotation = (ahead - pos).angle() \
+					+ _gba_rot_to_radians(_AIM_ROTATION_OFFSET)
 		return false)
 
 
@@ -3955,14 +3980,60 @@ static func _fist_or_foot_random_pos(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		return false)
 
 
+# ⚠️ **AN AFFINE-ANIM TABLE'S ROTATION IS A `u8` AND IS SHIFTED LEFT 8 BITS
+# BEFORE IT REACHES THE MATRIX** — `ApplyAffineAnimFrameRelativeAndUpdateMatrix`
+# (`sprite.c:1327`): `rotation + (frameCmd->rotation << 8)`. So it is a DIFFERENT
+# unit from `SetSpriteRotScale`'s argument, which is already in 65536-per-circle
+# space (that is why `_bow_mon`'s literal `0xC00` needs no shift).
+#
+# Reported from play: "mega kick and punch don't have any rotations." The port
+# fed the raw table byte straight to `_gba_rot_to_radians`, making every
+# affine-driven spin **256x too slow** — Mega Punch's fist turned 5.5 degrees
+# across its whole approach where source turns it 1406 degrees, nearly four
+# full rotations. 180 of the 647 extracted affine frame commands carry a
+# nonzero rotation, up to magnitude 248, so the error is dramatic wherever it
+# is inlined.
+const _AFFINE_ROT_SHIFT := 8
+
+# GBA affine tables store scale deltas as unsigned 16-bit; 0xFFFC is -4.
+static func _affine_s16(v: int) -> int:
+	return v - 65536 if v > 32767 else v
+
+
+# The per-frame deltas of a template's own LOOPING affine frame, read from the
+# extracted table rather than inlined.
+#
+# ⚠️ **THIS BEHAVIOR SERVES TWO TEMPLATES WITH DIFFERENT TABLES, WHICH IS WHY
+# IT MUST BE READ AND NOT HARDCODED.** `gMegaPunchKickSpriteTemplate` uses
+# `sAffineAnim_MegaPunchKick` (xScale **-4**) and `gSpinningHandOrFootSpriteTemplate`
+# — Blaze Kick / Meteor Mash — uses `sAffineAnim_SpinningHandOrFoot` (**-8**).
+# The port inlined the -8 and applied it to both, so Mega Punch shrank twice as
+# fast as it should and hit the 0.05 clamp at frame 32, leaving a 5% dot for
+# the last 18 frames of a 50-frame spin. You cannot see a rotation on a dot,
+# which is why the two defects read as one.
+static func _affine_loop_delta(ctx: Dictionary) -> Dictionary:
+	var seqs := AnimData.affine_sequences_for(str(ctx.get("template", "")))
+	for seq in seqs:
+		for cmd in seq:
+			if cmd is Dictionary and (cmd as Dictionary).has("rot"):
+				var d: Dictionary = cmd
+				# Frame 0 is the absolute identity base (xscale 256); the
+				# looping frame is the first one carrying a real delta.
+				if int(d.get("xscale", 256)) == 256 and int(d.get("rot", 0)) == 0:
+					continue
+				return {"scale": _affine_s16(int(d.get("xscale", 0))),
+						"rot": int(d.get("rot", 0))}
+	return {}
+
+
 # AnimSpinningKickOrPunch (battle_anim_fight.c:640, finish :650). args:
 # 0/1 offset, 2 anim index, 3 spin duration.
 #
 # The spin and shrink are NOT in the function at all -- they live in the
-# template's affine anim (sAffineAnim_SpinningHandOrFoot, :136): -8/256 scale
-# and +20 rotation units per frame, looping. The finisher then SNAPS the
-# sprite back to full size and angle 0 and holds it there for 21 frames before
-# destroying it, which is why the kick appears to land rather than fade.
+# template's own affine anim, which is why both come from `_affine_loop_delta`
+# above. The finisher then SNAPS the sprite back to full size and angle 0 and
+# holds it there for 21 frames before destroying it, which is why the kick
+# appears to land rather than fade.
 static func _spinning_kick_or_punch(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	var node := _make_sprite(vm, ctx)
 	if node == null:
@@ -3973,6 +4044,11 @@ static func _spinning_kick_or_punch(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			vm.args[1], scale)
 	var spin: int = maxi(0, vm.args[3])
 	var base_scale := node.scale
+	# Falls back to the Mega Punch/Kick table's own values if the extraction is
+	# unavailable, rather than to the other template's.
+	var delta := _affine_loop_delta(ctx)
+	var shrink_per_frame: float = float(int(delta.get("scale", -4))) / 256.0
+	var rot_per_frame: int = int(delta.get("rot", 20)) << _AFFINE_ROT_SHIFT
 	var st := {"t": 0, "phase": 0, "hold": 0}
 	vm.add_stepper(func() -> bool:
 		if not is_instance_valid(node):
@@ -3980,10 +4056,9 @@ static func _spinning_kick_or_punch(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		node.advance_frame()
 		if int(st["phase"]) == 0:
 			st["t"] = int(st["t"]) + 1
-			# -8/256 per frame, +20 rotation units per frame.
-			var shrink := 1.0 - (8.0 / 256.0) * float(st["t"])
+			var shrink := 1.0 + shrink_per_frame * float(st["t"])
 			node.scale = base_scale * maxf(0.05, shrink)
-			node.rotation += _gba_rot_to_radians(20)
+			node.rotation += _gba_rot_to_radians(rot_per_frame)
 			if int(st["t"]) > spin:
 				# The snap back to full size and zero rotation is the point.
 				node.scale = base_scale
@@ -12385,7 +12460,8 @@ static func _gunk_shot_impact(vm: AnimScriptVM, ctx: Dictionary) -> void:
 #
 # The coin also ROTATES to face its travel direction: ArcTan2Neg of the
 # delta, plus 0xC000 (a quarter turn) because the sprite is drawn edge-on.
-const _COIN_ROTATION_OFFSET := 0xC000
+# Shared with every other aiming rotator -- see `_AIM_ROTATION_OFFSET`.
+const _COIN_ROTATION_OFFSET := _AIM_ROTATION_OFFSET
 
 
 static func _coin_throw(vm: AnimScriptVM, ctx: Dictionary) -> void:
@@ -12498,7 +12574,13 @@ static func _run_affine_cmds(vm: AnimScriptVM, node: Control, cmds: Array,
 		var cmd: Array = cmds[i]
 		st["x"] = float(st["x"]) + float(cmd[0])
 		st["y"] = float(st["y"]) + float(cmd[1])
-		st["rot"] = float(st["rot"]) + float(cmd[2])
+		# ⚠️ `<< _AFFINE_ROT_SHIFT` — see that constant. An affine table's
+		# rotation is a u8 that source shifts up 8 bits (`sprite.c:1327`), so
+		# accumulating it raw is 256x too slow. LATENT here today: none of the
+		# eleven hand-transcribed tables this runner is called with carries a
+		# nonzero rotation column, so every one is pure scale — fixed anyway,
+		# because the trap is for whoever adds a rotating table next.
+		st["rot"] = float(st["rot"]) + float(int(cmd[2]) << _AFFINE_ROT_SHIFT)
 		# 256/value, the inverted-scale rule. Guarded so a table that walked
 		# the value to zero could not produce an infinite scale.
 		var sx := _GBA_AFFINE_IDENTITY / maxf(1.0, float(st["x"]))
