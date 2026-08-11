@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 52
+const EXPECTED_TOTAL := 60
 
 
 func _ready() -> void:
@@ -47,6 +47,7 @@ func _ready() -> void:
 	_test_section_f_aim_rotation_offset()
 	_test_section_g_battler_pivot()
 	_test_section_h_background_viewport()
+	_test_section_i_central_sprite_tick()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -715,3 +716,106 @@ func _test_section_h_background_viewport() -> void:
 		_chk("H.09 the short-background case resolves", false)
 
 	(stage.get_meta("holder") as BgStage).root.free()
+
+
+# ── Section I: the central sprite tick ─────────────────────────────────────
+#
+# ⚠️ **SOURCE'S `AnimateSprites()` DOES TWO THINGS PER SPRITE PER FRAME** —
+# `sprite->callback(sprite)` and `AnimateSprite(sprite)`. The port had only the
+# first (`_step_behaviors`); the second was distributed into 184 per-behavior
+# `advance_frame()` calls against 291 `_make_sprite` calls, so a sprite whose
+# behavior never asked was never animated. This restores it.
+#
+# The assertions below are all about the sprites a BEHAVIOR NEVER TICKS,
+# because those are the ones the old arrangement dropped — a fixture using a
+# sprite that its behavior already advances could not tell the two apart.
+
+func _tick_stage() -> AnimStage:
+	var holder := BgStage.new(1200.0, 800.0)
+	var st := AnimStage.new(func(_m): return null, func(): return holder.layer_node)
+	st.set_meta("holder", holder)
+	return st
+
+
+func _test_section_i_central_sprite_tick() -> void:
+	var stage := _tick_stage()
+	var vm := AnimScriptVM.new()
+	vm.registry = AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(vm.registry)
+	vm.stage = stage
+
+	# A bare sprite parented to the layer, registered with nothing and ticked
+	# by no behavior: exactly the case the old arrangement never animated.
+	var orphan := AnimSprite.new()
+	stage.layer().add_child(orphan)
+	_chk("I.01 a fresh sprite starts with no affine frames", orphan.affine_frames == 0)
+
+	vm.start("gBattleAnimMove_Pound")
+	vm.step()
+	# THE discriminator. "It has some frames" would pass under a tick that only
+	# reached behavior-driven sprites, because this sprite has no behavior.
+	_chk("I.02 ONE vm.step() ticks a sprite no behavior owns (%d)" % orphan.affine_frames,
+			orphan.affine_frames == 1)
+	vm.step()
+	vm.step()
+	_chk("I.03 and it keeps pace, one per frame (%d)" % orphan.affine_frames,
+			orphan.affine_frames == 3)
+
+	# ⚠️ Cel frames must NOT be advanced here — 184 behaviors already do that,
+	# and doubling it would speed every one of them up.
+	#
+	# ⚠️ **THIS NEEDS A SPRITE WITH A REAL CEL SEQUENCE, AND THE FIRST DRAFT DID
+	# NOT HAVE ONE.** `advance_frame()` returns immediately on an empty
+	# sequence, so a bare sprite's `_seq_index` sits at 0 whether or not the
+	# tick advances it — the injection that adds `advance_frame()` to the tick
+	# passed cleanly against that fixture. A two-frame sequence is the smallest
+	# thing that can express the difference.
+	orphan.play_sequence([{"duration": 1, "tile": 0}, {"duration": 1, "tile": 1}])
+	var cel_before: int = orphan.get("_seq_index")
+	vm.step()
+	var cel_after: int = orphan.get("_seq_index")
+	_chk("I.04 the tick does NOT advance cel frames (%d -> %d)" % [cel_before, cel_after],
+			cel_before == cel_after)
+	# ...and the fixture is proven capable of moving, so the check above is not
+	# passing merely because nothing could ever change.
+	orphan.advance_frame()
+	_chk("I.04b the fixture's cel frame CAN advance, so I.04 is not vacuous (%d)"
+			% int(orphan.get("_seq_index")), int(orphan.get("_seq_index")) != cel_after)
+
+	# A sprite that has finished must not keep accruing frames.
+	var count_at_finish: int = orphan.affine_frames
+	orphan.finish()
+	vm.step()
+	_chk("I.05 a finished sprite stops being ticked (%d, was %d)"
+			% [orphan.affine_frames, count_at_finish],
+			orphan.affine_frames == count_at_finish)
+
+	# And a run with no stage at all must not crash.
+	var bare := AnimScriptVM.new()
+	bare.registry = vm.registry
+	bare.start("gBattleAnimMove_Pound")
+	bare.step()
+	_chk("I.06 a VM with no stage steps without erroring", true)
+
+	(stage.get_meta("holder") as BgStage).root.free()
+
+	# The gap this closes, stated as a number so it cannot quietly regress:
+	# every sprite on the layer is reached, not merely the registered ones.
+	var stage2 := _tick_stage()
+	var vm2 := AnimScriptVM.new()
+	vm2.registry = vm.registry
+	vm2.stage = stage2
+	var many: Array = []
+	for i in range(5):
+		var sp := AnimSprite.new()
+		stage2.layer().add_child(sp)
+		many.append(sp)
+	vm2.start("gBattleAnimMove_Pound")
+	vm2.step()
+	var all_ticked := true
+	for sp in many:
+		if (sp as AnimSprite).affine_frames != 1:
+			all_ticked = false
+	_chk("I.07 EVERY sprite on the layer is reached by one step, not just one",
+			all_ticked)
+	(stage2.get_meta("holder") as BgStage).root.free()

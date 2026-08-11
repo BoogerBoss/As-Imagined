@@ -170,6 +170,7 @@ func step() -> void:
 		return
 
 	_step_behaviors()
+	_tick_sprites()
 
 	if _frames_to_wait > 0:
 		_frames_to_wait -= 1
@@ -187,6 +188,47 @@ func step() -> void:
 			_finish("program counter left the command array")
 			return
 		_execute(_commands[_pc])
+
+
+# ⚠️ **[M36 sprite tick] THE OTHER HALF OF SOURCE'S OWN PER-FRAME LOOP.**
+# `AnimateSprites()` (`sprite.c`) does TWO things for every in-use sprite,
+# every frame, unconditionally:
+#
+#     sprite->callback(sprite);      <- `_step_behaviors()` above IS this
+#     AnimateSprite(sprite);         <- this
+#
+# The port had only the first. The second was distributed into **184
+# `advance_frame()` calls inside individual behaviors**, against **291
+# `_make_sprite` calls** — so ticking became opt-in and a sprite whose
+# behavior never asked was never animated at all. Restoring the loop here
+# puts the missing half back beside the half that was already central.
+#
+# ⚠️ **IT ADVANCES THE AFFINE CLOCK ONLY, NOT CEL FRAMES.** Those 184 sites
+# already advance their own cel animation; ticking it here as well would
+# double it and speed every one of them up. Keeping the two apart is what
+# makes this a ~10-line addition instead of a 184-site refactor.
+#
+# ⚠️ **AND IT LIVES IN `step()`, NOT IN `AnimSprite._process`.** The obvious
+# Godot shortcut is to let each sprite tick itself — but this VM is driven by
+# a 1/60s WALL CLOCK (`battle_screen_shared._run_anim_script`), not by Godot
+# frames, so a `_process` tick would run at the display rate: 2.4x too fast at
+# 144Hz, half speed at 30Hz. That is the frame-tied-stepping failure `[M26G4]`
+# already measured, and every discrete stepper in this project is on wall clock
+# because of it.
+#
+# Sprites are found by scanning the layer's children rather than from a
+# registry, because `_make_sprite` deliberately does not register what it
+# spawns — the same enumeration `_free_layer_visuals` relies on, and it is
+# therefore robust to a behavior that never registered anything.
+func _tick_sprites() -> void:
+	if stage == null or not stage.has_method("layer"):
+		return
+	var layer: Control = stage.layer()
+	if layer == null or not is_instance_valid(layer):
+		return
+	for child in layer.get_children():
+		if child is AnimSprite and not child.is_queued_for_deletion():
+			(child as AnimSprite).advance_affine()
 
 
 # Runs every live behavior one GBA frame. A stepper returning true has

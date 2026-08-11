@@ -112,6 +112,28 @@ func play_sequence(sequence: Array) -> void:
 	_apply_current_frame()
 
 
+# ⚠️ **[M36 sprite tick] THE AFFINE CLOCK, ADVANCED CENTRALLY.**
+# `AnimScriptVM._tick_sprites()` calls this for EVERY live sprite once per GBA
+# frame — the `AnimateSprite(sprite)` half of source's own `AnimateSprites()`
+# loop, which this port had distributed into 184 per-behavior `advance_frame()`
+# calls and therefore never ran for a sprite whose behavior did not ask.
+#
+# ⚠️ **RIGHT NOW IT ONLY COUNTS FRAMES, AND THAT IS A BET ON A CONSUMER THAT
+# DOES NOT EXIST YET** — per this milestone's own rule (9), said here rather
+# than left for someone to infer. The affine-anim interpreter is that consumer:
+# 493 of 1148 templates carry an affine table, 607 of 933 moves spawn one, and
+# nothing plays them today (`AnimData.affine_sequences_for()` has no callers).
+# When it lands, the state machine goes HERE and the counter becomes its clock.
+#
+# Deliberately NOT advancing cel frames: `advance_frame()` below is already
+# called by those 184 behaviors, and doing it here too would double it.
+var affine_frames: int = 0
+
+
+func advance_affine() -> void:
+	affine_frames += 1
+
+
 # Advances the frame animation by one GBA frame. Called by the behavior's own
 # per-frame step so animation and motion stay on the same clock.
 func advance_frame() -> void:
