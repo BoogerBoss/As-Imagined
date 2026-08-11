@@ -75,7 +75,12 @@ const MAP_DATA_ASSERTIONS := 8
 ## BC (the connections view, offset editor + legend toggle, 6) and
 ## BD (Part B behaviour override + hiding the metatile brush, 7) and
 ## BE (I6a mart stock through the compiler, 6).
-const EXPECTED_TOTAL := 624
+const EXPECTED_TOTAL := 632
+
+## [M27S] Distinct unresolved symbolic constants reachable from a baked map.
+## ⚠️ A BASELINE TO SHRINK, not a target to meet — see `_test_m27s_corpus_audit`.
+## Measured 2026-08-10. If this grows, a new constant is silently reading 0.
+const CORRIDOR_UNRESOLVED_BASELINE := 139
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -268,6 +273,7 @@ func _ready() -> void:
 	_test_m27m3_metatile_brush()
 	_test_partb_behaviour_override()
 	_test_i6a_mart_stock()
+	_test_m27s_corpus_audit()
 	_test_m27m5_authored_map()
 	_test_m27m5_creator()
 	_test_m27m5_connection_view()
@@ -4813,3 +4819,76 @@ func _any_metatile_with(pair: String, behaviour: int) -> bool:
 		if MapManager.behavior_for(pair, mid) == behaviour:
 			return true
 	return false
+
+
+## [M27S] The static corpus audit.
+##
+## ⚠️ **A BASELINE, NOT A WALL** — the `m36_leak_harness` KNOWN_LEAKS shape.
+## There are real unresolved constants in the corpus today; failing outright
+## would mean a red suite until every one is fixed, which is how a guard gets
+## deleted. Pinned instead, so a NEW one fails and shrinking the set is the
+## definition of progress.
+##
+## ⚠️ Runs the REAL `ScriptVM._literal` over the REAL corpus — 183,265
+## arguments in ~300 ms, measured. A Python twin in `gen_map_scripts.py` was
+## the earlier recommendation and was WRONG: it would mean two hand-kept copies
+## of the resolver, which is the `check_bake_diff`/`map_baker` drift this
+## project has already paid for.
+func _test_m27s_corpus_audit() -> void:
+	if not FileAccess.file_exists("res://data/map_scripts.json"):
+		_gated += 8
+		return
+	var f := FileAccess.open("res://data/map_scripts.json", FileAccess.READ)
+	var ops: Dictionary = JSON.parse_string(f.get_as_text())
+	f.close()
+	var r := ScriptAudit.scan(ops, ScriptAudit.corridor_prefixes())
+	var corridor: Dictionary = r["corridor"]
+	var all: Dictionary = r["all"]
+
+	_chk("BF.01 the whole corpus is scanned, not a sample (%d args)"
+			% int(r["scanned"]), int(r["scanned"]) > 150000)
+	# ⚠️ The split is the difference between a usable report and 4,541 rows of
+	# Hoenn/contest/battle-animation noise nobody reads.
+	_chk("BF.02 corridor findings are a small fraction of the corpus (%d of %d)"
+			% [corridor.size(), all.size()],
+			corridor.size() > 0 and corridor.size() < all.size() / 4)
+
+	# The three exclusions that keep the report honest, each asserted rather
+	# than assumed — a whitelist that silently swallowed everything would give
+	# an empty, reassuring report.
+	_chk("BF.03 string-context families are excluded",
+			not ScriptAudit.is_reportable("LOCALID_CHARMANDER_BALL")
+			and not ScriptAudit.is_reportable("TRAINER_LEADER_BROCK_FRLG")
+			and not ScriptAudit.is_reportable("FADE_TO_BLACK"))
+	_chk("BF.04 store keys are excluded — they never go through _literal",
+			not ScriptAudit.is_reportable("VAR_MAP_SCENE_ROUTE22")
+			and not ScriptAudit.is_reportable("FLAG_BADGE01_GET"))
+	# Mixed-case labels are 17,159 of the corpus's own arguments. Letting them
+	# through would bury everything.
+	_chk("BF.05 script/movement labels are not symbolic constants",
+			not ScriptAudit.is_symbolic("PalletTown_EventScript_SignLady")
+			and not ScriptAudit.is_symbolic("Common_Movement_WalkDown")
+			and ScriptAudit.is_symbolic("REQUIRED_CAUGHT_MONS"))
+	# ⚠️ NON-VACUOUS. A resolver that suddenly answered nonzero for everything,
+	# or a whitelist that grew to cover the world, would leave BF.03-BF.05
+	# green and this red.
+	_chk("BF.06 a token that DOES resolve is not reported",
+			not ScriptAudit.is_reportable("SPECIES_BULBASAUR")
+			and not ScriptAudit.is_reportable("PARTY_SIZE")
+			and not ScriptAudit.is_reportable("YES"))
+
+	# The real finds, named so the baseline says what it is protecting rather
+	# than just holding a number. Each is a NUMERIC comparison silently reading
+	# 0 — see the M27S roadmap entry for what each one breaks.
+	var real := ["REQUIRED_CAUGHT_MONS", "B_OUTCOME_WON", "PARTY_NOTHING_CHOSEN",
+			"MON_GIVEN_TO_PC", "SIGN_LADY_READY"]
+	var found_all := true
+	for t in real:
+		if not corridor.has(t):
+			found_all = false
+	_chk("BF.07 the known real finds are still detected", found_all)
+	# ⚠️ Shrinking this is the point. If it GREW, a new unresolved constant
+	# reached the corridor — find it with ScriptAudit.format(corridor).
+	_chk("BF.08 the corridor baseline has not grown (%d, expected %d)"
+			% [corridor.size(), CORRIDOR_UNRESOLVED_BASELINE],
+			corridor.size() <= CORRIDOR_UNRESOLVED_BASELINE)

@@ -3722,6 +3722,33 @@ conclusion the M27M plugin already reached the hard way.
 grows, and rule 1 — never fill `A` — is in force here as everywhere else.
 
 
+## M27S — The static corpus audit *(built 2026-08-10)*
+
+**`ScriptVM._literal` returns 0 for a token it has no case for, and zero is a valid number** — so nothing errors, nothing halts, the script runs to completion, and the comparison quietly does the wrong thing. **This bug class has landed six times**, every one found by PLAYING the one scene that used it and every one fixed by adding another `match` case: `YES`/`NO` (753 uses, inverted every yes/no branch in the region), `SPECIES_*` (295, the starter script could not name its own Pokémon), `PARTY_SIZE` (57, every "was anything chosen" check took Decline), `INGAME_TRADE_*` (13, every trade NPC read the wrong table row), `LOCALID_*` (Gary's own ball never disappeared) and `RIVAL_BATTLE_*` (heal-after-loss never fired). Nobody ever made the fallthrough itself fail loud. `ScriptAudit` is that.
+
+⚠️ **IT IS GDSCRIPT, NOT `gen_map_scripts.py`, AND THE EARLIER RECOMMENDATION TO PUT IT THERE WAS WRONG — recorded because the reasoning was plausible.** That was argued from the three guards already living in the generator (the `pokemart` stock check, trainer-key canonicalisation, the `normalize()` collision assert), but every one of those is pure Python over data the generator itself produces. This one needs `_literal`, which is GDScript, so the generator version would have to REIMPLEMENT the resolver — two hand-kept copies of one rule, which is exactly the `check_bake_diff`/`map_baker` normalisation drift this project already paid for with a permanent false positive. **Calling the real function is the whole point of the tool.**
+
+**Measured: 183,265 arguments across 17,159 labels, parse 209 ms + scan 301 ms** — cheap enough to sit in the ordinary suite rather than a separate pass.
+
+⚠️ **THE CORRIDOR SPLIT IS WHAT MAKES IT USABLE.** Whole-corpus it finds **1,977 distinct unresolved tokens**, dominated by `ANIM_` (13,253 uses), `SE_` (4,077) and `SOUND_` (3,673) — battle-animation and contest scripts this project cannot reach. Restricted to labels owned by a baked map it finds **139**, which is a list a human reads.
+
+⚠️ **ROUGHLY 90% OF THE VOLUME IS CORRECT AND MUST BE WHITELISTED, OR THE TOOL IS NOISE.** `STRING_CONTEXT` names 16 families consumed BY NAME rather than as a number — `LOCALID_` (812 corridor uses), `TRAINER_` (792), `MAP_` (190), `ITEM_` (165), `SE_`/`MUS_`, `MOVEMENT_TYPE_` (a `String` by design), `STR_VAR_`, `FADE_`, and so on. **Each carries its reason and each was confirmed by reading the consumer**, not assumed from the name: `FADE_TO_BLACK`/`FADE_FROM_BLACK` in particular were an open question until `FieldNativeEvents`' own handler was read and found to compare `dir.begins_with("FADE_FROM")` — a raw string, never `_literal`. A family whitelisted on a guess is how an audit stops finding things.
+
+**FIVE REAL FINDS ON THE FIRST RUN, and the tool had no knowledge of any of them:**
+
+- ⚠️ **`REQUIRED_CAUGHT_MONS` / `REQUIRED_OWNED_MONS` / `REQUIRED_SEEN_MONS`** — `goto_if_lt VAR_0x8006, REQUIRED_CAUGHT_MONS`, so `< 0` is never true and the Route 11 / Route 15 Aides always behave as though you have caught enough. **This independently rediscovered a gap the project already knew about**: `[M27I I3b]` found these file-scoped `.equ` constants, measured **32 region-wide**, noted `REQUIRED_CAUGHT_MONS` is declared **three times with three different values (30/40/50)** — which is why a global table is wrong and the fix needs FILE SCOPE — and explicitly flagged-not-fixed it. The audit finding a known-deferred real bug with no prior knowledge is the strongest validation available.
+- ⚠️ **`PARTY_NOTHING_CHOSEN`** — `0xFF` (255) in source. `[M27G G2]` correctly WRITES 255 into `VAR_0x8004` on a cancel, but any script comparing against the symbolic constant reads **0** — so the write half is right and the read half is broken.
+- ⚠️ **`MON_GIVEN_TO_PC`** — `givemon`'s own three-way result code. `[M27K K-c2]` fixed the WRITE side (0/1/2 rather than a boolean); the constant still resolves to 0, so `goto_if_eq VAR_RESULT, MON_GIVEN_TO_PC` reads the party branch. `MON_GIVEN_TO_PARTY` is accidentally correct, being 0 anyway.
+- **`B_OUTCOME_*`** (4 distinct, 12 corridor uses) — `goto_if_eq VAR_RESULT, B_OUTCOME_WON` against 0. Not previously flagged anywhere.
+- **`SIGN_LADY_READY`** — Pallet Town, the corridor's first map. Same file-scoped `.equ` class, but **it happens to work**: the VM treats the name as an opaque var key, so set-then-read is self-consistent. Latent, not broken.
+
+**A BASELINE, NOT A WALL** — the `m36_leak_harness` `KNOWN_LEAKS` shape. Real unresolved constants exist today; failing outright would mean a red suite until every one is fixed, which is how a guard gets deleted. `CORRIDOR_UNRESOLVED_BASELINE := 139` is pinned so a NEW one fails, and **shrinking it is the definition of progress**.
+
+**Tests: section BF, 8 assertions** (`m27a_step_resolver_test` 625 → 633). Non-vacuity is asserted directly (BF.06: a token that DOES resolve is not reported), which is what a whitelist growing to cover the world would fail. **Three injections, each caught by its own guard AND by the baseline**: a whitelist that swallows everything fails BF.02/BF.07; letting mixed-case labels through fails BF.05 and takes the baseline 139 → **5,049**; dropping the `VAR_`/`FLAG_` store-key exclusion fails BF.04 and takes it to **445**.
+
+**The obvious next step is not more tooling** — it is the file-scoped `.equ` resolution `[M27I I3b]` deferred, which alone clears `REQUIRED_*` and `SIGN_LADY_READY` and needs `gen_map_scripts.py` to resolve `.equ`/`.set` WITH FILE SCOPE plus a corpus regeneration. `PARTY_NOTHING_CHOSEN`, `MON_GIVEN_TO_PC` and `B_OUTCOME_*` are one `_literal` case each.
+
+
 ## M27R — Corridor completion, first custom map, and basic audio *(planned 2026-08-08)*
 
 **The goal in one line: the 32-map corridor playable end to end, one hand-made
