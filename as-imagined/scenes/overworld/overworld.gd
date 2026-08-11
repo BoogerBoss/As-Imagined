@@ -237,38 +237,38 @@ const _USED_MOVE_MESSAGE_SECONDS := 0.5
 ## against `sStep1Funcs` will find it short by 3.2 frames — that is intended,
 ## not drift.**
 ##
-## ⚠️ **THE CONSTANT IS NOT THE SPEED, AND THE GAP IS FRAME-TIED — measured, by
-## timing every step start and every `_moving` -> false at two refresh rates:**
+## ⚠️ **13.4, AND THE VALUE WAS CHOSEN BY MEASUREMENT AT TWO REFRESH RATES —
+## NOT BY ARITHMETIC.** Two things had to be got right at once:
 ##
-##   | refresh | tween    | stall   | per tile | stall in render frames |
-##   |---------|----------|---------|----------|------------------------|
-##   | 60 Hz   | 200.1 ms | 33.1 ms | 233.2 ms | **1.99**               |
-##   | 144 Hz  | 208.2 ms | 14.0 ms | 222.2 ms | **2.02**               |
+## **1. The constant did not used to BE the speed.** A per-tile stall of exactly
+## two render frames sat on this path, so 12.8 walked at a measured 14.0
+## effective frames. That stall is gone (see `_chain_held_step` and
+## `check_on_frame_map_script`), which would otherwise have made the player
+## quietly faster as a side effect of a bug fix. 13.4 preserves the feel that
+## was actually approved rather than the number that produced it.
 ##
-## ⚠️ **EXACTLY TWO RENDER FRAMES AT BOTH RATES, WHICH MEANS THIS PATH IS
-## REFRESH-RATE DEPENDENT — the `[M26G4]` bug class this project has already
-## fought everywhere else.** The tween is wall clock and behaves; the stall is
-## not, so a tile costs 233 ms at 60 Hz and 222 ms at 144 Hz. **The player walks
-## 5% faster on a 144 Hz monitor**, and would be markedly slower at 30.
+## **2. ⚠️ A TWEEN CAN ONLY END ON A FRAME BOUNDARY, so a duration that is an
+## exact multiple of the frame period is the WORST case** — float error alone
+## decides whether it takes n or n+1 frames. Measured per tile, sweeping
+## candidates:
 ##
-## The cause: the step is a Tween, and the next one cannot begin until a
-## `_process` OBSERVES `_moving` go false — which is two frames after the tween's
-## last step, because the callback that clears it does not run until after
-## `_process` has already passed. `MovementRunner` has no such gap: it measured
-## 16.1 frames against source's 16, which is what validates the probe.
+##   | frames | 60 Hz    | 144 Hz   | spread |
+##   |--------|----------|----------|--------|
+##   | 12.8   | 12.89    | 12.87    | 0.2%   |
+##   | 13.4   | **13.89**| **13.70**| 1.4%   |
+##   | 14.0   | 14.89    | 14.12    | 5.5%   |  <- exact boundary
+##   | 14.3   | 14.89    | 14.53    | 2.4%   |
 ##
-## ⚠️ **SO `16.0 / 60.0` DOES NOT MAKE THE PLAYER SOURCE-EXACT — an earlier draft
-## of this comment said it would, and the measurement says otherwise.** It
-## overshoots to 17.3 effective frames and leaves the player SLOWER than the
-## NPCs beside him. Closing that means starting the next step from the tween's
-## own completion instead of from a later `_process` poll — a change to this
-## path's SCHEDULING, deliberately not dragged into a feel-tuning ask.
+## **14.0 is the single worst value available**, and it is the obvious one to
+## reach for. 13.4 sits comfortably inside its frame bucket at both rates (13.4
+## of 14 at 60 Hz, 32.2 of 33 at 144), which is what keeps the spread small when
+## real vsync jitter is added. **Do not "tidy" this to a round number.**
 ##
-## Effective figures at 60 Hz, for choosing a value: `9.6` -> 11.1 frames
-## (1.45x an NPC), `12.8` -> 14.0 (1.15x), `16.0` -> 17.3 (0.93x). The midpoint
-## was picked on the constants and then confirmed on the clock: the midpoint of
-## the two real figures is 14.2, and this measures 14.0.
-const _WALK_STEP_SECONDS := 12.8 / 60.0
+## For choosing a value, all in frames-at-60 and all now honest: `9.6` was the
+## original tuning, this is ~13.8 effective, `16.0` is source, and
+## `MovementRunner` walks every NPC at 16 (`FRAMES_NORMAL`) — so the player is
+## about 1.16x an NPC.
+const _WALK_STEP_SECONDS := 13.4 / 60.0
 const _RUN_STEP_SECONDS := _WALK_STEP_SECONDS / 2.0
 
 ## Source gates running on the B button. B is already spoken for here — it is
@@ -1272,7 +1272,58 @@ func _try_step(dir: int) -> void:
 			# over it would strand the message unread.
 			if not _in_battle and (_box == null or not _box.is_open):
 				_wild_step(prev_behavior)
+		# ⚠️ LAST, after every step-completion check above has had its say — a warp,
+		# a trigger, a trainer, a script, poison or a wild encounter all get to
+		# claim the arrival before the next step is even considered.
+		_chain_held_step()
 	)
+
+
+## ⚠️ **[Bugfix, live-reported: "why is there a per-tile stall?"] START THE NEXT
+## STEP FROM THE TWEEN'S OWN COMPLETION, NOT FROM A LATER `_process` POLL.**
+##
+## The step is a Tween and `_moving` is cleared by its `finished` callback, which
+## runs after `_process` has already gone past for that frame. So the next step
+## could not begin until a `_process` OBSERVED the flag — and measurement put
+## that at **exactly 2 render frames**, at both 60 Hz and 144 Hz:
+##
+##   | refresh | tween    | stall   | per tile | stall in render frames |
+##   |---------|----------|---------|----------|------------------------|
+##   | 60 Hz   | 200.1 ms | 33.1 ms | 233.2 ms | 1.99                   |
+##   | 144 Hz  | 208.2 ms | 14.0 ms | 222.2 ms | 2.02                   |
+##
+## ⚠️ **FRAME-TIED, NOT A FIXED DURATION — so walking speed depended on REFRESH
+## RATE.** A tile cost 233 ms at 60 Hz and 222 ms at 144, i.e. the player walked
+## 5% faster on a 144 Hz monitor and would have crawled at 30. That is the
+## `[M26G4]` class this project has already hunted out of NPC movement, the walk
+## cycle, the surf bob, the emote icon and the field-poison counter; it survived
+## here because the player's own input step is the one mover that never went
+## through `MovementRunner` (which measured 16.1 frames against source's 16).
+##
+## ⚠️ **CHAINS ONLY A STEP THAT WILL ACTUALLY MOVE.** A blocked one is left to
+## `_process` deliberately: `_try_step` plays `SE_WALL_HIT` and `_face_player`
+## turns you, and both belong on the once-per-frame path. Chaining a refusal
+## here would run them twice for one bump.
+##
+## Cannot recurse without bound: the chained step returns immediately after
+## creating its own Tween, and that Tween's callback is a later frame's work.
+func _chain_held_step() -> void:
+	if _moving or _warping or _in_approach or _in_battle or _vm != null:
+		return
+	if _box != null and _box.is_open:
+		return
+	var dir := _held_direction()
+	if dir < 0:
+		return
+	# The same three outcomes `_try_step` itself treats as permitted. Resolving
+	# ahead of it is what keeps a refusal on the `_process` path.
+	var outcome: int = int(resolve_step(_cell, dir, _elev)["outcome"])
+	if outcome != StepResolver.Outcome.NONE \
+			and outcome != StepResolver.Outcome.LEDGE_JUMP \
+			and outcome != StepResolver.Outcome.STOP_SURFING:
+		return
+	_facing = dir
+	_try_step(dir)
 
 
 ## [M27R 7a-2] The menu blip layer. See its call site for why it lives there
@@ -2945,7 +2996,38 @@ func check_on_frame_map_script() -> bool:
 	var label := _map_script_prefix(map_name) + "_OnFrame"
 	if _driver == null or not _driver.has_script(label):
 		return false
-	return run_script(label)
+	if not run_script(label):
+		return false
+	# ⚠️ **DRIVEN IMMEDIATELY, AND THAT IS WHAT STOPS AN EMPTY TABLE COSTING A
+	# FRAME.** An `OnFrame` label is a map_script_2 TABLE — a list of
+	# (var, value, script) rows — and evaluating it is a handful of comparisons
+	# that either jump into real content or fall straight off the end. Source
+	# evaluates it inline in C (`TryRunOnFrameMapScript`) and runs NOTHING when
+	# no row matches; here the evaluation is itself a script, so starting it
+	# always left `_vm != null` for the rest of the frame even when the answer
+	# was "nothing to do". `drive()` finishes a DONE script and clears `_vm`, so
+	# one call collapses the no-match case back to source's own cost: nothing.
+	#
+	# Two things were paying for that frame, both found by measuring the walk:
+	#   * the per-tile STALL — `_process` spent the next frame driving this
+	#     table to its end instead of starting the next step, which is one of
+	#     the two frames `_chain_held_step` exists to remove;
+	#   * ⚠️ and the gates below it in the step-completion callback. `_poison_step`
+	#     and `_wild_step` are both gated on `_vm == null`, so on a map with an
+	#     OnFrame table they were skipped on EVERY step. **Latent, not live, in
+	#     this corridor** — measured, no baked map has both a table and land
+	#     encounters — but **10 maps region-wide do** (Route101/104/110/111/114/
+	#     115/116/118, RusturfTunnel, SafariZone_South), and there the grass
+	#     would simply never trigger.
+	#
+	# Safe to drive here rather than next frame: this is the same `drive()`
+	# `_process` would call, one frame earlier, and a table that DOES match
+	# leaves its content parked on a real pause exactly as before.
+	_drive_script()
+	# ⚠️ Now answers "is a script still running", not "did one start" — the
+	# question every caller actually has. An empty table now truthfully reports
+	# that it did nothing.
+	return _vm != null
 
 
 ## [Map scripts] `_do_warp`'s own counterpart for a script-driven warp — the

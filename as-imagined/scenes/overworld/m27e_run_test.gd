@@ -300,9 +300,9 @@ func _test_cadence() -> void:
 	# `FRAMES_NORMAL = 16`, so he outpaced every NPC by two thirds and changed
 	# speed whenever a cutscene moved him. Pinned here, in FRAMES, so a session
 	# that "corrects" it toward either endpoint has to do so deliberately.
-	_chk("F.02 the walk step is the 12.8-frame midpoint, not source's 16 and "
+	_chk("F.02 the walk step is the 13.4-frame value, chosen by measurement at two refresh rates, not source's 16 and "
 			+ "not the original 9.6",
-			is_equal_approx(ow._WALK_STEP_SECONDS, 12.8 / 60.0))
+			is_equal_approx(ow._WALK_STEP_SECONDS, 13.4 / 60.0))
 	# The discriminator: strictly between the two, so a revert to either end
 	# fails rather than sliding past on the approx comparison above.
 	_chk("F.02b ...and it is genuinely between them, closer to the NPCs than "
