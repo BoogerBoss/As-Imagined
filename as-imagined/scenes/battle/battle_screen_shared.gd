@@ -5317,9 +5317,41 @@ func _setup_action_region_panel() -> void:
 	# instances. _action_panel itself is toggled to _action_panel_split_style
 	# (built below) whenever one of these four is the visible content --
 	# see _layout_action_menu_for()'s own doc comment.
-	for slot: PanelContainer in [_top_prompt_slot, _top_grid_slot, _fight_grid_slot, _move_info_border]:
+	for slot: PanelContainer in [_top_grid_slot, _fight_grid_slot, _move_info_border]:
 		slot.add_theme_stylebox_override("panel", panel_style)
 	_action_panel_split_style = StyleBoxEmpty.new()
+
+	# ⚠️ **THE ACTION PROMPT GETS NO FRAME. IT IS THE MESSAGE BOX, NOT A
+	# SECOND BOX BESIDE THE MENU** -- Rob's observation, 2026-08-11 ("in
+	# source 'what will pidgey do' doesn't get its own box"), and source is
+	# more specific than that: `sTextOnWindowsInfo_Normal`
+	# (`battle_message.c:1560`) gives `B_WIN_ACTION_PROMPT` styling BYTE-
+	# IDENTICAL to `B_WIN_MSG` -- `fillValue = PIXEL_FILL(0xF)` (the teal,
+	# palette index 15), foreground 1, background 15, shadow 6, on
+	# `paletteNum = 0`. The MENU is the odd one out: `PIXEL_FILL(0xE)`,
+	# foreground 13 / background 14 / shadow 15, on `paletteNum = 5`. So the
+	# real bottom strip is one flat surface with exactly ONE framed box on
+	# its right, not the two this project drew.
+	#
+	# ⚠️ **THE FRAME IS NOT WHAT KEEPS THE PROMPT CLEAR OF THE MENU -- THE
+	# CONTAINER IS, AND IT IS UNTOUCHED.** `_status_label` is reparented INTO
+	# `_top_prompt_slot` for TOP (see `_layout_action_menu_for`), so its
+	# bounds are that slot: same node, same `size_flags_stretch_ratio`, same
+	# rect, still wrapping. Source separates them the same way -- by WINDOW
+	# (`B_WIN_ACTION_PROMPT` is tilemapLeft=1 width=14, the menu left=17
+	# width=12), which clips the text whatever is drawn around it.
+	#
+	# ⚠️ EXPLICIT CONTENT MARGINS, NOT A BARE `StyleBoxEmpty`. The textured
+	# style was also supplying `_ACTION_PANEL_MARGIN` as PanelContainer
+	# content inset; dropping it bare would shift the prompt left and up by
+	# that much and push a long line closer to the gutter. Keeping the inset
+	# changes only what is DRAWN, which is the whole intent.
+	var prompt_style := StyleBoxEmpty.new()
+	prompt_style.content_margin_left = _ACTION_PANEL_MARGIN
+	prompt_style.content_margin_top = _ACTION_PANEL_MARGIN
+	prompt_style.content_margin_right = _ACTION_PANEL_MARGIN
+	prompt_style.content_margin_bottom = _ACTION_PANEL_MARGIN
+	_top_prompt_slot.add_theme_stylebox_override("panel", prompt_style)
 
 	# [Message-box font migration] StatusLabel shows the "What will X do?"
 	# style prompt text. Uses the real Essentials TTF, same as MessageLabel
@@ -5332,8 +5364,11 @@ func _setup_action_region_panel() -> void:
 	# _ACTION_PROMPT_FONT_COLOR's own doc comment for the citation.
 	_status_label.add_theme_font_override("font", _font_message)
 	_status_label.add_theme_font_size_override("font_size", _MESSAGE_FONT_SIZE)
-	_status_label.add_theme_color_override("font_color", _ACTION_PROMPT_FONT_COLOR)
-	_status_label.add_theme_color_override("font_shadow_color", _ACTION_PROMPT_SHADOW_COLOR)
+	# ⚠️ SET PER STATE, NOT ONCE -- see `_apply_status_label_colors`. The
+	# prompt now sits on the TEAL for TOP (no frame) and on the WHITE menu
+	# skin everywhere else, and one colour pair cannot serve both: white on
+	# white is invisible.
+	_apply_status_label_colors(false)
 	_status_label.add_theme_constant_override("shadow_offset_x", int(_MESSAGE_FONT_SHADOW_OFFSET.x))
 	_status_label.add_theme_constant_override("shadow_offset_y", int(_MESSAGE_FONT_SHADOW_OFFSET.y))
 	# [Message-text sizing fix] A plain Label doesn't wrap by default (unlike
@@ -8177,6 +8212,23 @@ func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
 # visible), then called again with the real value from inside
 # MOVE_SELECTION's own `match _menu:` block only for the two cases that
 # need something different (TOP, FIGHT).
+## The prompt's own colour pair, which depends on what it is sitting ON.
+##
+## ⚠️ **THIS BECAME TWO CASES THE MOMENT THE TOP PROMPT LOST ITS FRAME.**
+## For TOP the label draws on the bare teal backdrop, so it takes
+## `B_WIN_MSG`'s own scheme -- source gives the prompt foreground 1 /
+## shadow 6 of `textbox_0.pal`, i.e. exactly `_MESSAGE_FONT_*`. Every other
+## state still parents it to `_action_vbox` over ActionPanel's WHITE menu
+## skin, where that same white-on-white would be a near-invisible outline --
+## which is the defect `_ACTION_PROMPT_FONT_COLOR`'s own doc comment records
+## being fixed once already. Both pairs are real and both are needed.
+func _apply_status_label_colors(on_teal: bool) -> void:
+	_status_label.add_theme_color_override("font_color",
+			_MESSAGE_FONT_COLOR if on_teal else _ACTION_PROMPT_FONT_COLOR)
+	_status_label.add_theme_color_override("font_shadow_color",
+			_MESSAGE_FONT_SHADOW_COLOR if on_teal else _ACTION_PROMPT_SHADOW_COLOR)
+
+
 func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
 	# [M26 polish batch, item 1/A1] TOP/FIGHT draw their own border via
 	# TopPromptSlot/TopGridSlot or FightGridSlot/MoveInfoBorder instead --
@@ -8189,6 +8241,9 @@ func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
 
 	_top_action_hbox.visible = is_top
 	_fight_action_hbox.visible = is_fight
+
+	# The prompt draws on the teal only in TOP, where it has no frame.
+	_apply_status_label_colors(is_top)
 
 	if is_top:
 		if _status_label.get_parent() != _top_prompt_slot:

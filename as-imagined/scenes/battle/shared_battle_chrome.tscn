@@ -24,10 +24,10 @@ layout_mode = 2
 
 [node name="ActionRegion" type="Control" parent="." unique_id=2041430101]
 layout_mode = 1
-anchor_left = 0.0666667
-anchor_top = 0.75
-anchor_right = 0.9333333
-anchor_bottom = 0.95
+anchor_left = 0.025
+anchor_top = 0.75625
+anchor_right = 0.975
+anchor_bottom = 0.99375
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2

@@ -116,15 +116,15 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentPanel0" parent="BattleStage" unique_id=1567867656 instance=ExtResource("6_opp_panel")]
-anchor_left = 0.75
-anchor_top = 0.25
-anchor_right = 0.75
-anchor_bottom = 0.25
-offset_left = -788.0
-offset_top = -98.0
-offset_right = -564.0
-offset_bottom = -42.0
-scale = Vector2(0.7999991, 0.7999991)
+anchor_left = 0.0541667
+anchor_top = 0.1000000
+anchor_right = 0.0541667
+anchor_bottom = 0.1000000
+offset_left = 87.5000
+offset_top = 21.1538
+offset_right = 607.5000
+offset_bottom = 145.1538
+scale = Vector2(0.9615385, 0.9615385)
 
 [node name="PlayerSprite0" type="TextureRect" parent="BattleStage" unique_id=435381219]
 layout_mode = 1
@@ -174,15 +174,15 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="PlayerPanel0" parent="BattleStage" unique_id=688733453 instance=ExtResource("7_ply_panel")]
-anchor_left = 0.03
-anchor_top = 0.47
-anchor_right = 0.03
-anchor_bottom = 0.47
-offset_left = 692.0
-offset_top = 41.0
-offset_right = 1128.6674
-offset_bottom = 259.33374
-scale = Vector2(0.6206874, 0.6206874)
+anchor_left = 0.5291667
+anchor_top = 0.3625000
+anchor_right = 0.5291667
+anchor_bottom = 0.3625000
+offset_left = -126.7692
+offset_top = -92.1058
+offset_right = 393.2308
+offset_bottom = 75.8942
+scale = Vector2(0.9903846, 0.9903846)
 
 [node name="EffectLayer" type="Control" parent="BattleStage" unique_id=1607399811]
 layout_mode = 1

@@ -37,15 +37,10 @@ stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="."]
 layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.638
-anchor_top = 1.107
-anchor_right = 0.638
-anchor_bottom = 1.107
-offset_left = 0.08799744
-offset_top = -6.9920006
-offset_right = 194.088
-offset_bottom = 7.0079994
+offset_left = 144.0
+offset_top = 55.0
+offset_right = 338.0
+offset_bottom = 69.0
 
 [node name="NameLabel" type="Label" parent="."]
 layout_mode = 1
@@ -70,7 +65,7 @@ theme_override_font_sizes/font_size = 64
 layout_mode = 1
 offset_left = -71.0
 offset_top = -21.0
-offset_right = 399.0
+offset_right = 361.4000
 offset_bottom = 54.0
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 64

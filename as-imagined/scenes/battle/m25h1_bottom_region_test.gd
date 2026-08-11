@@ -124,49 +124,61 @@ func _test_action_region_anchored_to_real_proportion() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var region: Control = instance.get_node("SharedChrome/ActionRegion")
-	_chk("ActionRegion's top anchor matches source's own B_WIN_MSG proportion (tilemapTop=15/160=0.75)",
-			is_equal_approx(region.anchor_top, 0.75))
-	# ⚠️ **ALL FOUR ANCHORS ARE SOURCE'S OWN `B_WIN_MSG`, AND EVERY OFFSET IS
-	# ZERO. THAT IS THE POINT — DO NOT REINTRODUCE PIXEL OFFSETS HERE.**
+	var backdrop: Control = instance.get_node("BattleStage/MessageBackdrop")
+
+	# ⚠️ **DELIBERATE DIVERGENCE FROM `B_WIN_MSG`, ROB'S CALL 2026-08-11:
+	# "I need the 'choose an action for X' and fight/switch/item/run boxes to
+	# combined fill 95% of the bottom screen section."**
 	#
-	# `sStandardBattleWindowTemplates[B_WIN_MSG]` (`src/battle_bg.c:156`) is
-	# `tilemapLeft=2, tilemapTop=15, width=26, height=4` on a 30x20-tile
-	# screen, so the region is exactly:
+	# ⚠️ **AND THE 80% IT REPLACES WAS SOURCE-EXACT, WHICH IS WORTH KNOWING
+	# BEFORE ANYONE "FIXES" THIS.** The bottom section is `MessageBackdrop`
+	# (the teal band, screen y 75%-100%), and source's own message WINDOW sits
+	# inside it rather than filling it: `sStandardBattleWindowTemplates
+	# [B_WIN_MSG]` (`battle_bg.c:156`) is tilemapTop=15 height=4 on a 20-tile
+	# screen, i.e. 75%-95%, which is 4/5 = 80% of a backdrop spanning 75%-100%.
+	# So the dead teal this widening removes is source's own margin. Rob has
+	# seen it and asked for 95% anyway.
 	#
-	#     left   2/30       = 0.0666667      top     15/20 = 0.75
-	#     right  (2+26)/30  = 0.9333333      bottom  (15+4)/20 = 0.95
+	# ⚠️ **HISTORY, AND THIS IS THE THIRD TIME THESE ANCHORS HAVE MOVED.**
+	# `02bc4926` ("Polished lower battle text field") moved the bottom anchor
+	# to 1.0 and re-tuned the offsets; this assertion was not updated and sat
+	# RED at 40/41 until 2026-08-07, found by the 3:2 conversion's Phase 0
+	# baseline. Rob's call then was to return to 0.95 and start from reference.
+	# This change moves it again, deliberately and with that history in view --
+	# so it is asserted as a RATIO OF THE BACKDROP rather than as four fresh
+	# literals, which is the form that says what the numbers mean.
 	#
-	# ⚠️ **Anchors are proportional, so this geometry is resolution- AND
-	# aspect-independent.** It survives the 4:3 -> 3:2 canvas change with no
-	# edit at all, which is exactly why it is expressed this way: a pixel
-	# offset is a constant tuned against one canvas, and this project has now
-	# changed canvas twice.
-	#
-	# ⚠️ **HISTORY, so this is not "restored" back the other way a third
-	# time.** `02bc4926` ("Polished lower battle text field") moved the bottom
-	# anchor to 1.0 and re-tuned the offsets with it; this assertion was not
-	# updated and sat red at 40/41 until 2026-08-07, found by the 3:2
-	# conversion's Phase 0 layout baseline on its first run. Rob's call was to
-	# return to 0.95 and start from reference where possible — hence all four
-	# anchors here, not just the bottom one, and hence no offsets: the old
-	# 14/18/-18/18 were inherited tuning, no more source-derived than the
-	# 5/2/-5/-1 that replaced them.
-	#
-	# ⚠️ The battle suites are not in the routine overworld sweep, which is
-	# why a red assertion went unnoticed. See `docs/m26a1_3to2_plan.md`.
-	_chk("ActionRegion's bottom anchor matches source's own B_WIN_MSG proportion ((15+4)/20=0.95)",
-			is_equal_approx(region.anchor_bottom, 0.95))
-	_chk("ActionRegion's left anchor matches source's own B_WIN_MSG proportion (2/30=0.0667)",
-			abs(region.anchor_left - 2.0 / 30.0) < 0.001)
-	_chk("ActionRegion's right anchor matches source's own B_WIN_MSG proportion ((2+26)/30=0.9333)",
-			abs(region.anchor_right - 28.0 / 30.0) < 0.001)
-	# The discriminator: anchors alone do not pin the geometry if a pixel
-	# offset is layered on top, and the two prior geometries BOTH carried
-	# them. Without this, a future "just nudge it 5px" edit passes silently.
-	_chk("every offset is zero, so the geometry is purely proportional",
-			is_zero_approx(region.offset_left) and is_zero_approx(region.offset_top)
-			and is_zero_approx(region.offset_right) and is_zero_approx(region.offset_bottom))
-	instance.queue_free()
+	# ⚠️ Anchors stay proportional and offsets stay ZERO, which is the part of
+	# the original decision that still holds: this survives a canvas change
+	# untouched, and this project has changed canvas twice.
+	const FILL := 0.95
+	var bd_top: float = backdrop.anchor_top
+	var bd_bottom: float = backdrop.anchor_bottom
+	var bd_left: float = backdrop.anchor_left
+	var bd_right: float = backdrop.anchor_right
+	var v_margin: float = (bd_bottom - bd_top) * (1.0 - FILL) * 0.5
+	var h_margin: float = (bd_right - bd_left) * (1.0 - FILL) * 0.5
+
+	_chk("ActionRegion fills 95% of the backdrop's own height, centred",
+			abs(region.anchor_top - (bd_top + v_margin)) < 0.0005
+			and abs(region.anchor_bottom - (bd_bottom - v_margin)) < 0.0005)
+	_chk("ActionRegion fills 95% of the backdrop's own width, centred",
+			abs(region.anchor_left - (bd_left + h_margin)) < 0.0005
+			and abs(region.anchor_right - (bd_right - h_margin)) < 0.0005)
+	# The ratio assertions above are satisfied by any two numbers in the right
+	# relation, including a pair that has drifted off the backdrop entirely.
+	# Pin that it is still INSIDE the band it is supposed to fill.
+	_chk("...and stays inside the backdrop rather than overhanging it",
+			region.anchor_top >= bd_top and region.anchor_bottom <= bd_bottom
+			and region.anchor_left >= bd_left and region.anchor_right <= bd_right)
+	# ⚠️ The offsets are the half of the original decision that did NOT change.
+	# Reintroducing pixel offsets here is what `02bc4926` did and what left
+	# this red for months.
+	_chk("every ActionRegion offset is still zero -- proportional geometry only",
+			is_equal_approx(region.offset_left, 0.0)
+			and is_equal_approx(region.offset_top, 0.0)
+			and is_equal_approx(region.offset_right, 0.0)
+			and is_equal_approx(region.offset_bottom, 0.0))
 
 
 func _test_new_button_area_is_distinct_node_from_old() -> void:
@@ -424,17 +436,34 @@ func _test_player_health_group_d1_clears_action_region() -> void:
 
 	# PlayerPanel1 is a POINT anchor (anchor_top == anchor_bottom); its own
 	# real bottom edge, as a fraction of viewport height, is anchor_top +
-	# (its own local offset_bottom / viewport_height). VIEWPORT_HEIGHT
-	# matches the real base resolution set explicitly in project.godot
-	# (1024x768, since M26a).
-	const VIEWPORT_HEIGHT := 768.0
-	var d1_bottom_px: float = d1.anchor_top * VIEWPORT_HEIGHT + d1.offset_bottom
-	var region_top_px: float = region.anchor_top * VIEWPORT_HEIGHT
+	# (its own local offset_bottom / viewport_height).
+	#
+	# ⚠️ **THIS READ 768.0 AND THE PROJECT HAS BEEN 800 SINCE THE 3:2
+	# CONVERSION.** A hardcoded viewport height in a test about clearance is a
+	# number that goes wrong silently: both terms scale together, so the
+	# ordering assertion below kept passing against a canvas that no longer
+	# existed, and only the frozen-literal assertion could ever have noticed.
+	# Read from the project settings instead, so it cannot go stale again.
+	var viewport_height: float = float(ProjectSettings.get_setting(
+			"display/window/size/viewport_height", 800))
+	var d1_bottom_px: float = d1.anchor_top * viewport_height + d1.offset_bottom
+	var region_top_px: float = region.anchor_top * viewport_height
 
 	_chk("PlayerPanel1's own bottom edge clears ActionRegion's own top edge (no overlap)",
 			d1_bottom_px < region_top_px)
-	_chk("the real clearance matches this session's own re-measured ~48.4px, not just 'some' positive gap",
-			abs((region_top_px - d1_bottom_px) - 48.4000146) < 0.1)
+	# ⚠️ **THE FROZEN ~48.4px LITERAL IS GONE, AND ITS REPLACEMENT IS STRONGER
+	# RATHER THAN LOOSER.** PlayerPanel1 is now PLACED BY `gen_healthbox_
+	# coords.py` from source's own `sBattlerHealthboxCoords`, so a hand-tuned
+	# clearance figure is no longer a fact about anything -- it is a
+	# consequence, and re-freezing it would just be re-tuning by hand one
+	# level removed. What the scene must actually satisfy is that it still
+	# agrees with the generated table, which is the pairing an editor drag
+	# breaks; the clearance then follows. Same discipline as
+	# `m26a1_battler_geometry_test`, and for the same recorded reason.
+	var want: Vector2 = HealthboxCoords.anchor_for(
+			HealthboxCoords.DOUBLES, "B_POSITION_PLAYER_RIGHT")
+	_chk("PlayerPanel1 still sits where the generated healthbox table puts it",
+			abs(d1.anchor_top - want.y) < 0.0001 and abs(d1.anchor_left - want.x) < 0.0001)
 
 	instance.queue_free()
 

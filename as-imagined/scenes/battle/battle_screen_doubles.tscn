@@ -125,15 +125,16 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentPanel0" parent="BattleStage" instance=ExtResource("6_opp_panel")]
+anchor_left = 0.0541667
+anchor_top = 0.0312500
+anchor_right = 0.0541667
+anchor_bottom = 0.0312500
+offset_left = -0.0000
+offset_top = -0.0000
+offset_right = 130.0000
+offset_bottom = 31.0000
+scale = Vector2(3.8461538, 3.8461538)
 layout_mode = 1
-anchor_left = 0.72
-anchor_top = 0.24
-anchor_right = 0.72
-anchor_bottom = 0.24
-offset_left = -720.44006
-offset_top = -100.51999
-offset_right = -586.44006
-offset_bottom = -66.51999
 mouse_filter = 2
 
 [node name="OpponentSprite1" type="TextureRect" parent="BattleStage"]
@@ -154,15 +155,16 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentPanel1" parent="BattleStage" instance=ExtResource("6_opp_panel")]
+anchor_left = 0.0041667
+anchor_top = 0.1875000
+anchor_right = 0.0041667
+anchor_bottom = 0.1875000
+offset_left = -0.0000
+offset_top = -0.0000
+offset_right = 130.0000
+offset_bottom = 31.0000
+scale = Vector2(3.8461538, 3.8461538)
 layout_mode = 1
-anchor_left = 0.72
-anchor_top = 0.52
-anchor_right = 0.72
-anchor_bottom = 0.52
-offset_left = -720.44006
-offset_top = -190.95999
-offset_right = -586.44006
-offset_bottom = -156.95999
 mouse_filter = 2
 
 [node name="PlayerSprite0" type="TextureRect" parent="BattleStage"]
@@ -201,15 +203,16 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="PlayerPanel0" parent="BattleStage" instance=ExtResource("7_ply_panel")]
+anchor_left = 0.5333333
+anchor_top = 0.3875000
+anchor_right = 0.5333333
+anchor_bottom = 0.3875000
+offset_left = -0.0000
+offset_top = -0.0000
+offset_right = 130.0000
+offset_bottom = 31.0000
+scale = Vector2(3.8461538, 3.8461538)
 layout_mode = 1
-anchor_left = 0.03
-anchor_top = 0.4
-anchor_right = 0.03
-anchor_bottom = 0.4
-offset_left = 848.44
-offset_top = 97.79999
-offset_right = 982.44
-offset_bottom = 131.79999
 mouse_filter = 2
 
 [node name="PlayerSprite1" type="TextureRect" parent="BattleStage"]
@@ -230,15 +233,16 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerPanel1" parent="BattleStage" instance=ExtResource("7_ply_panel")]
+anchor_left = 0.5833333
+anchor_top = 0.5437500
+anchor_right = 0.5833333
+anchor_bottom = 0.5437500
+offset_left = -0.0000
+offset_top = -0.0000
+offset_right = 130.0000
+offset_bottom = 31.0000
+scale = Vector2(3.8461538, 3.8461538)
 layout_mode = 1
-anchor_left = 0.03
-anchor_top = 0.68
-anchor_right = 0.03
-anchor_bottom = 0.68
-offset_left = 851.44
-offset_top = -28.640015
-offset_right = 985.44
-offset_bottom = 5.3599854
 mouse_filter = 2
 
 [node name="EffectLayer" type="Control" parent="BattleStage"]
