@@ -140,28 +140,52 @@ static func make_sprite(graphics_id: String, facing: String) -> Sprite2D:
 
 
 ## ⚠️ **[Bugfix, live-reported: "the town map in the rival's house is too far
-## left, move it right to be centrally located on a grid tile"] AUTHORED NUDGES,
-## AND THIS ONE IS A DELIBERATE DIVERGENCE FROM SOURCE — Rob's call, 2026-08-11.**
+## left"] A SOURCE-EXACTNESS FIX, NOT AN AUTHORED NUDGE — and an earlier draft
+## of this comment claimed the opposite. Rob pushed back ("source definitely
+## doesn't have a misalignment") and he was right; the retracted reasoning is
+## recorded below because it is the kind that looks airtight.**
 ##
-## The placement formula above is source-exact and reproduces the defect: source
-## puts an object event's sprite CENTRE on its cell centre (`sprite->x += 8` with
-## `centerToCornerVecX = -(width >> 1)`, `event_object_movement.c:1881-1884`), so
-## a 32-wide frame straddles half a tile either side.
+## What the retracted version said: source centres an object event's sprite on
+## its cell (`sprite->x += 8` with `centerToCornerVecX = -(width >> 1)`,
+## `event_object_movement.c:1881-1884`), so a 32-wide frame straddles half a tile
+## either side — invisible for people sprites whose art fills the frame, but
+## `OBJ_EVENT_GFX_TOWN_MAP` is declared 32x16 with its art in only the LEFT half,
+## so the poster would land left of its tile in FRLG too.
 ##
-## That is invisible for people sprites, whose art fills the frame — but
-## `OBJ_EVENT_GFX_TOWN_MAP` is a 32x16 frame whose art occupies **only columns
-## 3-15** (measured; the right half is fully transparent). Centring the FRAME
-## therefore puts the ART's own centre at cell_px+1 against a cell centre of
-## cell_px+8: seven pixels left, which is what reads as off-grid.
+## ⚠️ **EVERY STEP OF THAT IS TRUE OF THE BASE OAM, AND THE BASE OAM IS NOT WHAT
+## DRAWS THIS SPRITE.** `AddSubspritesToOamBuffer` (`sprite.c:1768`) uses
+## `sprite->x + subsprite->x` and never consults `centerToCornerVec` at all, and
+## `UpdateObjectEventElevationAndPriority` assigns
+## `subspriteTableNum = sElevationToSubspriteTableNum[elevation]` every frame —
+## a table that is `1` or `2` for every elevation the game actually uses
+## (`:10029`). Only index 0 is the empty entry that would fall through to the
+## base OAM, and nothing reaches it. So the town map renders through
+## `sOamTables_16x16`: a **16x16** subsprite at `.x = -8, .y = -8`, i.e.
+## `oam.x = (cell_px + 8) - 8 = cell_px` — exactly one tile, perfectly aligned.
 ##
-## +7 puts the art's centre on the cell's. FRLG has the same misalignment; this
-## project chooses not to. **Do not "correct" this back against the reference** —
-## it will look like drift and is not.
+## ⚠️ **THE TILE DATA PROVES IT INDEPENDENTLY, which is what settles it beyond a
+## reading of the sprite code.** Its INCGFX carries `-mwidth 2 -mheight 2`
+## (`object_event_graphics.h:498`) — the tile stream is METATILE-ordered into
+## 2x2 blocks, which is the layout a 16x16 OAM reads. A 32x16 OAM reading that
+## same stream renders the poster's bottom half beside its top half, i.e.
+## visibly garbled. The base OAM cannot be the drawing path.
 ##
-## Keyed per graphics id so a future nudge is one row rather than a special case
-## in the formula, and so the 384 sprites that need nothing pay nothing.
+## **This is therefore a real port gap, not a divergence: this project ignores
+## `subspriteTables` entirely.** Measured across all 1,148 graphics infos,
+## `TownMap` is the ONLY one whose subsprite shape differs from its declared
+## width/height — so a general subsprite port would buy exactly this one sprite,
+## and the offset below is the whole of it.
+##
+## `+8` puts the frame's column 0 at `cell_px`, which is where source's 16-wide
+## window puts it. The right 16 columns are fully transparent, so drawing the
+## whole 32-wide frame shifted is pixel-identical to source's narrower window.
+## Y needs nothing: `CELL - size.y` already lands the frame at `cell_py`, which
+## is where source's `.y = -8` subsprite lands too.
+##
+## Keyed per graphics id so this stays one row rather than a special case in the
+## formula, and so the 384 sprites that need nothing pay nothing.
 const DRAW_OFFSET := {
-	"OBJ_EVENT_GFX_TOWN_MAP": Vector2i(7, 0),
+	"OBJ_EVENT_GFX_TOWN_MAP": Vector2i(8, 0),
 }
 
 
