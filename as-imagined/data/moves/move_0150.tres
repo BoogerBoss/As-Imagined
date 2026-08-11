@@ -14,3 +14,4 @@ pp = 40
 ban_flags = 2
 ignores_protect = true
 is_do_nothing = true
+target = 7

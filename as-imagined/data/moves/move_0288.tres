@@ -15,3 +15,4 @@ ban_flags = 2
 ignores_substitute = true
 ignores_protect = true
 is_grudge = true
+target = 7

@@ -15,3 +15,4 @@ sound_move = true
 ban_flags = 128
 ignores_substitute = true
 is_uproar = true
+target = 5

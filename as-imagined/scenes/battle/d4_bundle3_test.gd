@@ -269,7 +269,7 @@ func _test_purify() -> void:
 	var bm1 := _make_bm()
 	bm1._force_hit = true
 	bm1.status_cured.connect(func(mon): if mon == def_i: cured[0] = true)
-	bm1.drain_heal.connect(func(mon, amount): if mon == atk_i and healed[0] == -1: healed[0] = amount)
+	bm1.hp_restored.connect(func(mon, amount): if mon == atk_i and healed[0] == -1: healed[0] = amount)
 	bm1.start_battle(atk_i, def_i)
 	bm1.queue_free()
 	_chk("D.01 Purify cures the target's status", cured[0] == true and def_i.status == BattlePokemon.STATUS_NONE)
@@ -287,7 +287,7 @@ func _test_purify() -> void:
 	var bm2 := _make_bm()
 	bm2._force_hit = true
 	bm2.move_effect_failed.connect(func(_a, reason): if reason == "purify_failed": failed_ii[0] = true)
-	bm2.drain_heal.connect(func(mon, _amt): if mon == atk_ii: healed_ii[0] = true)
+	bm2.hp_restored.connect(func(mon, _amt): if mon == atk_ii: healed_ii[0] = true)
 	bm2.start_battle(atk_ii, def_ii)
 	bm2.queue_free()
 	_chk("D.03 discriminator: Purify fails outright against a status-free target " +

@@ -13,3 +13,4 @@ power = 60
 pp = 15
 is_spread = true
 is_incinerate = true
+target = 6

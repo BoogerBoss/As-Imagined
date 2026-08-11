@@ -16,3 +16,4 @@ snatch_affected = true
 heals_based_on_weather = true
 weather_heal_boost_type = 2
 weather_heal_has_quarter_branch = true
+target = 7

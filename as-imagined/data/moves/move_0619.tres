@@ -13,3 +13,4 @@ accuracy = 85
 pp = 10
 ban_flags = 16
 is_spread = true
+target = 6

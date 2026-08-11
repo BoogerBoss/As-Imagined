@@ -17,3 +17,4 @@ stat_change_bypasses_type_gate = true
 ignores_substitute = true
 is_spread = true
 bounceable = true
+target = 6

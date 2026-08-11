@@ -28,6 +28,7 @@ func _ready() -> void:
 	_test_jaw_lock_full_battle()
 	_test_switch_actually_blocked()
 	_test_clear_volatiles_reciprocal()
+	_test_heal_and_drain_are_distinct_signals()
 
 	var total := _pass + _fail
 	print("m19ef_test: %d/%d passed" % [_pass, total])
@@ -220,7 +221,7 @@ func _test_weather_heal_full_battle() -> void:
 	bm.weather = BattleManager.WEATHER_SUN
 	bm.weather_duration = 5
 	var healed := [false, -1]
-	bm.drain_heal.connect(func(mon, amt):
+	bm.hp_restored.connect(func(mon, amt):
 		if mon == atk and not healed[0]:
 			healed[0] = true
 			healed[1] = amt)
@@ -571,3 +572,62 @@ func _test_clear_volatiles_reciprocal() -> void:
 	bm3._clear_volatiles(victim3)  # the VICTIM's own departure
 	_chk("I.03 the victim's own departure clears its own escape_prevented_by",
 			victim3.escape_prevented_by == null)
+
+
+# ── Section J: heal vs drain are DIFFERENT signals ───────────────────────
+#
+# The reported bug: Morning Sun announced "had its energy drained!". Cause was
+# one shared `drain_heal` signal carrying every HP gain in the engine, so the
+# battle log could not tell a self-heal from a drain and printed the drain
+# line for both.
+#
+# Source keeps two strings and picks between them by MECHANISM:
+#   STRINGID_PKMNENERGYDRAINED  "{mon} had its energy drained!"
+#   STRINGID_PKMNREGAINEDHEALTH "{mon}'s HP was restored."
+# (battle_message.c L224/L249.) BattleScript_EffectMorningSun `goto`s
+# BattleScript_PresentHealTarget, which prints the SECOND; EFFECT_ABSORB
+# prints the first via gAbsorbDrainStringIds[B_MSG_ABSORB] (L1236).
+#
+# Both halves are asserted MUTUALLY EXCLUSIVE in both directions. Asserting
+# only "Morning Sun fires hp_restored" would pass an implementation that
+# simply fired BOTH signals for everything, which is the same bug wearing a
+# second signal.
+
+func _test_heal_and_drain_are_distinct_signals() -> void:
+	var morning_sun := _load_move(234)
+	var tackle := _load_move(33)
+
+	var atk := _make_mon("SplitHealAtk", [TypeChart.TYPE_NORMAL], 200, 60, 60, 60, 60, 100)
+	atk.add_move(morning_sun)
+	atk.current_hp = 50
+	var def := _make_mon("SplitHealDef", [TypeChart.TYPE_NORMAL], 200, 10, 60, 10, 60, 40)
+	def.add_move(tackle)
+	var bm := _make_bm()
+	bm.weather = BattleManager.WEATHER_SUN
+	bm.weather_duration = 5
+	var restored := [0]
+	var drained := [0]
+	bm.hp_restored.connect(func(mon, _amt): if mon == atk: restored[0] += 1)
+	bm.drain_heal.connect(func(mon, _amt): if mon == atk: drained[0] += 1)
+	bm.start_battle(atk, def)
+	_chk("J.01 Morning Sun reports its heal as hp_restored", restored[0] > 0)
+	_chk("J.02 Morning Sun NEVER reports drain_heal — the reported bug",
+			drained[0] == 0)
+
+	# Discriminator: a real drain must still be a drain, or the fix is just
+	# "relabel every heal" and Giga Drain would start announcing a restore.
+	var giga_drain := _load_move(202)
+	var datk := _make_mon("SplitDrainAtk", [TypeChart.TYPE_NORMAL], 200, 60, 60, 120, 60, 100)
+	datk.add_move(giga_drain)
+	datk.current_hp = 50
+	var ddef := _make_mon("SplitDrainDef", [TypeChart.TYPE_NORMAL], 200, 10, 60, 10, 60, 40)
+	ddef.add_move(tackle)
+	var dbm := _make_bm()
+	dbm._force_hit = true
+	var d_restored := [0]
+	var d_drained := [0]
+	dbm.hp_restored.connect(func(mon, _amt): if mon == datk: d_restored[0] += 1)
+	dbm.drain_heal.connect(func(mon, _amt): if mon == datk: d_drained[0] += 1)
+	dbm.start_battle(datk, ddef)
+	_chk("J.03 Giga Drain still reports drain_heal", d_drained[0] > 0)
+	_chk("J.04 Giga Drain NEVER reports hp_restored", d_restored[0] == 0)

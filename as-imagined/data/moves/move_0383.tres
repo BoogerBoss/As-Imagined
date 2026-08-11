@@ -14,3 +14,4 @@ pp = 20
 ban_flags = 1018
 ignores_protect = true
 is_copycat = true
+target = 3

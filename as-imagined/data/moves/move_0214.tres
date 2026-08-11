@@ -15,3 +15,4 @@ ban_flags = 1018
 ignores_protect = true
 is_sleep_talk = true
 usable_while_asleep = true
+target = 3

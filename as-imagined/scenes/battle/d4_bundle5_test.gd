@@ -470,7 +470,7 @@ func _test_roost() -> void:
 	def.add_move(_load_move(33))
 	var healed := [-1]
 	var bm := _make_bm()
-	bm.drain_heal.connect(func(mon, amount):
+	bm.hp_restored.connect(func(mon, amount):
 		if mon == atk and healed[0] == -1: healed[0] = amount)
 	bm.start_battle(atk, def)
 	bm.queue_free()

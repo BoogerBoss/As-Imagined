@@ -17,3 +17,4 @@ stat_change_stat = 4
 stat_change_amount = -1
 is_spread = true
 always_hits_in_rain = true
+target = 6

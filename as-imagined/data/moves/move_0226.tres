@@ -13,3 +13,4 @@ accuracy = 0
 pp = 40
 ignores_protect = true
 is_baton_pass = true
+target = 7

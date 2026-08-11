@@ -21,3 +21,4 @@ ignores_protect = true
 snatch_affected = true
 hp_cost_stat_boost = true
 hp_cost_divisor = 2
+target = 7

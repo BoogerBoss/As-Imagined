@@ -14,3 +14,4 @@ pp = 10
 ban_flags = 18
 ignores_protect = true
 is_chilly_reception = true
+target = 12

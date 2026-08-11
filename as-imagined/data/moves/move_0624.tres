@@ -16,3 +16,4 @@ ban_flags = 114
 ignores_protect = true
 is_protect = true
 protect_method = 2
+target = 7

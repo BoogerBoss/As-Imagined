@@ -14,3 +14,4 @@ pp = 20
 priority = -5
 ban_flags = 84
 mirror_coat = true
+target = 3

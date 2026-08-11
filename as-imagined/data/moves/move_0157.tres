@@ -14,3 +14,4 @@ pp = 10
 secondary_effect = 7
 secondary_chance = 30
 is_spread = true
+target = 6

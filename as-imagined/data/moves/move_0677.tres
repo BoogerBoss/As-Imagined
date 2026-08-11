@@ -15,3 +15,4 @@ secondary_effect = 3
 secondary_chance = 30
 ban_flags = 16
 is_spread = true
+target = 6

@@ -13,3 +13,4 @@ power = 120
 pp = 10
 makes_contact = true
 is_rampage = true
+target = 5

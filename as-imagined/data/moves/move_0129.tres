@@ -13,3 +13,4 @@ power = 60
 accuracy = 0
 pp = 20
 is_spread = true
+target = 6

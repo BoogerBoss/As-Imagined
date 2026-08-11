@@ -28033,3 +28033,111 @@ else would ever do it. Status is deliberately kept; a capture is not a heal.
 CARRIES a caught Pokemon and never that it was usable, so a mechanic that could
 not work at all passed its own tests. When a feature hands an object across a
 boundary, assert the object's STATE on arrival, not just its presence.
+
+## [Self-targeting moves + the heal/drain message split]
+
+Two bugs reported from play, both traced to the same shape: a fact source keeps
+explicit that this project had left implicit.
+
+### 1. Self-targeting moves asked the player to pick an opponent
+
+`get_live_targets` special-cased only three ally shapes and let everything else
+fall through to "return the live opponents" — so Recover, Protect, Morning Sun,
+Swords Dance and 89 other TARGET_USER moves reported the OPPONENTS as their
+candidates. In doubles that armed the target picker; in singles it silently
+resolved the target to the opponent, which is what produced "used Recover on
+Charmander!" in the log and played the hit effect on the wrong sprite.
+
+`MoveData.target` had existed and been documented since M16-era with **zero
+readers and zero writers** — the field that would have answered this was sitting
+right there, dormant. New `gen_move_targets.py` extracts every move's real
+`.target` from `moves_info.h` into `data/move_targets.json`; `gen_moves.py`
+injects it into all 717 implemented moves. ⚠️ **Run `gen_move_targets.py`
+BEFORE `gen_moves.py`** — the latter now hard-fails without the JSON.
+
+Extraction detail worth keeping: **7 moves express `.target` as a ternary on
+`B_UPDATED_MOVE_DATA`** (Surf, Poison Gas, Conversion 2, Cotton Spore, Nature
+Power, Helping Hand, Howl). Reading only the plain `= TARGET_X,` form drops all
+7 silently — including Surf, whose FOES_AND_ALLY spread this project already
+models. Ternaries resolve to the GEN_LATEST branch, per standing precedent.
+
+The extraction was cross-checked against the project's own pre-existing flags
+before being trusted: all 717 implemented moves agree in BOTH directions on
+`is_spread` (⊆ BOTH/FOES_AND_ALLY), `is_helping_hand`/`stat_change_target_ally`
+(ALLY), `is_acupressure` (USER_OR_ALLY) and `target_includes_ally`, with zero
+mismatches and zero TARGET_BOTH moves missing `is_spread`.
+
+`MoveData.target`'s class default moved 0 → **TARGET_SELECTED (1)**, kept in step
+with `gen_moves.py`'s DEFAULTS so a move with no `target` line loads as SELECTED
+rather than TARGET_NONE (690 of 935 are SELECTED, so omitting the line keeps the
+files lean). It also means a hand-built `MoveData.new()` fixture defaults to
+foe-targeting, so no existing test fixture became accidentally self-targeting.
+
+⚠️ **BIDE IS TARGET_USER IN SOURCE AND IS DELIBERATELY EXCLUDED.** Source stores
+the battler that last hit the Bide user in `gBideTarget[]` and OVERRIDES
+`gBattlerTarget` with it at release (`CancelerBide`,
+battle_move_resolution.c L1119-1123). This engine models no `gBideTarget` — its
+release reads `defender` directly — so resolving Bide to the user would make it
+hit ITSELF for double the stored damage. In singles both resolve to the sole
+opponent, so observable behaviour matches; only the mechanism differs.
+
+⚠️ **A SECOND FIX WAS REQUIRED AT EXECUTION TIME, and without it the first one
+would have broken Ghost-types.** `foe_targeting` was `not move.stat_change_self`,
+which covered the stat-change half of the self-target set by accident. Every
+other self-target move now arrives with `defender == attacker`, and the gates
+below that flag would then ask foe questions about the user — most sharply the
+type-immunity gate, which would run Recover's own Normal type against a Ghost
+user, read 0x, and FAIL the move. Now `not move.stat_change_self and defender
+!= attacker`, which also correctly stops the user's own Substitute blocking its
+own heal and Magic Bounce reflecting a self-buff at its caster.
+
+### 2. Morning Sun announced "had its energy drained!"
+
+One `drain_heal` signal carried every HP gain in the engine, so the log had no
+way to tell a self-heal from a drain. Source keeps two strings and picks between
+them by MECHANISM, not by who got healed:
+`STRINGID_PKMNENERGYDRAINED` "had its energy drained!" vs
+`STRINGID_PKMNREGAINEDHEALTH` "'s HP was restored." (battle_message.c L224/L249).
+
+Split into `drain_heal` (HP taken from a victim) and `hp_restored` (everything
+else). 12 emit sites moved: RESTORE_HP, the weather heals, Roost, Rest, Swallow,
+Purify, Heal Pulse, Life Dew ×2, Present, Pollen Puff, Stuff Cheeks.
+
+⚠️ **STRENGTH SAP STAYS ON `drain_heal`, and that is source's classification
+rather than a judgement call.** It routes through the SAME `SetHealScript()` as
+EFFECT_ABSORB (battle_move_resolution.c L2627-2634 → L2586-2602), which sets
+`B_MSG_ABSORB`. It reads like a self-heal and is mechanically a drain — exactly
+the call that would have been got wrong by reasoning from the name.
+**Flagged, not fixed:** that same `SetHealScript` also applies Big Root and
+inverts on Liquid Ooze; this project's Strength Sap branch does neither.
+
+**Flagged, not fixed (adjacent):** the Leech Seed end-of-turn tick reports the
+SEEDER's gain, while source's `gLeechSeedStringIds` names the VICTIM ("'s health
+is sapped by Leech Seed!"). Different message, different subject; out of scope.
+
+### Testing notes
+
+The heal/drain split's discriminators are load-bearing in both directions: every
+drain-only suite (d4_bundle2, m17n10 Liquid Ooze, m18q Big Root, new_item_c
+Parabolic Charge) stayed green untouched while the heal suites failed, which is
+what confirmed the right 12 sites moved. New assertions pin BOTH "Morning Sun
+never fires drain_heal" and "Giga Drain never fires hp_restored" — the first
+alone would pass an implementation that simply fired both signals for everything.
+
+⚠️ **The singles half of the targeting fix cannot be tested by candidate COUNT.**
+With one live opponent the old and new code both return exactly 1 candidate, so
+only WHO that candidate is distinguishes them — and singles is precisely the case
+that produced the wrong log line while never showing a picker.
+
+⚠️ **`m25c_message_log_test`'s self-targeting assertion passed throughout the
+entire life of this bug.** It hand-feeds `defender = attacker` to the formatter,
+so it tests the wording and never the resolution; the real game printed "used
+Recover on Charmander!" with that test green. Kept (the wording is still worth
+pinning) with a note pointing at `phase4f_targeting_test` Section I, which drives
+the real `get_live_targets`. Assert the resolution there, the wording here.
+
+Break-tested, each failing exactly what it should: removing the self-target
+branch fails 14 (incl. both singles assertions); removing the Bide exclusion
+fails 2; putting Morning Sun back on `drain_heal` fails 3. Regression: full
+battle sweep **219 files / 32202 assertions / 0 failures**, plus all 25
+overworld suites green.

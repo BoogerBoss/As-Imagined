@@ -194,7 +194,23 @@ signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* va
 signal charge_started(attacker: BattlePokemon, move: MoveData)  # turn 1 of a two-turn move
 signal recoil_damage(attacker: BattlePokemon, amount: int)       # attacker took recoil
 signal crash_damage(attacker: BattlePokemon, amount: int)  # [M19-recoil-on-miss] Jump Kick-family crashed
-signal drain_heal(attacker: BattlePokemon, amount: int)          # attacker healed via drain
+# ⚠️ drain_heal is for HP TAKEN FROM SOMEONE ELSE ONLY — Absorb/Giga Drain/
+# Drain Punch. It is NOT the general "a Pokemon gained HP" signal; use
+# hp_restored for that. The two are separate because source keeps two distinct
+# strings and picks between them by MECHANISM, not by who got healed:
+#   STRINGID_PKMNENERGYDRAINED  "{mon} had its energy drained!"  (drain)
+#   STRINGID_PKMNREGAINEDHEALTH "{mon}'s HP was restored."       (heal)
+# (battle_message.c L224/L249; gAbsorbDrainStringIds L1236 selects the former
+# for EFFECT_ABSORB, while every heal script — BattleScript_EffectRestoreHp,
+# _EffectRoost, _EffectSwallow, _PresentHealTarget, which Morning Sun/
+# Synthesis/Moonlight/Shore Up and Rest all `goto` — prints the latter.)
+#
+# One shared signal is how Morning Sun came to announce "had its energy
+# drained!": every heal in the engine funnelled through the drain signal, so
+# the log had no way to tell a self-heal from a drain and printed the drain
+# line for both.
+signal drain_heal(attacker: BattlePokemon, amount: int)          # attacker drained HP from a target
+signal hp_restored(mon: BattlePokemon, amount: int)              # mon healed, no victim (Recover, Roost, Rest, Morning Sun, Heal Pulse, ...)
 # M8 signals
 signal ability_triggered(pokemon: BattlePokemon, effect_key: String)      # any ability fires
 # M7 signals
@@ -3912,7 +3928,7 @@ func _phase_move_execution() -> void:
 				var swallow_heal: int = max(
 						1, attacker.max_hp / swallow_divisor[attacker.stockpile_count])
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + swallow_heal)
-				drain_heal.emit(attacker, swallow_heal)
+				hp_restored.emit(attacker, swallow_heal)
 		var released_count: int = attacker.stockpile_count
 		attacker.stockpile_count = 0
 		if attacker.stockpile_def_added > 0:
@@ -3956,7 +3972,7 @@ func _phase_move_execution() -> void:
 			else:
 				var pr_heal: int = max(1, defender.max_hp / 4)
 				defender.current_hp = min(defender.max_hp, defender.current_hp + pr_heal)
-				drain_heal.emit(defender, pr_heal)
+				hp_restored.emit(defender, pr_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			attacker.last_move_used = move
 			_current_actor_index += 1
@@ -3976,7 +3992,7 @@ func _phase_move_execution() -> void:
 			else:
 				var pp_heal: int = max(1, int(defender.max_hp * 0.5))
 				defender.current_hp = min(defender.max_hp, defender.current_hp + pp_heal)
-				drain_heal.emit(defender, pp_heal)
+				hp_restored.emit(defender, pp_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			attacker.last_move_used = move
 			_current_actor_index += 1
@@ -4452,7 +4468,7 @@ func _phase_move_execution() -> void:
 				if attacker.current_hp < attacker.max_hp:
 					var purify_heal: int = max(1, attacker.max_hp / 2)
 					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + purify_heal)
-					drain_heal.emit(attacker, purify_heal)
+					hp_restored.emit(attacker, purify_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4688,7 +4704,7 @@ func _phase_move_execution() -> void:
 			else:
 				var restore_heal: int = max(1, attacker.max_hp / 2)
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + restore_heal)
-				drain_heal.emit(attacker, restore_heal)
+				hp_restored.emit(attacker, restore_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4704,7 +4720,7 @@ func _phase_move_execution() -> void:
 			else:
 				var weather_heal: int = _weather_heal_amount(attacker, move, ng_active)
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + weather_heal)
-				drain_heal.emit(attacker, weather_heal)
+				hp_restored.emit(attacker, weather_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4727,7 +4743,7 @@ func _phase_move_execution() -> void:
 						and move.pulse_move) else 0.5
 				var hp_heal: int = max(1, int(defender.max_hp * hp_heal_frac))
 				defender.current_hp = min(defender.max_hp, defender.current_hp + hp_heal)
-				drain_heal.emit(defender, hp_heal)
+				hp_restored.emit(defender, hp_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4749,11 +4765,11 @@ func _phase_move_execution() -> void:
 				if not ld_user_full:
 					var ld_user_heal: int = max(1, attacker.max_hp / 4)
 					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + ld_user_heal)
-					drain_heal.emit(attacker, ld_user_heal)
+					hp_restored.emit(attacker, ld_user_heal)
 				if ld_ally_healable:
 					var ld_ally_heal: int = max(1, ld_ally.max_hp / 4)
 					ld_ally.current_hp = min(ld_ally.max_hp, ld_ally.current_hp + ld_ally_heal)
-					drain_heal.emit(ld_ally, ld_ally_heal)
+					hp_restored.emit(ld_ally, ld_ally_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4948,7 +4964,7 @@ func _phase_move_execution() -> void:
 			else:
 				var roost_heal: int = max(1, attacker.max_hp / 2)
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + roost_heal)
-				drain_heal.emit(attacker, roost_heal)
+				hp_restored.emit(attacker, roost_heal)
 			var roost_types: Array = attacker.species.types.duplicate()
 			if TypeChart.TYPE_FLYING in roost_types:
 				attacker.roost_pre_types = roost_types.duplicate()
@@ -5159,7 +5175,7 @@ func _phase_move_execution() -> void:
 				var rest_heal: int = attacker.max_hp - attacker.current_hp
 				attacker.current_hp = attacker.max_hp
 				if rest_heal > 0:
-					drain_heal.emit(attacker, rest_heal)
+					hp_restored.emit(attacker, rest_heal)
 				StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP, 2, null, ng_active, attacker)
 				secondary_applied.emit(attacker, MoveData.SE_SLEEP)
 			move_executed.emit(attacker, defender, move, 0)
@@ -5211,7 +5227,7 @@ func _phase_move_execution() -> void:
 				match sc_result.get("kind", ""):
 					"heal":
 						attacker.current_hp = min(attacker.max_hp, attacker.current_hp + sc_result["amount"])
-						drain_heal.emit(attacker, sc_result["amount"])
+						hp_restored.emit(attacker, sc_result["amount"])
 					"cure_status":
 						attacker.status = BattlePokemon.STATUS_NONE
 					"cure_confusion":
@@ -5650,7 +5666,23 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
-		var foe_targeting: bool = not move.stat_change_self
+		# `defender != attacker` is load-bearing, not belt-and-braces. Since
+		# get_live_targets resolves a TARGET_USER move to the user itself, a
+		# self-targeting move that reaches this generic status branch arrives
+		# with defender == attacker, and every gate below would then be asking
+		# a question about the USER that only makes sense about a FOE:
+		#   - the type-immunity gate would run the move's own type against the
+		#     user's types, so a Ghost-type using a Normal-type self-move
+		#     (Recover, Swords Dance, Substitute) would read as 0x and FAIL;
+		#   - the user's own Substitute would block its own self-buff;
+		#   - Magic Bounce would try to reflect a self-buff back at its caster;
+		#   - the Prankster/Dark gate would fire on a Dark-type using its own
+		#     status move.
+		# `not move.stat_change_self` already covered the stat-change half of
+		# that set (Swords Dance etc.); this covers every other self-target
+		# move, which previously only avoided these gates by accident, because
+		# `defender` happened to always be an opponent.
+		var foe_targeting: bool = not move.stat_change_self and defender != attacker
 
 		# [NEW ITEM B] Status-move spread dispatch (doubles only). Source-
 		# confirmed structural gap: this project's only spread-targeting loop
@@ -5899,6 +5931,15 @@ func _phase_move_execution() -> void:
 						defender.attack, defender.stat_stages[BattlePokemon.STAGE_ATK])
 				if attacker.current_hp < attacker.max_hp:
 					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + ss_eff_atk)
+					# drain_heal, NOT hp_restored, and that is source's own classification
+					# rather than a judgement call: Strength Sap routes through the SAME
+					# SetHealScript() as EFFECT_ABSORB (battle_move_resolution.c
+					# L2627-2634 -> L2586-2602), which sets B_MSG_ABSORB, i.e. "had its
+					# energy drained!". It reads like a self-heal and is mechanically a drain.
+					#
+					# FLAGGED, NOT FIXED (out of scope here): that same SetHealScript also
+					# applies Big Root and inverts on Liquid Ooze. This branch does neither,
+					# so Strength Sap ignores both -- a real pre-existing gap of its own.
 					drain_heal.emit(attacker, ss_eff_atk)
 				_apply_one_stat_change_pair(attacker, defender, move,
 						BattlePokemon.STAGE_ATK, -1, ng_active)
@@ -7719,6 +7760,10 @@ func get_combatant_index(mon: BattlePokemon) -> int:
 #     — a genuine 2-way choice in doubles, or just [self] in singles/if the
 #     ally has fainted (matching Acupressure's own established fallback-to-
 #     self default, M21 closeout).
+#   - TARGET_USER / TARGET_USER_AND_ALLY (Recover, Protect, Swords Dance,
+#     Morning Sun, Substitute, Reflect, Howl — 93 implemented moves): the ONLY
+#     candidate is the user itself, so callers never show a picker and resolve
+#     the target to `mon`.
 #   - Everything else (ordinary foe-targeting moves, or move == null): the
 #     live opponents, unchanged from _get_live_opponents' own shape.
 func get_live_targets(mon: BattlePokemon, move: MoveData = null) -> Array[BattlePokemon]:
@@ -7734,9 +7779,45 @@ func get_live_targets(mon: BattlePokemon, move: MoveData = null) -> Array[Battle
 		if ally != null:
 			result.append(ally)
 		return result
+	if move != null and is_self_targeting(move):
+		result.append(mon)
+		return result
 	for opp: BattlePokemon in _get_live_opponents(mon):
 		result.append(opp)
 	return result
+
+
+# Does this move resolve its target to the USER, with no player choice?
+#
+# Source: HandleInputChooseMove (battle_controller_player.c L707-732) —
+#   bool32 isUserOrAlly = moveTarget == TARGET_USER
+#                      || moveTarget == TARGET_USER_OR_ALLY
+#                      || moveTarget == TARGET_USER_AND_ALLY;
+#   if (isUserOrAlly) gMultiUsePlayerCursor = battler;
+# and CanSelectBattler() returns TRUE for TARGET_USER/TARGET_USER_AND_ALLY, so
+# `canSelectTarget` stays 0 and no picker is ever shown for them.
+#
+# TARGET_USER_OR_ALLY is deliberately NOT included: it is Acupressure alone, it
+# IS a genuine 2-way choice in doubles (source arms the picker for it one line
+# later, `if (moveTarget == TARGET_USER_OR_ALLY && IsBattlerAlive(PARTNER))`),
+# and it already has its own branch above.
+#
+# ⚠️ BIDE IS EXCLUDED DESPITE BEING TARGET_USER IN SOURCE, and the exclusion is
+# a disclosed divergence rather than an oversight. Source stores the battler
+# that last hit the Bide user in gBideTarget[] and OVERRIDES gBattlerTarget
+# with it at release, falling back to GetBattleMoveTarget(TARGET_SELECTED) if
+# that battler is gone (CancelerBide, battle_move_resolution.c L1119-1123).
+# This engine models no gBideTarget — its release reads `defender` directly
+# (`_apply_fixed_dmg_to_target(attacker, defender, ...)`), so resolving Bide to
+# the user would make it hit ITSELF for double the stored damage. In singles
+# both resolve to the sole opponent, so the observable behaviour matches; only
+# the mechanism differs. Closing the gap properly means storing the last
+# attacker, which belongs with Bide's own tier, not here.
+func is_self_targeting(move: MoveData) -> bool:
+	if move.is_bide:
+		return false
+	return move.target == MoveData.TARGET_USER \
+			or move.target == MoveData.TARGET_USER_AND_ALLY
 
 
 # M17f: live (non-fainted, opposing-side) combatants for mon — same loop shape as

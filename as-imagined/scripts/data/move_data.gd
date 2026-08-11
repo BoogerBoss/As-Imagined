@@ -64,7 +64,18 @@ const BAN_DAMP: int          = 1 << 13
 #   deferred per this tier's own mechanism-only scope, matching Grip Claw's
 #   precedent from [M18.5f].
 @export var multi_hit: bool = false # random multi-hit (overrides strike_count)
-@export var target: int = 0         # MoveTarget enum id
+# MoveTarget enum id (TARGET_* constants below). Populated for EVERY move by
+# gen_moves.py from data/move_targets.json — see _inject_targets() there.
+#
+# Defaults to TARGET_SELECTED, not TARGET_NONE, and the two halves must stay in
+# step: gen_moves.py omits the line when a move is SELECTED (690 of 935 are), so
+# a .tres with no `target` line MUST load as SELECTED. A 0 default would make
+# every ordinary move read as TARGET_NONE.
+#
+# SELECTED is also the right default for a hand-built MoveData.new() fixture:
+# it means "targets the chosen foe", which is what every test fixture in this
+# project already assumes, so no fixture starts life accidentally self-targeting.
+@export var target: int = 1
 
 # Move flags — source: struct MoveInfo flag bitfields
 @export var makes_contact: bool = false

@@ -14,3 +14,4 @@ pp = 15
 damages_underwater = true
 is_spread = true
 target_includes_ally = true
+target = 11

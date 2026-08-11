@@ -14,3 +14,4 @@ pp = 10
 ban_flags = 18
 ignores_protect = true
 weather_type = 4
+target = 12

@@ -13,3 +13,4 @@ accuracy = 0
 pp = 20
 ignores_protect = true
 is_stealth_rock = true
+target = 13

@@ -13,3 +13,4 @@ accuracy = 0
 priority = -7
 ignores_protect = true
 is_trick_room = true
+target = 12

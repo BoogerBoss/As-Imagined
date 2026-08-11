@@ -16,3 +16,4 @@ secondary_chance = 30
 stat_change_stat = 5
 stat_change_amount = -1
 is_spread = true
+target = 6

@@ -14,3 +14,4 @@ pp = 15
 ban_flags = 2
 ignores_protect = true
 is_mud_sport = true
+target = 12

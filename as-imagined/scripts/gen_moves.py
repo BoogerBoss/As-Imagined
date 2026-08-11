@@ -61,9 +61,16 @@ left alone, so a future sweep doesn't re-discover and re-investigate them.
 import os
 import pathlib
 
-# ── Target constants (MoveData.target) — only TARGET_ALL_BATTLERS is ever
-# actually set by a move entry so far (Perish Song, the first move needing
-# it); matches MoveData.TARGET_ALL_BATTLERS's own value exactly.
+# ── Target constants (MoveData.target) — enum MoveTarget, matching
+# include/constants/battle.h and MoveData's own TARGET_* constants exactly.
+#
+# Every move's real value is INJECTED from data/move_targets.json (emitted by
+# gen_move_targets.py straight out of moves_info.h) rather than hand-written
+# per entry — see _inject_targets() below. Only the two named here are
+# referenced directly: TARGET_SELECTED as the DEFAULTS value, and
+# TARGET_ALL_BATTLERS by Perish Song, which set it by hand before the field
+# was generated and is now cross-checked against the extracted value.
+TARGET_SELECTED = 1
 TARGET_ALL_BATTLERS = 14
 
 # ── Category constants (MoveData.category) ───────────────────────────────────
@@ -5295,7 +5302,14 @@ DEFAULTS = {
     "is_sketch":              False,
     "is_perish_song":         False,
     "is_transform":           False,
-    "target":                 0,
+    # TARGET_SELECTED, not TARGET_NONE — 690 of 935 moves are SELECTED, so it
+    # is the default that keeps the emitted .tres files lean, and it matches
+    # MoveData.target's own class default (deliberately kept in step: a move
+    # with no `target` line must load as SELECTED, not as 0/TARGET_NONE).
+    # Every move's real value is injected from data/move_targets.json by
+    # _inject_targets() below, so this default is only ever what SELECTED
+    # moves fall back to.
+    "target":                 TARGET_SELECTED,
 }
 
 HEADER = """\
@@ -5486,10 +5500,49 @@ def render(move: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _inject_targets(project_root: pathlib.Path) -> None:
+    """Set every move's `target` from data/move_targets.json.
+
+    Generated rather than hand-written per entry: 110 moves are TARGET_USER,
+    and `get_live_targets` now reads this field to decide whether the player
+    is asked to pick a target at all, so a hand-maintained list would rot the
+    moment a move was added and the symptom would be a self-buff asking the
+    player to choose an opponent.
+
+    A move that ALREADY carries an explicit `target` key is cross-checked
+    rather than silently overwritten — a disagreement means the hand-written
+    value and the reference have diverged, which is worth stopping for.
+    """
+    import json
+
+    path = project_root / "data" / "move_targets.json"
+    if not path.exists():
+        raise SystemExit(
+            f"gen_moves: missing {path} — run scripts/gen_move_targets.py first"
+        )
+    targets = {int(k): v for k, v in json.loads(path.read_text()).items()}
+
+    missing = [m["name"] for m in MOVES if m["id"] not in targets]
+    if missing:
+        raise SystemExit(
+            "gen_moves: no extracted target for: " + ", ".join(missing)
+        )
+    for move in MOVES:
+        extracted = targets[move["id"]]
+        if "target" in move and move["target"] != extracted:
+            raise SystemExit(
+                f"gen_moves: {move['name']} has hand-written target "
+                f"{move['target']} but the reference says {extracted}"
+            )
+        move["target"] = extracted
+
+
 def main():
     project_root = pathlib.Path(__file__).parent.parent
     out_dir = project_root / "data" / "moves"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    _inject_targets(project_root)
 
     for move in MOVES:
         content = render(move)

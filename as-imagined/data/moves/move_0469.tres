@@ -17,3 +17,4 @@ ignores_protect = true
 is_protect = true
 snatch_affected = true
 protect_method = 6
+target = 7

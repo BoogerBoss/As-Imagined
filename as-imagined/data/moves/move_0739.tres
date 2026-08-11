@@ -19,3 +19,4 @@ ban_flags = 2
 ignores_substitute = true
 ignores_protect = true
 stat_change_target_ally = true
+target = 8

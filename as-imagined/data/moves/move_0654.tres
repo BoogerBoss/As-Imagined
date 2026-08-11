@@ -16,3 +16,4 @@ stat_change_amount = -1
 stat_change_self = true
 ignores_substitute = true
 is_spread = true
+target = 6

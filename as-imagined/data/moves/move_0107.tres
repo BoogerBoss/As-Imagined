@@ -14,3 +14,4 @@ pp = 10
 ignores_protect = true
 is_minimize = true
 snatch_affected = true
+target = 7

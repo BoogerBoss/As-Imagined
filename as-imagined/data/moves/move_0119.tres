@@ -14,3 +14,4 @@ pp = 20
 ban_flags = 762
 ignores_protect = true
 is_mirror_move = true
+target = 3

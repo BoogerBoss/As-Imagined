@@ -13,3 +13,4 @@ accuracy = 0
 ban_flags = 112
 ignores_protect = true
 destiny_bond = true
+target = 7

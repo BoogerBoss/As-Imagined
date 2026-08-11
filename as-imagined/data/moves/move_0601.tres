@@ -18,3 +18,4 @@ extra_stat_change_stats = [3, 4]
 extra_stat_change_amounts = [2, 2]
 two_turn = true
 ban_flags = 384
+target = 7

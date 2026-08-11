@@ -14,3 +14,4 @@ makes_contact = true
 priority = -5
 ban_flags = 116
 counter = true
+target = 3

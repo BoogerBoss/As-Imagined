@@ -14,3 +14,4 @@ pp = 20
 ban_flags = 1022
 ignores_substitute = true
 is_me_first = true
+target = 4

@@ -14,3 +14,4 @@ pp = 25
 critical_hit_stage = 1
 is_spread = true
 slicing_move = true
+target = 6

@@ -19,3 +19,4 @@ ban_flags = 2
 ignores_protect = true
 snatch_affected = true
 also_boosts_ally = true
+target = 9

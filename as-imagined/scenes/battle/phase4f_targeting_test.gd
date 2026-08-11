@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_target_ally_move_resolves_to_ally()
 	_test_singles_regression_shape()
 	_test_needs_target_select()
+	_test_get_live_targets_self_targeting()
 
 	var total := _pass + _fail
 	print("phase4f_targeting_test: %d/%d passed" % [_pass, total])
@@ -79,6 +80,12 @@ const TACKLE_ID := 33
 const SURF_ID := 57
 const HELPING_HAND_ID := 270
 const ACUPRESSURE_ID := 367
+# Section I fixtures — all TARGET_USER (7) in moves_info.h.
+const RECOVER_ID := 105
+const MORNING_SUN_ID := 234
+const SWORDS_DANCE_ID := 14
+const PROTECT_ID := 182
+const BIDE_ID := 117
 
 
 # Builds a fresh 2-active-per-side doubles BattleManager: player party has 2
@@ -467,3 +474,97 @@ func _test_needs_target_select() -> void:
 			BattleScreenShared._needs_target_select(acupressure, 2))
 	_chk("TARGET_USER_OR_ALLY move, 1 candidate (self only): no picker",
 			not BattleScreenShared._needs_target_select(acupressure, 1))
+
+
+# ── Section I: TARGET_USER self-targeting moves ──────────────────────────
+#
+# The gap this section exists to close: get_live_targets used to special-case
+# only the three ally shapes and let EVERYTHING else fall through to "return
+# the live opponents", so a self-targeting move reported the opponents as its
+# candidates. In doubles that showed the player a target picker for Recover;
+# in singles it silently resolved the target to the OPPONENT, which is what
+# made the log read "Bulbasaur used Recover on Charmander!" and played the
+# hit effect on the wrong sprite.
+#
+# Source: HandleInputChooseMove (battle_controller_player.c L707-732) —
+# TARGET_USER sets gMultiUsePlayerCursor = battler, and CanSelectBattler()
+# returns TRUE for it so no picker is ever armed.
+
+func _test_get_live_targets_self_targeting() -> void:
+	var d := _make_doubles_battle()
+	var bm: BattleManager = d["bm"]
+	var p0: BattlePokemon = d["p0"]
+
+	# The data itself. If the pipeline stopped populating `target`, every
+	# assertion below would still pass for the WRONG reason (a move read as
+	# TARGET_NONE is simply "not self-targeting"), so pin it first.
+	var recover := _load_move(RECOVER_ID)
+	var morning_sun := _load_move(MORNING_SUN_ID)
+	var swords_dance := _load_move(SWORDS_DANCE_ID)
+	var protect := _load_move(PROTECT_ID)
+	var tackle := _load_move(TACKLE_ID)
+	_chk("I.01 Recover carries TARGET_USER from the pipeline",
+			recover.target == MoveData.TARGET_USER)
+	_chk("I.02 Morning Sun carries TARGET_USER from the pipeline",
+			morning_sun.target == MoveData.TARGET_USER)
+	_chk("I.03 Tackle is TARGET_SELECTED, not defaulted to TARGET_NONE",
+			tackle.target == MoveData.TARGET_SELECTED)
+
+	for m: MoveData in [recover, morning_sun, swords_dance, protect]:
+		_chk("I.04 %s is self-targeting" % m.move_name, bm.is_self_targeting(m))
+	_chk("I.05 Tackle is NOT self-targeting", not bm.is_self_targeting(tackle))
+
+	# The doubles half of the reported bug: 2 live opponents used to come back
+	# as candidates, arming the picker.
+	for m: MoveData in [recover, morning_sun, swords_dance, protect]:
+		var cands: Array[BattlePokemon] = bm.get_live_targets(p0, m)
+		_chk("I.06 %s in doubles: exactly one candidate" % m.move_name,
+				cands.size() == 1)
+		_chk("I.07 %s in doubles: the candidate is the USER" % m.move_name,
+				cands.size() == 1 and cands[0] == p0)
+		_chk("I.08 %s in doubles: no target picker" % m.move_name,
+				not BattleScreenShared._needs_target_select(m, cands.size()))
+
+	# Regression guard: the three pre-existing shapes are untouched. Tackle in
+	# particular must STILL return both opponents and still arm the picker —
+	# without this, "return [mon] for everything" would pass I.06-I.08.
+	var foe_cands: Array[BattlePokemon] = bm.get_live_targets(p0, tackle)
+	_chk("I.09 discriminator: Tackle still returns both opponents",
+			foe_cands.size() == 2 and not foe_cands.has(p0))
+	_chk("I.10 discriminator: Tackle still arms the picker in doubles",
+			BattleScreenShared._needs_target_select(tackle, foe_cands.size()))
+	var hh: Array[BattlePokemon] = bm.get_live_targets(p0, _load_move(HELPING_HAND_ID))
+	_chk("I.11 TARGET_ALLY unchanged: Helping Hand resolves to the ally",
+			hh.size() == 1 and hh[0] == d["p1"])
+	var acu: Array[BattlePokemon] = bm.get_live_targets(p0, _load_move(ACUPRESSURE_ID))
+	_chk("I.12 TARGET_USER_OR_ALLY unchanged: Acupressure offers self + ally",
+			acu.size() == 2 and acu[0] == p0 and acu[1] == d["p1"])
+
+	# Bide is TARGET_USER in source but is deliberately excluded — its release
+	# reads `defender` directly, and this engine models no gBideTarget, so
+	# resolving it to the user would make it hit itself for double damage.
+	var bide := _load_move(BIDE_ID)
+	_chk("I.13 Bide is TARGET_USER in the data", bide.target == MoveData.TARGET_USER)
+	_chk("I.14 ...but is excluded from self-targeting (no gBideTarget here)",
+			not bm.is_self_targeting(bide))
+	var bide_cands: Array[BattlePokemon] = bm.get_live_targets(p0, bide)
+	_chk("I.15 Bide still resolves to a foe, so its release has a victim",
+			bide_cands.size() == 2 and not bide_cands.has(p0))
+	bm.queue_free()
+
+	# ⚠️ THE SINGLES HALF NEEDS ITS OWN FIXTURE, and asserting the CANDIDATE
+	# COUNT here would prove nothing: with one live opponent the old code and
+	# the new code both return exactly 1 candidate, so only WHO that candidate
+	# is can tell them apart. This is the case that produced the wrong log line
+	# and the wrong animation target while never showing a picker.
+	var s := _make_singles_battle()
+	var sbm: BattleManager = s["bm"]
+	var sp0: BattlePokemon = s["p0"]
+	var s_cands: Array[BattlePokemon] = sbm.get_live_targets(sp0, recover)
+	_chk("I.16 singles: Recover resolves to the USER, not the lone opponent",
+			s_cands.size() == 1 and s_cands[0] == sp0)
+	_chk("I.17 singles: the resolved combatant index is the user's own",
+			sbm.get_combatant_index(s_cands[0]) == sbm.get_combatant_index(sp0))
+	_chk("I.18 singles discriminator: Tackle still resolves to the opponent",
+			sbm.get_live_targets(sp0, tackle)[0] == s["o0"])
+	sbm.queue_free()

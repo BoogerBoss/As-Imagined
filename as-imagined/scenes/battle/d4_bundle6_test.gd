@@ -362,7 +362,7 @@ func _test_rest() -> void:
 	var def := _make_mon("RsDef", 300, 60, 60, 60, 60, 40)
 	var bm := _make_bm()
 	var healed := [-1]
-	bm.drain_heal.connect(func(mon, amt):
+	bm.hp_restored.connect(func(mon, amt):
 		if mon == atk and healed[0] == -1: healed[0] = amt)
 	bm.start_battle(atk, def)
 	bm.queue_free()
@@ -391,7 +391,7 @@ func _test_rest() -> void:
 	var healed3 := [false]
 	bm3.move_effect_failed.connect(func(_m, reason):
 		if reason == "rest_blocked_by_ability": insomnia_fail[0] = true)
-	bm3.drain_heal.connect(func(mon, _amt):
+	bm3.hp_restored.connect(func(mon, _amt):
 		if mon == atk3: healed3[0] = true)
 	bm3.start_battle(atk3, def3)
 	bm3.queue_free()
@@ -462,7 +462,7 @@ func _test_present() -> void:
 	bm2._force_hit = true
 	bm2._force_present_roll = 255
 	var healed2 := [-1]
-	bm2.drain_heal.connect(func(mon, amt):
+	bm2.hp_restored.connect(func(mon, amt):
 		if mon == def2 and healed2[0] == -1: healed2[0] = amt)
 	bm2.start_battle(atk2, def2)
 	bm2.queue_free()
@@ -1104,7 +1104,7 @@ func _test_stuff_cheeks() -> void:
 	bm.stat_stage_changed.connect(func(mon, stat, delta):
 		if mon == atk and stat == BattlePokemon.STAGE_DEF and delta == 2:
 			def_raised[0] = true)
-	bm.drain_heal.connect(func(mon, amt):
+	bm.hp_restored.connect(func(mon, amt):
 		if mon == atk and sc_healed[0] == -1: sc_healed[0] = amt)
 	bm.start_battle(atk, def)
 	bm.queue_free()

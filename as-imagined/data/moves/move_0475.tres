@@ -17,3 +17,4 @@ stat_change_self = true
 ban_flags = 2
 ignores_protect = true
 snatch_affected = true
+target = 7

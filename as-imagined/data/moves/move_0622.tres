@@ -15,3 +15,4 @@ healing_move = true
 snatch_affected = true
 heals_based_on_weather = true
 weather_heal_boost_type = 3
+target = 7

@@ -14,3 +14,4 @@ pp = 30
 ignores_protect = true
 is_focus_energy = true
 snatch_affected = true
+target = 7

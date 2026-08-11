@@ -14,3 +14,4 @@ pp = 30
 ban_flags = 2
 ignores_protect = true
 is_haze = true
+target = 12

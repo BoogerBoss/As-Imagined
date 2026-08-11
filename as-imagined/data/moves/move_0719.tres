@@ -17,3 +17,4 @@ ignores_protect = true
 healing_move = true
 snatch_affected = true
 is_life_dew = true
+target = 7

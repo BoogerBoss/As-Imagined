@@ -16,3 +16,4 @@ ban_flags = 114
 ignores_substitute = true
 ignores_protect = true
 is_helping_hand = true
+target = 8

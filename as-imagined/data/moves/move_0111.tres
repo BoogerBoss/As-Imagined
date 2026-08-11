@@ -14,3 +14,4 @@ pp = 40
 ignores_protect = true
 is_defense_curl = true
 snatch_affected = true
+target = 7

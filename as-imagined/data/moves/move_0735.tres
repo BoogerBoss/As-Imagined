@@ -14,3 +14,4 @@ secondary_effect = 1
 secondary_chance = 100
 is_spread = true
 requires_target_stat_raised = true
+target = 6

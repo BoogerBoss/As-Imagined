@@ -12,3 +12,4 @@ power = 1
 pp = 10
 ban_flags = 4
 metal_burst = true
+target = 3

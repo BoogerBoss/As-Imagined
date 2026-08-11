@@ -13,3 +13,4 @@ pp = 20
 is_spread = true
 bounceable = true
 is_venom_drench = true
+target = 6

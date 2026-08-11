@@ -14,3 +14,4 @@ pp = 10
 ban_flags = 760
 ignores_protect = true
 is_metronome = true
+target = 3

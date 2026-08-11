@@ -12,3 +12,4 @@ category = 1
 power = 80
 pp = 10
 is_spread = true
+target = 6

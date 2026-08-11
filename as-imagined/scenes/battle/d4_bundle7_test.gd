@@ -439,7 +439,7 @@ func _test_pollen_puff() -> void:
 	var bm := _make_bm()
 	bm.queue_move_targeted(0, 0, 1)  # caster (slot 0) uses Pollen Puff on ally (slot 1)
 	var healed := [-1]
-	bm.drain_heal.connect(func(mon, amount):
+	bm.hp_restored.connect(func(mon, amount):
 		if mon == ally and healed[0] == -1: healed[0] = amount)
 	bm.start_battle_doubles(player, opp)
 	bm.queue_free()

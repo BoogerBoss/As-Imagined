@@ -785,7 +785,7 @@ func _test_heal_pulse() -> void:
 	var healed := [-1]
 	var bm := _make_bm()
 	bm._force_hit = true
-	bm.drain_heal.connect(func(mon, amount):
+	bm.hp_restored.connect(func(mon, amount):
 		if mon == def and healed[0] == -1: healed[0] = amount)
 	bm.start_battle(atk, def)
 	bm.queue_free()
@@ -816,7 +816,7 @@ func _test_heal_pulse() -> void:
 	var healed3 := [-1]
 	var bm3 := _make_bm()
 	bm3._force_hit = true
-	bm3.drain_heal.connect(func(mon, amount):
+	bm3.hp_restored.connect(func(mon, amount):
 		if mon == def3 and healed3[0] == -1: healed3[0] = amount)
 	bm3.start_battle(atk3, def3)
 	bm3.queue_free()
@@ -837,7 +837,7 @@ func _test_heal_pulse() -> void:
 	var healed4 := [-1]
 	var bm4 := _make_bm()
 	bm4._force_hit = true
-	bm4.drain_heal.connect(func(mon, amount):
+	bm4.hp_restored.connect(func(mon, amount):
 		if mon == def4 and healed4[0] == -1: healed4[0] = amount)
 	bm4.start_battle(atk4, def4)
 	bm4.queue_free()
@@ -863,7 +863,7 @@ func _test_life_dew() -> void:
 	var user_healed := [-1]
 	var bm := _make_bm()
 	bm._force_hit = true
-	bm.drain_heal.connect(func(mon, amount):
+	bm.hp_restored.connect(func(mon, amount):
 		if mon == atk and user_healed[0] == -1: user_healed[0] = amount)
 	bm.start_battle(atk, def)
 	bm.queue_free()
@@ -897,7 +897,7 @@ func _test_life_dew() -> void:
 	var op := BattleParty.new(); op.members = [d_opp1, d_opp2]; op.active_indices = [0, 1]
 	var user_healed3 := [-1]
 	var ally_healed3 := [-1]
-	bm3.drain_heal.connect(func(mon, amount):
+	bm3.hp_restored.connect(func(mon, amount):
 		if mon == d_atk and user_healed3[0] == -1: user_healed3[0] = amount
 		elif mon == d_ally and ally_healed3[0] == -1: ally_healed3[0] = amount)
 	bm3.queue_move_targeted(0, 0, 2)
@@ -1042,7 +1042,7 @@ func _test_stockpile_family() -> void:
 	bm5.queue_move(0, 1)  # Swallow at 1 stack
 	bm5._force_hit = true
 	var swallow_heal := [-1]
-	bm5.drain_heal.connect(func(mon, amount):
+	bm5.hp_restored.connect(func(mon, amount):
 		if mon == atk5 and swallow_heal[0] == -1: swallow_heal[0] = amount)
 	# Damage atk5 first so Swallow has something to heal.
 	atk5.current_hp = atk5.max_hp - 100

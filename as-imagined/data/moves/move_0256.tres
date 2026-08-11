@@ -16,3 +16,4 @@ ignores_protect = true
 healing_move = true
 snatch_affected = true
 is_swallow = true
+target = 7

@@ -158,6 +158,16 @@ func _test_announcement_self_targeting_omits_target() -> void:
 	# Self-targeting moves resolve defender == attacker at the BattleManager
 	# layer already (see _on_hit_effect_move_executed's own doc comment for
 	# the same established convention).
+	#
+	# ⚠️ THAT PREMISE WAS FALSE UNTIL THE TARGET_USER FIX, AND THIS TEST
+	# PASSED ANYWAY — it hand-feeds `defender = attacker`, so it exercises the
+	# FORMATTER and nothing else. While get_live_targets was handing
+	# self-targeting moves the opponent, the real game printed "used Recover
+	# on Charmander!" with this assertion green the whole time. Kept as-is
+	# (the formatter's own behaviour is still worth pinning), but the
+	# end-to-end claim it LOOKS like it makes is covered by
+	# phase4f_targeting_test's Section I, which drives the real
+	# get_live_targets — assert the resolution there, the wording here.
 	bs._on_log_move_announced(attacker, attacker, move)
 
 	_chk("self-targeting announcement does NOT awkwardly name the user as a target",

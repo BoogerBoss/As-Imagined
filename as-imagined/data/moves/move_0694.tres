@@ -19,3 +19,4 @@ ban_flags = 2
 ignores_protect = true
 snatch_affected = true
 is_no_retreat = true
+target = 7

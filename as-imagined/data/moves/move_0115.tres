@@ -14,3 +14,4 @@ pp = 20
 ignores_protect = true
 is_reflect = true
 snatch_affected = true
+target = 7

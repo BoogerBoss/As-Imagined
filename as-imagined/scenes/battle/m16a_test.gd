@@ -136,7 +136,7 @@ func _test_section_2_restore_hp() -> void:
 	var healed1: Array[int] = []
 	var bm1 := BattleManager.new()
 	add_child(bm1)
-	bm1.drain_heal.connect(func(mon: BattlePokemon, amount: int):
+	bm1.hp_restored.connect(func(mon: BattlePokemon, amount: int):
 		if mon == player1:
 			healed1.append(amount))
 	bm1.start_battle(player1, opp1)
@@ -154,7 +154,7 @@ func _test_section_2_restore_hp() -> void:
 	var post_hp3: Array[int] = []
 	var bm3 := BattleManager.new()
 	add_child(bm3)
-	bm3.drain_heal.connect(func(mon: BattlePokemon, _amt: int):
+	bm3.hp_restored.connect(func(mon: BattlePokemon, _amt: int):
 		if mon == player3:
 			post_hp3.append(mon.current_hp))
 	bm3.start_battle(player3, opp3)

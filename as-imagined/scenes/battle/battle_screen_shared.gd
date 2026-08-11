@@ -2596,8 +2596,18 @@ func _wire_log_signals() -> void:
 		OverworldSession.bag.remove(item.item_id, 1))
 	_bm.recoil_damage.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s was hurt by recoil! (%d damage)" % [_mon_label(mon), amount]))
+	# Two signals, two strings, matching source's own split (battle_message.c
+	# L224/L249). drain_heal is HP taken from a victim (Absorb/Giga Drain/Drain
+	# Punch, plus Strength Sap, which source routes through the same
+	# SetHealScript); hp_restored is every heal with no victim.
+	#
+	# These were ONE signal until this fix, which is why Morning Sun announced
+	# "had its energy drained!" — every heal in the engine reached this handler
+	# through drain_heal, so the log could not tell the two apart.
 	_bm.drain_heal.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s had its energy drained! (%d HP)" % [_mon_label(mon), amount]))
+	_bm.hp_restored.connect(func(mon: BattlePokemon, amount: int):
+		_log("%s's HP was restored. (%d HP)" % [_mon_label(mon), amount]))
 	_bm.status_damage.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s was hurt by its status! (%d damage)" % [_mon_label(mon), amount]))
 	_bm.confusion_self_hit.connect(func(mon: BattlePokemon, amount: int):
@@ -3344,6 +3354,17 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	# Self-targeting moves (Swords Dance, Rest, etc.) resolve defender ==
 	# attacker at the BattleManager layer already -- target_mon naturally
 	# becomes the attacker in that case with no special-casing needed here.
+	#
+	# ⚠️ THIS COMMENT WAS FALSE WHEN IT WAS WRITTEN AND IS NOW TRUE — worth
+	# recording, because it is exactly the shape of claim a later session
+	# should distrust. get_live_targets used to return the live OPPONENTS for
+	# every move it did not explicitly special-case, self-targeting ones
+	# included, so `defender` here was the opponent and the hit effect played
+	# on the wrong sprite. What makes the claim hold now is
+	# BattleManager.is_self_targeting() reading the move's real TARGET_USER,
+	# populated for every move by gen_moves.py — not a convention anyone is
+	# maintaining by hand. Bide is the one TARGET_USER move deliberately
+	# excluded there; see that function's own note.
 	# A null defender (a handful of pure-field-effect moves) falls back to
 	# the attacker's own position rather than skipping the effect outright.
 	var target_mon: BattlePokemon = defender if defender != null else attacker

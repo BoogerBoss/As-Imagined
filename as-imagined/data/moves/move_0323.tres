@@ -12,3 +12,4 @@ category = 1
 power = 150
 is_spread = true
 power_scales_with_user_hp = true
+target = 6

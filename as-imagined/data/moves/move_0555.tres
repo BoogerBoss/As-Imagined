@@ -19,3 +19,4 @@ stat_change_amount = -1
 ban_flags = 16
 ignores_substitute = true
 is_spread = true
+target = 6

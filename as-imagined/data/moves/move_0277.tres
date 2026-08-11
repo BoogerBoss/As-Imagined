@@ -15,3 +15,4 @@ priority = 4
 ban_flags = 2
 ignores_protect = true
 is_magic_coat = true
+target = 3

@@ -15,3 +15,4 @@ sound_move = true
 ignores_substitute = true
 is_spread = true
 target_includes_ally = true
+target = 11

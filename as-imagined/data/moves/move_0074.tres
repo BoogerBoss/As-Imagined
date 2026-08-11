@@ -14,3 +14,4 @@ pp = 20
 ignores_protect = true
 is_growth = true
 snatch_affected = true
+target = 7

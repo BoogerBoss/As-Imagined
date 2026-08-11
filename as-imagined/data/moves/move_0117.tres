@@ -13,3 +13,4 @@ pp = 10
 priority = 1
 ban_flags = 128
 is_bide = true
+target = 7

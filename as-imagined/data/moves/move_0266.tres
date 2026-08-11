@@ -15,3 +15,4 @@ priority = 2
 ban_flags = 114
 ignores_protect = true
 is_follow_me = true
+target = 7

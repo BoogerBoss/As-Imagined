@@ -487,7 +487,7 @@ func _test_soft_boiled_milk_drink() -> void:
 		def.add_move(tackle)
 		var bm := _make_bm()
 		var healed := [false, -1]
-		bm.drain_heal.connect(func(mon, amt):
+		bm.hp_restored.connect(func(mon, amt):
 			if mon == atk and not healed[0]:
 				healed[0] = true
 				healed[1] = amt)

@@ -4156,10 +4156,21 @@ re-import (see the note above) before running a scene that depends on new/change
 `.tres` files:
 
 ```bash
+python3 scripts/gen_move_targets.py  # data/move_targets.json  — RUN BEFORE gen_moves.py
 python3 scripts/gen_moves.py      # data/moves/move_NNNN.tres    (MoveData)
 python3 scripts/gen_abilities.py  # data/abilities/ability_NNNN.tres (AbilityData)
 python3 scripts/gen_items.py      # data/items/item_NNNN.tres    (ItemData)
 ```
+
+⚠️ **`gen_moves.py` now HARD-FAILS without `data/move_targets.json`** — it reads
+every move's real `.target` from there and injects it, rather than the field
+being hand-written per entry (110 moves are TARGET_USER, and `get_live_targets`
+reads the field to decide whether the player is even asked to pick a target, so
+a hand-maintained list would rot into self-buffs prompting for an opponent).
+Same two-step shape as `gen_move_descriptions.py`. `MoveData.target`'s class
+default and that generator's `DEFAULTS["target"]` are both **TARGET_SELECTED**
+and must stay in step: a `.tres` with no `target` line has to load as SELECTED,
+not as 0/TARGET_NONE.
 
 All three scripts share one structure: a list of dicts (`MOVES`/`ABILITIES`/`ITEMS`),
 a `DEFAULTS` dict (skip a field in the emitted `.tres` when it equals its class

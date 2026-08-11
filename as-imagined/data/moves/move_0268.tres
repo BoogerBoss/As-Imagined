@@ -18,3 +18,4 @@ ban_flags = 2
 ignores_protect = true
 snatch_affected = true
 is_charge = true
+target = 7

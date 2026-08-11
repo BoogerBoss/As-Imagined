@@ -16,3 +16,4 @@ ban_flags = 114
 ignores_substitute = true
 ignores_protect = true
 is_snatch = true
+target = 3

@@ -16,3 +16,4 @@ secondary_effect = 3
 secondary_chance = 20
 is_spread = true
 always_hits_in_rain = true
+target = 6

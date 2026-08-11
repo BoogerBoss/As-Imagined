@@ -16,3 +16,4 @@ ignores_substitute = true
 ignores_protect = true
 snatch_affected = true
 is_imprison = true
+target = 7
