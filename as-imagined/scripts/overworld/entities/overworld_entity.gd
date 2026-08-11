@@ -171,10 +171,32 @@ static func make_sprite(graphics_id: String, facing: String) -> Sprite2D:
 ## visibly garbled. The base OAM cannot be the drawing path.
 ##
 ## **This is therefore a real port gap, not a divergence: this project ignores
-## `subspriteTables` entirely.** Measured across all 1,148 graphics infos,
-## `TownMap` is the ONLY one whose subsprite shape differs from its declared
-## width/height — so a general subsprite port would buy exactly this one sprite,
-## and the offset below is the whole of it.
+## `subspriteTables` entirely.** ⚠️ It is also a gap worth NOT closing, and the
+## measurement is why — recorded here so nobody re-derives it.
+##
+## ⚠️ **THE TEST IS NOT "DOES THE SHAPE MATCH", IT IS "DOES THE ORIGIN MATCH".**
+## A first pass compared each table's NAME against the declared width/height and
+## reported one outlier; that check is too weak, because a table can carry the
+## right shape and still start somewhere else. Comparing each table's real
+## `min(.x, .y)` against `-(width >> 1), -(height >> 1)` — the value the base-OAM
+## path uses — is the honest test. Across all **393** graphics infos (not the
+## 1,148 an earlier note claimed; that is the sprite-TEMPLATE count from M36A,
+## a different table entirely):
+##
+##   * **389 position IDENTICALLY under both paths** — every `16x16`, `16x32`,
+##     `32x32`, `64x64` and `96x40` table starts at exactly `-(w>>1), -(h>>1)`.
+##     For all of them the formula above is already right, and a subsprite port
+##     would change nothing.
+##   * **4 genuinely differ**, and three are unreachable: `TownMap` (fixed
+##     below), `Truck` 48x48 and `SubmarineShadow` 88x32 (both Hoenn-only, so
+##     never baked here), and `SSAnne` 128x64 — Kanto, but Vermilion harbour is
+##     outside the 34-map corridor.
+##
+## So the general port buys ONE sprite that this row already fixes, plus one that
+## cannot be reached yet. ⚠️ **`OBJ_EVENT_GFX_SS_ANNE` will need its own row here
+## the day Vermilion is baked** — its table starts 128x64 rather than at the
+## centre formula, and the symptom would be a ship a few pixels off with nothing
+## naming the cause.
 ##
 ## `+8` puts the frame's column 0 at `cell_px`, which is where source's 16-wide
 ## window puts it. The right 16 columns are fully transparent, so drawing the
