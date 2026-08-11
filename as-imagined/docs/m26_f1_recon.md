@@ -1273,6 +1273,306 @@ Where it IS a real fallback:
 Neither use requires adopting the pack's animation system; both are asset
 sourcing plus, at most, reading its timing data as a reference.
 
+## M36P — the battler transform anchor — SCOPED 2026-08-11, NOT BUILT
+
+**Reported from play by Rob**: *"During a lot of my animations, the subject of
+the animation — user or opponent — will snap about 5-10% lower/right as the
+animation starts and snap back to their original position after the animation
+ends. Is this an anchor issue?"*
+
+It is. This section is the diagnosis, the scope, and the proposed fix. **No
+code was written and nothing is approved.** Diagnosis is from source reading
+plus arithmetic — it has NOT been watched on screen, which is itself the point
+of the last phase below.
+
+### The mechanism, verified
+
+Battler sprites are plain `TextureRect`s authored in the two battle scenes:
+`OpponentSprite0` is **320×320** (`offset_left -160 … offset_right 160`),
+`PlayerSprite0` is **357×357**, both anchored at a point with
+`grow_horizontal/vertical = 2`, `expand_mode = 1`, `stretch_mode = 4`. Neither
+sets `pivot_offset`, so it is `(0, 0)`.
+
+⚠️ **For a `Control`, `rotation` and `scale` pivot about `pivot_offset` — so
+every battler deform in the animation runtime rotates and scales about the
+sprite box's TOP-LEFT CORNER instead of its centre.** On hardware the
+equivalent is an OAM affine matrix, which is centre-based by construction, and
+source calls `CalcCenterToCornerVec` in both
+`PrepareBattlerSpriteForRotScale` (`battle_anim_mons.c:1239`) and
+`ResetSpriteRotScale` (`:1248`) *precisely* so the sprite does not shift when
+affine mode changes. That recompute is the anchor fix, and it has no
+counterpart here.
+
+Two visual signatures fall out, which is why the reported direction varies by
+move:
+
+* **Scale about the top-left** — a grow of ×1.15 on the 357px player box moves
+  the drawn body **down AND right by ~27px**; ×1.3 moves it ~54px. Against a
+  768px stage that is 3.5–7%, which is the reported figure.
+* **Rotation about the top-left** — down-left or up-right depending on sign,
+  and the sign is side-dependent (`away` in `_bow_mon`), so the two sides
+  displace in opposite directions.
+
+**The snap-back at the end is the VM working correctly**:
+`_capture_battler_baseline()` at `start()` and `_restore_battler_baseline()`
+at finish (`anim_script_vm.gd:614-651`) restore `pos`/`scale`/`rot` exactly.
+
+### Scope, measured
+
+| | |
+|---|---|
+| Behaviors that deform a battler and **do** fix the pivot locally | **9** |
+| Behaviors that deform a battler and **do not** | **19** |
+| Moves reaching an un-pivoted battler deform | **89 of 933** |
+
+⚠️ **The 9 local fixes are why this stayed invisible for 39 batches.**
+`_scale_mon_and_restore` (`anim_behaviors.gd:1763-1764`) captures `base_pivot`,
+sets `size * 0.5`, and restores it. Someone hit this, fixed it where it bit,
+and moved on — the workaround existed, the generalisation never did.
+
+Worst offenders by reach: **`AnimBowMon` (14 moves)** and
+**`_run_affine_cmds` (11 registered tasks** — `AnimTask_GrowAndShrink`,
+`AnimTask_ShrinkAndGrow`, `AnimTask_SquishTarget`,
+`AnimTask_MeditateStretchAttacker`, `AnimTask_TormentAttacker`,
+`AnimTask_UproarDistortion`, `AnimTask_DeepInhale`, `AnimTask_SlackOffSquish`,
+`AnimTask_CompressTargetHorizontally`, `…Fast`,
+`AnimTask_ThrashMoveMonHorizontal`**)**. Named moves include Headbutt, Horn
+Attack, Horn Drill, Drill Peck, Thrash, Meditate, Night Shade, Mimic,
+Minimize, Withdraw, Substitute, Outrage, Swagger, Frustration, Baton Pass,
+Extreme Speed, Fake Out, Uproar, Stockpile/Spit Up/Swallow, Torment, Facade,
+Trick.
+
+### Worked example — Horn Attack (Rob's named case)
+
+14 ops; all mon movement is `gBowMonSpriteTemplate` → `_bow_mon`
+(`anim_behaviors.gd:6334`), whose three modes are pull-back / lunge / untilt.
+Mode 0 pulls back over 6 frames then sets
+`node.rotation = 16.875° × away` and **deliberately leaves it applied** until
+mode 2 undoes it — so the tilt is held across the whole middle of the
+animation. With the pivot at the top-left of the 320px opponent box that tilt
+alone displaces the drawn body **~53px left and ~40px down** (5.2% of stage
+height); on the 357px player box it is ~59.5px and ~44px the other way.
+
+### ⚠️ A SECOND, INDEPENDENT BUG IN THE SAME FUNCTION — flagged, not fixed
+
+Source's `TranslateSpriteLinearById` is **incremental** —
+`gSprites[data[3]].x2 += data[1]` (`battle_anim_mons.c:569`) — so mode 1's
+lunge continues from the pulled-back position and lands back at exactly
+neutral (−2 × 6 = −12 GBA px, then +3 × 4 = 0). The port's mode 1 uses
+`mon.apply()`, which is **absolute from the captured base**, so it jumps from
+−51 stage px to +13 in one frame and finishes **51px past neutral on the wrong
+side**. A second visible snap, mid-animation, on top of the pivot one.
+**14 moves.**
+
+The *model* is not wrong — `MonOffset`'s `position = base + offset` correctly
+mirrors source's `x2` being an absolute displacement from home. This is a
+per-behavior arithmetic error, which usefully narrows the audit to
+**"which behaviors chain phases and restart the offset from zero where
+source's accumulator carries over?"** rather than a rewrite.
+
+### Why no test caught it — and the new standing rule
+
+⚠️ **`m36_leak_harness` passes 784/784 over this.** It asserts every battler is
+back at rest *after* a run, which is true, because the VM's baseline restore
+puts it there. The harness is correct and its own header already says it is
+"defect detection, NOT fidelity verification" — but nothing anywhere samples
+**during** a run, so a defect that exists only between `start()` and `_finish()`
+is structurally invisible. Recorded as **standing rule (16)** in CLAUDE.md's
+M36 row.
+
+### Proposed phases
+
+**Phase 0 — three Step 0 questions, all of which change where the fix goes.**
+
+1. **Does anything outside the anim VM scale or rotate a battler sprite?**
+   (send-out/recall ball animations, the faint drop, the idle bob). If yes they
+   were tuned against a corner pivot and the pivot must stay VM-owned and be
+   restored on finish; if no, fixing `pivot_offset` in both battle `.tscn`s is
+   the more honest fix. **Grep then read — do not assume.**
+2. **Is `size * 0.5` the faithful pivot?** ⚠️ Source rotates about the **64×64
+   sprite-box centre**, not the drawn-pixel centroid — the mon sits
+   bottom-anchored inside that box via `.frontPicYOffset` and the affine matrix
+   knows nothing about it. The rects are square with `stretch_mode = 4`, so box
+   centre and texture centre coincide and `size * 0.5` is correct. Confirm at
+   runtime and **record it at the constant**, because "rotate about the visible
+   body instead" is the improvement a later session will make, and it would
+   diverge from source.
+3. **Audit the phase-chaining behaviors** for the `_bow_mon` arithmetic shape
+   above.
+
+**Phase 1 — build the detector BEFORE the fix, and break-test it.** Two
+guards, both of which must fail today:
+
+* **The invariant, as a discriminator** — a pure deform must not move the
+  sprite's centre: set `rotation`/`scale` on a battler, assert
+  `get_global_rect().get_center()` is unchanged. Corner-pivot fails,
+  centre-pivot passes. Derived from the negation, per rule (7)'s preventive
+  form.
+* **A structural guard** — no behavior writes `node.rotation`/`node.scale` on a
+  battler outside `MonScale`. Same "make the wrong thing unrepresentable"
+  discipline as `[M27D D3]`'s `_cell` setter.
+
+⚠️ **The rule-(13) trap waiting here, which would produce a green suite over a
+broken build**: a headless fixture whose battler `Control` has
+`size == (0, 0)` **cannot tell the two pivots apart** — `size * 0.5` is
+`(0,0)`, so both implementations agree and the assertion proves nothing. The
+fixture must have a real non-zero size and the assertion must say why.
+
+**Phase 2 — the fix.** `MonScale` owns the pivot (capture `base_pivot`, set
+`size * 0.5`, restore in `restore()` — it already owns base scale and rotation,
+so no new class); `_capture_battler_baseline`/`_restore_battler_baseline` gain
+`pivot` (⚠️ without this the 9 existing local fixes **leak**: they restore
+`base_pivot` only on their stepper's normal completion path, so a VM
+`_finish()` on error or frame-budget exhaustion leaves a moved pivot behind,
+visible only the next time something scales); route the 19 through `MonScale`;
+**delete the 9 local copies**, since leaving them is two mechanisms for one job
+— the `check_bake_diff`-vs-`map_baker` drift shape this project has already
+paid for once.
+
+**Phase 3 — `_bow_mon`'s absolute-vs-incremental lunge**, as its own change.
+Different root cause, different blast radius; bundling makes a bisect
+ambiguous.
+
+**Phase 4 — `SetBattlerSpriteYOffsetFromRotation`** (`battle_anim_mons.c:1253`,
+`y2 = |c| >> 3` — the feet-planted compensation, ~40 stage px at Horn Attack's
+tilt). A genuinely ABSENT behaviour rather than a mis-anchor, and it only makes
+sense once rotation is centre-based, so it lands last and alone.
+
+**Phase 5 — the verification a suite cannot give.** Leak harness green with
+`KNOWN_LEAKS` still empty, then **watch it**: `m36_screenshot_harness` plus
+WSLg, capturing Horn Attack, one `_run_affine_cmds` move (Swagger or Meditate)
+and Minimize, before and after. This defect survived a 784-test harness, which
+is the argument for the pass rather than against it.
+
+### Open decisions for Rob
+
+1. **Does the pivot fix live in the `.tscn` or stay VM-owned?** Answered by
+   Phase 0 question 1 — recommendation deferred until that is measured rather
+   than guessed.
+2. **Is `_bow_mon`'s lunge fixed in the same session or held back?**
+   Recommendation: held back, per Phase 3.
+
+Sizing: Phase 0-2 one session; Phases 3 and 4 small and independent; Phase 5 is
+Rob's look.
+
+
+## M36E4 — the background viewport mapping — SCOPED 2026-08-11, NOT BUILT
+
+**Reported from play by Rob, on Blizzard**: *"The move animation for Blizzard
+has a background with the top ~75% animated and the bottom ~25% set, because it
+is supposed to be behind the bottom-of-screen UI elements. The ported version
+exposes the bottom 25% instead of having it tucked to the bottom of the
+screen."*
+
+**Confirmed.** The observation is right and the cause is general — it affects
+**82 of the 92 pulled backgrounds**, not Blizzard alone. ⚠️ **This REOPENS
+M36E**, which was closed at E1/E2/E3. Those three are unaffected and stay
+correct: the fade ordering, the palette cycle, the scroll and the scanline band
+are all fine. What was never established is where the layer sits.
+
+### What Blizzard actually does
+
+`gBattleAnimMove_Blizzard` (id 59) is 14 ops: `monbg 3` → `call
+SetHighSpeedBg` → crystals → `UnsetHighSpeedBg` → `clearmonbg 3`.
+`SetHighSpeedBg` branches on attacker side to `fadetobg 9` (opponent) or
+`fadetobg 10` (player) — the `highspeed_opponent` / `highspeed_player`
+backgrounds — then runs `AnimTask_StartSlidingBg` with args
+`[-2304, 0, 1, -1]`.
+
+Three measured facts settle it:
+
+1. **The asset is 256×256.** Both `highspeed_player.png` and
+   `highspeed_opponent.png` in `assets/sprites/battle_anims/backgrounds/`.
+2. **Hardware only ever shows its top 160 rows.** `AnimTask_StartSlidingBg`
+   opens with `UpdateAnimBg3ScreenSize(FALSE)` → `BG_ANIM_SCREEN_SIZE = 0`
+   (`battle_anim_mons.c:965-971`), a 32×32-tile = 256×256px map viewed through
+   the GBA's fixed **240×160** window — and Blizzard's **y-speed argument is 0**
+   (`gBattleAnimArgs[1]` → `data[2]`,
+   `battle_anim_utility_funcs.c:717`), so `BG_Y` never leaves zero. Rows
+   160-255 are unreachable.
+3. **Those rows measure as filler, which is exactly what Rob described.**
+   Sampling both images: rows 0-159 carry **8-9 distinct colours**; rows
+   160-255 are fully opaque and carry **2**. A flat block padding the tilemap
+   out to 32×32 tiles.
+
+### What the port does
+
+`AnimStage.background_layer()` (`anim_stage.gd:163-178`) builds a `TextureRect`
+with `expand_mode = EXPAND_IGNORE_SIZE`, `stretch_mode = STRETCH_SCALE` and
+`set_anchors_preset(PRESET_FULL_RECT)`, parented into `BattleStage` — itself
+`anchors_preset = 15`, the full 1024×768.
+
+⚠️ **So the entire 256-row texture is scaled into the whole stage. All 96 rows
+hardware never renders are drawn, landing in the bottom 37.5% of the screen.**
+Rob's "bottom 25%" is the right observation; the true split is 160/256 =
+**62.5% visible / 37.5% filler**.
+
+**A second consequence in the same defect, easy to read as a style choice**:
+the artwork that *should* be visible is drawn at **3.0 stage px per source row**
+against the correct 768/160 = **4.8** — so it is squashed to 62.5% of its
+proper vertical scale as well as being padded.
+
+### Scope — 82 of 92, in both directions
+
+| Native size | Count | Against a 240×160 window |
+|---|---|---|
+| 256×160 | **10** | correct today |
+| 256×256 | 35 | over-exposed + squashed, as above |
+| 256×512 | 13 | same shape (the `UpdateAnimBg3ScreenSize(TRUE)` 32×64 maps, used with real vertical scroll) |
+| 256×112 | 34 | the OPPOSITE error — stretched **up** ~1.4× and covering screen area they should leave to the battle backdrop |
+
+⚠️ **Only the 256-tall case is traced end to end.** The 112 and 512 cases are
+flagged as the same class **by geometry, not asserted** — neither's usage has
+been read, and per rule (4) that is a deferral, not a conclusion.
+
+**A third mismatch lives in the same code and affects all 92.** `pixel_scale()`
+maps the stage to a **240px-wide** GBA screen for every sprite
+(`GBA_SCREEN_WIDTH = 240.0`, `anim_stage.gd:116-122`), while the 256-wide
+background is stretched to that same full width. So backgrounds render at
+**93.75%** of the scale the effects drawn on top of them use, and a background
+feature can never line up with a sprite positioned in GBA coordinates.
+
+### Why nothing caught it — and the new standing rule
+
+`m36e_background_asset_test` asserts width is **exactly** 256 and height only
+`% 8 == 0` (`:52-56`) — the height was never tied to the 160px screen.
+`m36e_background_runtime_test` covers fade ordering, swap and clear, not
+geometry. ⚠️ **The pull is thoroughly verified and the PLACEMENT never was**,
+which is the same shape as M36P and is now recorded as **standing rule (17)**
+in CLAUDE.md's M36 row.
+
+### Fix shape
+
+A **coordinate-mapping** change, not an asset change: map the stage rect onto
+the GBA's 240×160 viewport and let texture overflow be clipped, instead of
+stretching the texture to fit. A background then draws at
+`stage_height / 160` px per source row, top-anchored, with rows past 160
+falling outside the visible area — which makes the 112-tall case fall out
+correctly too (it covers the top 70% and leaves the rest to the battle
+backdrop) rather than needing its own branch.
+
+⚠️ **The coupling to be careful of**: `_apply_bg_scroll` and `_apply_bg_band`
+both convert stage pixels to UV using `node.size` (`anim_stage.gd:358-384`).
+Any change to the node's rect or to the texture-to-node mapping has to move
+with them, or the scroll speed and the scanline band silently go wrong — and
+both are the kind of wrong nothing currently asserts.
+
+### Open decisions for Rob
+
+1. **What should occupy the region a short (112-tall) background does not
+   cover** — the battle backdrop showing through, or the background extending?
+   Needs the source read first; recommendation deliberately withheld rather
+   than guessed.
+2. **Is the 240-vs-256 horizontal convention fixed in the same pass?** It
+   changes every background's scale slightly, so it is visible on all 92
+   rather than only the 82 — which argues for doing it here, but it is a
+   separate claim and should be its own commit.
+
+Sizing: one session for the mapping plus its geometry assertions; the 112/512
+reads are Step 0 inside it. Verification ends the same way M36P's does — a
+screenshot pass, since this defect passed every existing test.
+
+
 ## M36 — sections relocated from CLAUDE.md's roadmap row (2026-07-30)
 
 CLAUDE.md's M36 row had grown to **51,224 characters on one table line** —

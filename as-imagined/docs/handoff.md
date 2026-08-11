@@ -89,6 +89,52 @@ already playable; that is recorded rather than presented as a gain.
 
 ## 4. Next actions, ranked
 
+**0. M36P — the battler transform anchor. Added 2026-08-11, ahead of
+everything below.** Numbered 0 rather than renumbering the list, so what this
+handoff originally ranked stays readable.
+
+Reported from play, not found by any test: battler `Control`s have
+`pivot_offset == (0, 0)`, so every `rotation`/`scale` a behavior writes on one
+pivots at the **top-left corner of a 320-357px box** rather than its centre.
+**19 behaviors, 89 of 933 moves.** It outranks more porting because those 89
+moves are already "playable" and are rendering wrong — coverage is not the
+constraint here, correctness is.
+
+⚠️ **Read this before trusting §6 or the leak harness**: `m36_leak_harness`
+passes **784/784** over this defect, because it asserts the END state and the
+VM's own `_restore_battler_baseline()` puts every battler back first. Nothing
+in this project samples DURING a run. That is now standing rule (16).
+
+Scope of record: `docs/m26_f1_recon.md`'s own **`M36P`** section — diagnosis,
+five phases, the separate `_bow_mon` absolute-vs-incremental bug it turned up
+(14 moves), and 2 open decisions for Rob. Nothing is built and nothing is
+approved.
+
+**0b. M36E4 — the background viewport mapping. Added 2026-08-11, same
+ranking.** Also reported from play, on Blizzard, and the same underlying shape
+as 0: correctly pulled, wrongly placed.
+
+`AnimStage.background_layer()` stretches every background to fill the whole
+1024×768 stage, where hardware views a BG through a fixed **240×160 window**.
+Blizzard's `highspeed_*` asset is 256×256 with y-scroll 0, so its bottom 96
+rows — measured as flat filler — are unreachable on hardware and are now drawn
+across the bottom 37.5% of the screen, with the real artwork squashed to 62.5%
+of its correct vertical scale. **82 of 92 backgrounds are mis-mapped**, in both
+directions (48 taller than the screen, 34 shorter).
+
+⚠️ **This REOPENS M36E**, which §2 records as complete. E1/E2/E3 themselves are
+fine — fade ordering, palette cycle, scroll and scanline band are all correct
+and unaffected; what was never established is where the layer sits.
+
+⚠️ **`m36e_background_asset_test` passes over this** — it asserts width is
+exactly 256 and height only `% 8 == 0`. That is now standing rule (17):
+verifying an ASSET is not verifying its PLACEMENT.
+
+Scope of record: `docs/m26_f1_recon.md`'s own **`M36E4`** section — including
+the third mismatch in the same code (backgrounds render at 93.75% of the scale
+sprites use, because `pixel_scale()` assumes a 240px-wide screen and the
+background is 256 wide) and 2 open decisions for Rob.
+
 **1. Re-read the six remaining "blocked" surfaces before porting anything
 else.** This is the highest-value item and it is not a batch.
 
