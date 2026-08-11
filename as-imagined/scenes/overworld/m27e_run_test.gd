@@ -16,7 +16,7 @@ extends Node
 ##   * every gate condition refuses independently, so "runs when it should" is
 ##     never satisfied by "always runs".
 
-const EXPECTED_TOTAL := 45
+const EXPECTED_TOTAL := 47
 
 var _total := 0
 var _failed := 0
@@ -294,8 +294,27 @@ func _test_cadence() -> void:
 	# 16; the absolute durations are this project's own, the RATIO is ported.
 	_chk("F.01 a run step is exactly half a walk step",
 			is_equal_approx(ow._RUN_STEP_SECONDS * 2.0, ow._WALK_STEP_SECONDS))
-	_chk("F.02 and the walk step is unchanged at 0.16",
-			is_equal_approx(ow._WALK_STEP_SECONDS, 0.16))
+	# ⚠️ **12.8 FRAMES, WHICH IS NEITHER SOURCE NOR THE ORIGINAL TUNING.**
+	# Rob's split-the-difference call, 2026-08-11: the player walked at 9.6
+	# frames (0.16s) against source's 16 and against `MovementRunner`'s own
+	# `FRAMES_NORMAL = 16`, so he outpaced every NPC by two thirds and changed
+	# speed whenever a cutscene moved him. Pinned here, in FRAMES, so a session
+	# that "corrects" it toward either endpoint has to do so deliberately.
+	_chk("F.02 the walk step is the 12.8-frame midpoint, not source's 16 and "
+			+ "not the original 9.6",
+			is_equal_approx(ow._WALK_STEP_SECONDS, 12.8 / 60.0))
+	# The discriminator: strictly between the two, so a revert to either end
+	# fails rather than sliding past on the approx comparison above.
+	_chk("F.02b ...and it is genuinely between them, closer to the NPCs than "
+			+ "before but still faster than source",
+			ow._WALK_STEP_SECONDS > 9.6 / 60.0
+			and ow._WALK_STEP_SECONDS < 16.0 / 60.0)
+	# ⚠️ The gap this closes is against the RUNNER, which is what every NPC and
+	# every scripted player walk actually uses. Asserted against the runner's own
+	# constant rather than a literal so the two cannot drift apart silently.
+	_chk("F.02c the runner still walks at source's 16 frames, so this is the "
+			+ "constant that decides how far apart player and NPC feel",
+			MovementRunner.FRAMES_NORMAL == 16)
 	# The run's own cycle keeps the walk's invariant: two entries per tile.
 	# 5 + 3 == 8 == one step, so the pair spans exactly one tile.
 	var t: Array = ObjectEventGraphics.RUN_TICKS

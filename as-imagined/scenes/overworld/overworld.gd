@@ -215,11 +215,53 @@ const _USED_MOVE_MESSAGE_SECONDS := 0.5
 ## ⚠️ **THE SPEED IS EXACTLY DOUBLE, AND THAT RATIO IS PORTED WHILE THE ABSOLUTE
 ## VALUES ARE NOT.** Source runs at `MOVE_SPEED_FAST_1`, whose step table
 ## (`sStep2Funcs`) is 8 entries against the walk's 16 (`sStep1Funcs`) —
-## `event_object_movement.c:10669-10731`, counted rather than assumed. This
-## project's walk is its own tuned 0.16s rather than source's 16 frames, so the
+## `event_object_movement.c:10669-10731`, counted rather than assumed. The
 ## RATIO is what gets preserved, the same reasoning `_player_step_ticks` already
 ## records for the walk cycle.
-const _WALK_STEP_SECONDS := 0.16
+##
+## ⚠️ **WRITTEN IN FRAMES-AT-60fps RATHER THAN AS A BARE DECIMAL, DELIBERATELY.**
+## Source's unit is the frame and its walk is `16.0 / 60.0`; expressing this the
+## same way makes the comparison readable at the constant instead of needing the
+## arithmetic done from memory. The VALUE is still wall clock — see `[M26G4]` on
+## why nothing here may be frame-TIED.
+##
+## ⚠️ **12.8 IS A SPLIT-THE-DIFFERENCE FEEL VALUE — Rob's call, 2026-08-11 — and
+## it is NOT source.** The player used to walk at `9.6 / 60.0` (0.16s), which is
+## **1.67x faster than source's 16 frames**, while `MovementRunner` moves every
+## NPC — and the player himself under `applymovement` — at the full 16
+## (`FRAMES_NORMAL`). So the player outpaced every body on screen AND changed
+## speed whenever a cutscene took the wheel. Reported from play as "does my
+## player walk faster than source?"; the answer was yes, by two thirds.
+##
+## 12.8 is the exact midpoint of the two. **A later session comparing this
+## against `sStep1Funcs` will find it short by 3.2 frames — that is intended,
+## not drift.**
+##
+## ⚠️ **THE CONSTANT IS NOT THE SPEED, AND THE DIFFERENCE IS BIG ENOUGH TO
+## MATTER — measured, by walking 12 tiles and timing between cell changes:**
+##
+##   | this constant | REAL frames/tile | vs an NPC |
+##   |---------------|------------------|-----------|
+##   | `9.6 / 60.0`  | 11.1             | 1.45x     |
+##   | `12.8 / 60.0` | **14.0**         | **1.15x** |
+##   | `16.0 / 60.0` | 17.3             | 0.93x     |
+##
+## The extra ~1.2 frames is a real per-tile STALL that only this path has: the
+## step is a Tween, and the next step cannot start until `_process` sees
+## `_moving` go false on the FOLLOWING frame. `MovementRunner` has no such gap
+## (it measured 16.1 against source's 16, which is what validates the probe).
+##
+## ⚠️ **SO `16.0 / 60.0` DOES NOT MAKE THE PLAYER SOURCE-EXACT — an earlier draft
+## of this comment said it would, and the measurement says otherwise.** It
+## overshoots to 17.3 and leaves the player SLOWER than the NPCs he is walking
+## beside. Closing that properly means removing the one-frame stall, not raising
+## this number. Recorded rather than fixed: it is a change to the input step's
+## own scheduling, which is not what a feel-tuning ask should quietly drag in.
+##
+## The 12.8 midpoint was chosen on the constants and then confirmed on the
+## clock: the midpoint of the two REAL figures is 14.2 frames, and this measures
+## 14.0.
+const _WALK_STEP_SECONDS := 12.8 / 60.0
 const _RUN_STEP_SECONDS := _WALK_STEP_SECONDS / 2.0
 
 ## Source gates running on the B button. B is already spoken for here — it is
