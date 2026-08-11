@@ -1698,6 +1698,24 @@ func has_unsaved_edits() -> bool:
 	return _unsaved_edits
 
 
+## [M27M5c Phase 2] Re-read this map's seams from disk and redraw them.
+##
+## For a caller that changed `connections` from OUTSIDE this node — the Connect
+## dialog does, via `MapAuthoring.connect_maps`, which writes both maps' `.tres`
+## itself. `_conn_cache` holds `placed_rects` and the previews are instanced
+## from it, so without this a brand-new seam is invisible until the overlay is
+## reselected, which reads as the connect having silently failed.
+##
+## ⚠️ Deliberately does NOT touch `_unsaved_edits`. `connect_maps` has already
+## saved; claiming a pending edit here would make the next Save Map Data write
+## a file nothing had changed, and would make the dialog's own "unsaved edits"
+## warning fire on a clean tree the very next time it opened.
+func refresh_connections() -> void:
+	_conn_cache = {}
+	_sync_previews()
+	queue_redraw()
+
+
 ## Outcome of the most recent save_map_data(), so a caller can report the truth
 ## without saving a second time to find it out. `restore_cells()` is invoked
 ## through the undo manager, which discards return values — this is how the

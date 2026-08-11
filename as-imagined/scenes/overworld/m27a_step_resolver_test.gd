@@ -75,7 +75,7 @@ const MAP_DATA_ASSERTIONS := 8
 ## BC (the connections view, offset editor + legend toggle, 6) and
 ## BD (Part B behaviour override + hiding the metatile brush, 7) and
 ## BE (I6a mart stock through the compiler, 6).
-const EXPECTED_TOTAL := 616
+const EXPECTED_TOTAL := 624
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -2494,17 +2494,17 @@ func _test_warp_dispatch() -> void:
 	# a pan across the region would be invisible in the totals but obvious on
 	# screen, so it is pinned here.
 	#
-	# [Bugfix follow-up] No longer a literal equality with the player's own
-	# position — the camera now CLAMPS to the loaded region's bounds (fixing
-	# a real black strip visible near an interior's own exit edge), and Oak's
-	# Lab (13x14) is narrower than the 15-tile viewport, so this exact warp
-	# destination is one of the cases the clamp actually bites on both axes.
-	# Compared against the same clamp function the real snap uses, so this
-	# still proves "landed exactly on the correct target, not mid-pan" — it
-	# just no longer assumes the target is always the raw player position.
+	# [Bugfix follow-up] Back to a direct comparison against the player's own
+	# position, plus the half-cell centering offset. The bounds clamp this
+	# briefly compared against is GONE — maps now sit in black void and the
+	# camera tracks the player unconditionally, so there is no longer any
+	# state in which the camera legitimately sits somewhere other than on the
+	# player. The `CELL / 2` term is not slack: `_player.global_position` is
+	# the cell's top-left CORNER while the sprite's midpoint is half a cell
+	# right of it, so this is the exact target, not an approximation of one.
 	_chk("AE.12 the camera snapped rather than panning",
 			ow._camera.global_position
-					== ow._clamp_camera_position(ow._player.global_position).round())
+					== (ow._player.global_position + Vector2(ow.CELL / 2.0, 0.0)).round())
 	_chk("AE.13 and the screen faded back in", is_equal_approx(ow._fade.color.a, 0.0))
 
 	# --- back out, which is where an origin or index error shows up ---
@@ -4410,6 +4410,83 @@ func _test_m27m5_creator() -> void:
 	_chk("BB.12 a map in neither table answers empty, not a stray table",
 			WildEncounters.table_for("NoSuchMapAnywhere").is_empty()
 			and not WildEncounters.has_table("NoSuchMapAnywhere"))
+
+	# [M27M5c Phase 2] The connect dialog's guest list. The only rule that phase
+	# adds — the dialogs themselves hold none, so this is the whole of its
+	# testable surface.
+	var baked := MapAuthoring.baked_maps()
+	# ⚠️ BAKED, not DEFINED. MapConstants knows 939 map constants; only the ones
+	# with a real scene can be stitched to, and offering the rest would be
+	# offering choices that silently do nothing.
+	_chk("BB.13 baked_maps lists real scenes, far fewer than the 939 constants",
+			baked.size() > 0 and baked.size() < 100
+			and baked.has("Route2_Frlg") and baked.has("PalletTown_Frlg"))
+	var every_real := true
+	for m in baked:
+		if not ResourceLoader.exists(MapAuthoring.OUT_DIR + m + ".tscn"):
+			every_real = false
+	_chk("BB.14 and every one of them resolves to a scene on disk", every_real)
+	# ⚠️ The host must not be offerable: a map connected to itself resolves a
+	# seam to its own origin, which is not a state the format can express.
+	_chk("BB.15 the excluded host is absent, and only it",
+			not MapAuthoring.baked_maps("Route2_Frlg").has("Route2_Frlg")
+			and MapAuthoring.baked_maps("Route2_Frlg").size() == baked.size() - 1)
+	# An authored map is a legal destination — it is baked like any other, and
+	# Xanadu is exactly the case Phase 2 exists to serve.
+	_chk("BB.16 an authored map is offerable, not just imported ones",
+			baked.has("XanaduNursery"))
+
+	# [M27M5c Phase 3] Removing a seam.
+	#
+	# ⚠️ Drives the PURE `_drop_connection` on DUPLICATED data, never
+	# `disconnect_maps` — BB.08's own hard-won rule: breaking a guard inside a
+	# WRITING function makes the injection perform the very write the test
+	# exists to prevent, which is how that assertion corrupted two tracked
+	# .tres files on its first draft. Assert the decision, not the act.
+	var r2 := load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
+	var copy := r2.duplicate(true) as MapData
+	var before := copy.connections.size()
+	var gone := MapAuthoring._drop_connection(copy,
+			MapData.Connection.WEST, "XanaduNursery")
+	_chk("BB.17 dropping a seam removes exactly it, leaving the rest",
+			gone == 1 and copy.connections.size() == before - 1
+			and before >= 3)
+	# ⚠️ THE DISCRIMINATOR FOR THE WHOLE KEYING DECISION. Measured across all
+	# 939 reference map.json files: 3 maps carry MORE THAN ONE connection on a
+	# single edge (SixIsland_WaterPath_Frlg has three on its left), so a
+	# direction-only key would drop the wrong seam there. Zero (direction, map)
+	# pairs repeat anywhere, so the pair is unique.
+	var copy2 := r2.duplicate(true) as MapData
+	var wrong := MapAuthoring._drop_connection(copy2,
+			MapData.Connection.WEST, "PewterCity_Frlg")
+	_chk("BB.18 the right direction with the WRONG guest removes nothing",
+			wrong == 0 and copy2.connections.size() == before)
+	# The multi-seam-on-one-edge shape the keying exists for, synthesised
+	# because the 34-map corridor contains none of the 3 maps that have it.
+	var multi := MapData.new()
+	multi.connections = [
+		{"direction": MapData.Connection.WEST, "map": "MAP_ROUTE2", "offset": 0},
+		{"direction": MapData.Connection.WEST, "map": "MAP_PEWTER_CITY", "offset": 8},
+		{"direction": MapData.Connection.WEST, "map": "MAP_VIRIDIAN_CITY", "offset": 16},
+	]
+	var one := MapAuthoring._drop_connection(multi,
+			MapData.Connection.WEST, "PewterCity_Frlg")
+	_chk("BB.19 one of three seams on ONE edge goes, the other two stay",
+			one == 1 and multi.connections.size() == 2
+			and str((multi.connections[0] as Dictionary)["map"]) == "MAP_ROUTE2"
+			and str((multi.connections[1] as Dictionary)["map"]) == "MAP_VIRIDIAN_CITY")
+	# ⚠️ The backwards walk. Real data never produces a duplicate (measured
+	# above), but a forward loop that removes while iterating skips the entry
+	# after each hit — so this pins the mechanism rather than trusting the data
+	# to stay clean.
+	var dupes := MapData.new()
+	dupes.connections = [
+		{"direction": MapData.Connection.EAST, "map": "MAP_ROUTE2", "offset": 0},
+		{"direction": MapData.Connection.EAST, "map": "MAP_ROUTE2", "offset": 0},
+	]
+	_chk("BB.20 duplicate entries ALL go, not every other one",
+			MapAuthoring._drop_connection(dupes, MapData.Connection.EAST,
+					"Route2_Frlg") == 2 and dupes.connections.is_empty())
 
 
 ## [M27M5] Seeing connections, and moving one.

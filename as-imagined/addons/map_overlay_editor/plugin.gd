@@ -40,6 +40,19 @@ var _entity_inspector: EditorInspectorPlugin = null
 var _name_button: Button = null
 var _name_dialog: AcceptDialog = null
 
+## [M27M5c Phase 1] Make a map without a command line. Project-level for the
+## same reason Name Usage is — there is no selection to hang "create a new
+## map" off, since the map does not exist yet.
+var _new_map_button: Button = null
+var _new_map_dialog: AcceptDialog = null
+
+## [M27M5c Phase 2] Attach the open map to another. Toolbar rather than
+## Inspector because it needs three inputs and a refusal REASON — an overlap
+## rejection naming the maps it collided with is the whole point, and an
+## Inspector property cannot say why it said no.
+var _connect_button: Button = null
+var _connect_dialog: AcceptDialog = null
+
 ## [M27Q Q4 follow-up] The overlay toggle.
 ##
 ## ⚠️ **THIS EXISTS BECAUSE "REMEMBER TO DELETE IT BEFORE SAVING" IS NOT A
@@ -115,6 +128,26 @@ func _enter_tree() -> void:
 	_name_button.pressed.connect(func() -> void: _name_dialog.popup_fresh())
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _name_button)
 
+	_new_map_dialog = preload("res://addons/map_overlay_editor/new_map_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(_new_map_dialog)
+	_new_map_button = Button.new()
+	_new_map_button.text = "New Map"
+	_new_map_button.tooltip_text = ("Create an authored map — writes the scene "
+			+ "and its _data.tres, registers its MAP_AUTHORED_* constant, and "
+			+ "opens it. The GUI half of map_creator.tscn.")
+	_new_map_button.pressed.connect(func() -> void: _new_map_dialog.popup_fresh())
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _new_map_button)
+
+	_connect_dialog = preload("res://addons/map_overlay_editor/connect_map_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(_connect_dialog)
+	_connect_button = Button.new()
+	_connect_button.text = "Connect Map"
+	_connect_button.tooltip_text = ("Stitch the OPEN map to another one. The "
+			+ "reciprocal edge and offset are derived; an overlap is refused "
+			+ "and the colliding maps are named.")
+	_connect_button.pressed.connect(func() -> void: _connect_dialog.popup_fresh())
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _connect_button)
+
 	_overlay_button = Button.new()
 	_overlay_button.text = "Overlay"
 	_overlay_button.toggle_mode = true
@@ -163,6 +196,22 @@ func _exit_tree() -> void:
 		# rather than riding the plugin's own teardown.
 		_name_dialog.queue_free()
 		_name_dialog = null
+	if _new_map_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _new_map_button)
+		_new_map_button.queue_free()
+		_new_map_button = null
+	if _new_map_dialog != null:
+		# Same reason as _name_dialog above — parented to the editor base
+		# control, so the plugin's own teardown will not take it.
+		_new_map_dialog.queue_free()
+		_new_map_dialog = null
+	if _connect_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _connect_button)
+		_connect_button.queue_free()
+		_connect_button = null
+	if _connect_dialog != null:
+		_connect_dialog.queue_free()
+		_connect_dialog = null
 	if _overlay_button != null:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
 		_overlay_button.queue_free()

@@ -44,6 +44,35 @@ static func usable_pairs() -> Array[String]:
 	return out
 
 
+## Every baked map, as a name — the candidates a connection can name.
+##
+## ⚠️ **BAKED, NOT DEFINED.** `MapConstants` knows 939 map constants; only the
+## ~35 with a real `<Map>.tscn` can be stitched to, and `loadable_connections()`
+## drops the rest at runtime anyway. Listing anything else would offer an author
+## a choice that silently does nothing.
+##
+## Keyed off the SCENE rather than the `_data.tres` because the scene is what
+## `MapManager.load_chunk` requires and what `is_baked()` already tests — a
+## `_data.tres` with no scene beside it is a half-baked artifact, not a
+## destination.
+##
+## `exclude` drops the host: a map cannot connect to itself, and offering it is
+## how you get a seam that resolves to its own origin.
+static func baked_maps(exclude: String = "") -> Array[String]:
+	var out: Array[String] = []
+	var d := DirAccess.open(OUT_DIR)
+	if d == null:
+		return out
+	for f in d.get_files():
+		if not f.ends_with(".tscn"):
+			continue
+		var n := f.get_basename()
+		if n != exclude:
+			out.append(n)
+	out.sort()
+	return out
+
+
 ## A sensible fill metatile for a pair, derived rather than asked for.
 ##
 ## The most common metatile that is walkable, plain (`MB_NORMAL`) and at
@@ -257,6 +286,76 @@ static func connect_maps(host: String, direction: int, guest: String,
 		return res
 	res["ok"] = true
 	return res
+
+
+## [M27M5c Phase 3] Unlink two maps, both ways. The inverse of `connect_maps`.
+##
+## ⚠️ **KEYED ON (direction, guest), AND DIRECTION ALONE WOULD BE WRONG.**
+## Measured across all 939 reference `map.json` files: **3 maps carry more than
+## one connection on a single edge** — `SixIsland_WaterPath_Frlg` has THREE on
+## its left — so "remove this map's WEST connection" is ambiguous there and
+## would drop whichever happened to be first. The same sweep found **zero**
+## `(direction, map)` pairs repeated on one map, so the pair is unique
+## everywhere the data exists. Do not "simplify" this to a direction.
+##
+## ⚠️ **A MISSING RECIPROCAL IS REPORTED, NOT FATAL.** If the guest has no
+## matching entry the two sides had already drifted — removing only the host's
+## side is still strictly an improvement, and refusing would leave an author
+## unable to clear a half-seam through any tool. The count is returned so the
+## caller can say which happened rather than claiming a clean unlink.
+##
+## Returns `{"ok": bool, "reason": String, "removed_host": int,
+## "removed_guest": int}`.
+static func disconnect_maps(host: String, direction: int,
+		guest: String) -> Dictionary:
+	var res := {"ok": false, "reason": "", "removed_host": 0, "removed_guest": 0}
+	if not OPPOSITE.has(direction):
+		res["reason"] = "direction must be NORTH/SOUTH/WEST/EAST"
+		return res
+	var hd := _load_data(host)
+	var gd := _load_data(guest)
+	if hd == null or gd == null:
+		res["reason"] = "no MapData for %s" % (host if hd == null else guest)
+		return res
+
+	# Matched by RESOLVED NAME rather than raw constant. An authored map and an
+	# imported one answer from different tables (`AuthoredMaps` vs the generated
+	# `MapConstants`), and comparing constants directly would silently fail to
+	# match a seam written before a map was renamed or re-registered.
+	res["removed_host"] = _drop_connection(hd, direction, guest)
+	res["removed_guest"] = _drop_connection(gd, OPPOSITE[direction], host)
+
+	if int(res["removed_host"]) == 0 and int(res["removed_guest"]) == 0:
+		res["reason"] = "no such connection on %s" % host
+		return res
+
+	var e1 := ResourceSaver.save(hd, OUT_DIR + host + "_data.tres")
+	var e2 := ResourceSaver.save(gd, OUT_DIR + guest + "_data.tres")
+	if e1 != OK or e2 != OK:
+		res["reason"] = "save failed (%d / %d)" % [e1, e2]
+		return res
+	if int(res["removed_guest"]) == 0:
+		res["reason"] = ("%s had no reciprocal edge — the two sides had already "
+				+ "drifted; %s's side is gone.") % [guest, host]
+	res["ok"] = true
+	return res
+
+
+## Remove every connection on `md` matching (direction, other map). Returns how
+## many went. Walks BACKWARDS so a removal cannot shift an index still to be
+## visited — the ordinary array-mutation trap, and the 3 multi-seam edges above
+## are exactly where it would bite.
+static func _drop_connection(md: MapData, direction: int, other: String) -> int:
+	var removed := 0
+	for i in range(md.connections.size() - 1, -1, -1):
+		var c: Dictionary = md.connections[i]
+		if int(c.get("direction", -1)) != direction:
+			continue
+		if MapConstants.map_name_for(str(c.get("map", ""))) != other:
+			continue
+		md.connections.remove_at(i)
+		removed += 1
+	return removed
 
 
 static func _load_data(map_name: String) -> MapData:

@@ -514,6 +514,7 @@ func _ready() -> void:
 	# leave the real one's seams unloaded.
 	var added := manager.load_neighbours(boot_map)
 	_spawn_player()
+	_add_backdrop()
 	_add_camera()
 	_add_fade()
 	if _pending_whiteout:
@@ -679,10 +680,24 @@ func _add_camera() -> void:
 ## raw. Rounds in WORLD space (not screen space) — correct as long as camera
 ## zoom is an integer, which it is (`CAMERA_ZOOM`), so an integer world
 ## position can only ever land on an integer screen position.
+##
+## [Bugfix, live-reported: "the camera is a touch off-center, following just
+## in front of me outdoors"] `_player.global_position` is the CELL's own
+## top-left corner (`local_pixel_of`), not its center — that's the right
+## origin for step/collision math, but the wrong point to put under the
+## camera. `OverworldEntity.make_sprite`'s own `spr.position` formula
+## (`(CELL - size.x) * 0.5, CELL - size.y`) puts every sprite's horizontal
+## midpoint at exactly `node_origin.x + CELL/2` regardless of its width — so
+## targeting the raw corner left the camera permanently half a cell (8px, 40
+## screen-px at zoom 5) to the LEFT of where the player actually renders.
+## Vertically no fix is needed: the player's sheets are always 32px tall
+## (twice `CELL`), and `CELL - size.y` for `size.y == 2*CELL` happens to put
+## the sprite's vertical midpoint exactly back at the node origin, so `y`
+## already tracked correctly.
 func _snap_camera_to_player() -> void:
 	if _camera == null or _player == null:
 		return
-	_camera.global_position = _clamp_camera_position(_player.global_position).round()
+	_camera.global_position = (_player.global_position + Vector2(CELL / 2.0, 0.0)).round()
 	# [M27N W3] Pushed from the exact call that just moved the camera, not
 	# polled later — a sibling node reading camera position from its own
 	# `_process()` would reliably see LAST frame's value, since Tweens (the
@@ -693,44 +708,44 @@ func _snap_camera_to_player() -> void:
 		_weather.push_camera_scroll(_camera.global_position * _camera.zoom.x)
 
 
-## [Bugfix, live-reported: "a one tile deep strip of black on indoor maps on
-## the side where there is an exit"] Interior maps carry a real, in-bounds
-## "void" padding row baked at one edge (present in the imported reference
-## data itself — measured region-wide, 192 of 421 maps, almost entirely
-## interiors). The GBA's own small, fixed viewport keeps it permanently
-## off-screen; this project's camera never clamped to a map's bounds at all,
-## so standing near a door — the one place a player gets close enough to that
-## edge — exposes it.
+## The black void every map sits in.
 ##
-## Clamps to the UNION of every currently LOADED chunk's pixel bounds, not
-## just the player's own map, so a seamless outdoor connection can still pan
-## across a boundary into an already-streamed neighbour exactly as before —
-## a no-op there, since the loaded region is far larger than one viewport.
-## Only a small, unconnected interior (nothing else ever loaded beside it) is
-## small enough for the clamp to actually take hold.
-func _clamp_camera_position(target: Vector2) -> Vector2:
-	if _camera == null:
-		return target
-	var bounds := Rect2i()
-	for map_name in manager.loaded_chunks():
-		var r := manager.chunk_rect(map_name)
-		if r.size == Vector2i.ZERO:
-			continue
-		bounds = r if bounds.size == Vector2i.ZERO else bounds.merge(r)
-	if bounds.size == Vector2i.ZERO:
-		return target
-	var px := Rect2(Vector2(bounds.position) * CELL, Vector2(bounds.size) * CELL)
-	var half := get_viewport_rect().size / _camera.zoom / 2.0
-	# A loaded region SMALLER than the viewport on a given axis has no valid
-	# clamp range at all (min would exceed max) — center on that axis instead
-	# of clamping into a backwards range.
-	var min_x := px.position.x + half.x
-	var max_x := px.position.x + px.size.x - half.x
-	var min_y := px.position.y + half.y
-	var max_y := px.position.y + px.size.y - half.y
-	var x := (px.position.x + px.size.x / 2.0) if min_x > max_x else clampf(target.x, min_x, max_x)
-	var y := (px.position.y + px.size.y / 2.0) if min_y > max_y else clampf(target.y, min_y, max_y)
-	return Vector2(x, y)
+## ⚠️ **A DELIBERATE DIVERGENCE FROM SOURCE — ROB'S CALL, AND IT REPLACES A
+## WHOLE MECHANISM RATHER THAN TWEAKING ONE.** Source never lets you see past
+## a map: `GetMapGridBlockAt` (`fieldmap.c:80`) falls through per-cell to
+## `GetBorderBlockAt`, which wraps the map's own border tiles outward
+## indefinitely, so the edge of a map is invisible by construction. This
+## project shows **black void at the edge of every map instead**. A later
+## session reading `GetBorderBlockAt` will find a real, fully-specified
+## mechanism this project deliberately does not implement — that is a design
+## decision, not the missing border-skirt work (M27C C3) it will look like.
+##
+## What this replaced, so the reasoning is not lost: `_clamp_camera_position`
+## used to pin the camera inside the loaded region's bounds, added for a
+## live-reported "one tile deep strip of black on indoor maps on the side
+## where there is an exit" (interiors carry a real in-bounds void padding row
+## — measured region-wide, 192 of 421 maps). With void now the intended look
+## at every edge, that strip is no longer an artefact to hide, and the clamp
+## was the one thing stopping the camera from tracking the player exactly —
+## which source does unconditionally (`CameraUpdate`, `field_camera.c:423`,
+## copies the tracked sprite's own per-frame delta with no bounds test
+## anywhere). So dropping it moves the camera TOWARD source while the void
+## moves away from it, and both are intended.
+##
+## Built as a viewport-space `CanvasLayer` rather than a world-space
+## `ColorRect` so it needs no sizing, no repositioning as the camera moves,
+## and no knowledge of map bounds at all. Deeply negative layer: the world is
+## plain `Node2D` content at layer 0, and anything that later draws BELOW the
+## map still lands above this.
+func _add_backdrop() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -100
+	add_child(layer)
+	var bg := ColorRect.new()
+	bg.color = Color(0, 0, 0, 1)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
 
 
 ## Tween `_player.position` toward `target_local` over `dur` seconds, snapping
