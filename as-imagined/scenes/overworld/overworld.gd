@@ -2465,7 +2465,41 @@ func _start_player_movement(key: String, ops: Array) -> void:
 		_face_player(dir)
 	var anim := func(dir: int, ticks: int, delta: float) -> void:
 		_step_player(dir, ticks, delta)
-	manager.movement().start(key, _player, ops, commit, face, anim, face)
+	# ⚠️ **[Bugfix, live-reported: "what about the exclamation that is supposed
+	# to play when Oak calls out?"] THE PLAYER HAD NO EMOTE CALLABLE, SO THE
+	# BUBBLE WAS SILENTLY SKIPPED.** `MovementRunner.start`'s own contract is
+	# that each optional Callable degrades rather than halting — "`emote` -> no
+	# bubble" — which is what made this invisible: the action resolved, the
+	# movement ran, the beat took its frames, and nothing was drawn.
+	#
+	# `MapManager.start_entity_movement` has passed one since `[M27R Step 1]`,
+	# so the 117 corpus sites that put an emote on an NPC have always worked.
+	# The 4 that put one on the PLAYER never did — and Oak's own reveal is one
+	# of them (`playse SE_PIN` / `applymovement LOCALID_PLAYER,
+	# Common_Movement_ExclamationMark`), i.e. the "!" over the player's head as
+	# Oak shouts. The sound was already wired (`SE_PIN` -> `Exclaim.wav`), so
+	# only the picture was missing.
+	#
+	# ⚠️ Parented to the player's OWN parent, not to the player, matching
+	# `MapManager.spawn_emote` — the icon follows in the same coordinate space
+	# and survives `_reparent_for_elevation` moving the body between strata.
+	# `EmoteIcon.spawn` already takes a plain `Node2D` to follow, so the player
+	# needs no special case; only `spawn_emote`'s own signature is
+	# `OverworldEntity`-typed, which is why this builds its own.
+	#
+	# ⚠️ `resolve_dir` and `show_frame` stay absent DELIBERATELY, not by
+	# omission: measured across the whole corpus, ZERO player-targeted
+	# `applymovement`s use `face_player`, `face_original_direction` or
+	# `nurse_joy_bow`. Passing stubs would be inventing coverage for cases no
+	# script asks for.
+	var emote := func(kind: String) -> void:
+		if _player == null or not is_instance_valid(_player):
+			return
+		var parent := _player.get_parent()
+		if parent != null:
+			EmoteIcon.spawn(parent, _player, kind)
+	manager.movement().start(key, _player, ops, commit, face, anim, face,
+			Callable(), emote)
 
 
 ## Cycle-entry length for a player step of `dur` seconds.
