@@ -2338,6 +2338,32 @@ func try_interact() -> bool:
 	if e is NPC:
 		(e as NPC).set_facing(OPPOSITE_DIR.get(_facing, StepResolver.Dir.SOUTH))
 	_publish_facing()
+	# ⚠️ **[Bugfix, live-reported: "I can select an item on the ground before my
+	# walk/turn animation finishes, leaving me frozen mid animation and facing
+	# the wrong direction"] PARKED HERE, AND ONLY HERE.**
+	# `_process` settles the player on its standing frame in exactly one place —
+	# the `elif _held_direction() < 0:` arm — and that arm is deliberately gated
+	# on the direction being RELEASED, so a held walk keeps its cycle running
+	# between tiles rather than leading with the same foot every step.
+	#
+	# Walking into an item ball is where those two rules collide: the ball is
+	# solid, so `_try_step` refuses and leaves `_moving` false, and if the player
+	# is still leaning on the direction when they press A the script starts on a
+	# frame where nothing has rested the sprite. `_process` then returns at
+	# `if _vm != null:` for the whole conversation, so the mid-stride frame is
+	# held until the script ends.
+	#
+	# ⚠️ **AT THE INTERACTION, NOT IN `run_script`** — see that function for what
+	# putting it there cost. This is the one path that is by definition a player
+	# who has stopped and pressed A, and it is below the "is there actually a
+	# script here" checks, so a press at nothing does not reset the cycle either.
+	#
+	# Source parks it too, and not merely as a convenience: `lock`/`lockall` run
+	# `FreezeObjectEvents` + `PlayerFreeze`, and a frozen object event stops on
+	# its standing frame. Those opcodes are VM no-ops here precisely because
+	# locking is a scene concern, so this is where their visible half belongs.
+	if _player != null:
+		_face_player(_facing)
 	return run_script(label, e)
 
 
@@ -2374,30 +2400,19 @@ func _publish_facing() -> void:
 ## `check_on_frame_map_script` and the warp arrival hooks — and those are all
 ## scene concerns. The seam is execution, not entry.
 func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
-	# ⚠️ **[Bugfix, live-reported: "I can select an item on the ground before my
-	# walk/turn animation finishes, leaving me frozen mid animation and facing
-	# the wrong direction"] THE WALK CYCLE IS PARKED HERE BECAUSE NOTHING ELSE
-	# EVER GETS THE CHANCE.** `_process` settles the player on its standing frame
-	# in exactly one place — the `elif _held_direction() < 0:` arm — and that arm
-	# is deliberately gated on the direction being RELEASED, so a held walk keeps
-	# its cycle running between tiles rather than leading with the same foot
-	# every step (see the comment at that call site).
+	# ⚠️ **THE WALK CYCLE IS NOT PARKED HERE, AND IT WAS — THAT WAS A REGRESSION.**
+	# Parking on every script START looks like the obvious home for it and is
+	# wrong, because this function is not only reached by INTERACTION: every
+	# completed step calls `check_on_frame_map_script()`, which dispatches the
+	# map's own OnFrame table through here. `PalletTown_OnFrame` "starts"
+	# (returns true) and ends within the same frame, so the player keeps walking
+	# — having just been rested. That reset the free-running cycle EVERY TILE,
+	# which is precisely the hop the cycle's own design exists to avoid, and it
+	# was reported from play as "my walk animation is only doing one side step".
+	# Measured: 16 tiles, stepA drawn 16 times, stepB drawn 0 times.
 	#
-	# Walking into an item ball is the case where those two rules collide: the
-	# ball is solid, so `_try_step` refuses and leaves `_moving` false, and if
-	# the player is still leaning on the direction when they press A the script
-	# starts on a frame where nothing has rested the sprite. `_process` then
-	# returns at `if _vm != null:` for the whole conversation, so the mid-stride
-	# frame is held until the script ends — reading as a freeze, and drawing a
-	# stride frame while the logical facing says otherwise.
-	#
-	# Parking on entry is also what source does, not merely convenient: `lock` /
-	# `lockall` run `FreezeObjectEvents` + `PlayerFreeze`, and a frozen object
-	# event stops its animation on its standing frame. Those two opcodes are VM
-	# no-ops here precisely because locking is a scene concern, so this is where
-	# their visible half belongs.
-	if _player != null:
-		_face_player(_facing)
+	# The parking lives in `try_interact` instead, which is the only caller that
+	# is genuinely a player standing still and pressing A. See it for the rest.
 	return _driver.run_script(label, p_subject)
 
 
