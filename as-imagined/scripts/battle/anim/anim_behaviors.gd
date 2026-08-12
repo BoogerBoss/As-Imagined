@@ -4056,14 +4056,26 @@ static func _spinning_kick_or_punch(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	# Falls back to the Mega Punch/Kick table's own values if the extraction is
 	# unavailable, rather than to the other template's.
 	var delta := _affine_loop_delta(ctx)
-	# ⚠️ **A NEGATIVE xScale DELTA GROWS THE SPRITE, IT DOES NOT SHRINK IT** —
-	# the accumulator is an INVERSE scale, so the on-screen factor is
-	# `256 / accumulator`, exactly as `_run_affine_cmds` already does it.
-	# Source settles the direction by name: `gGrowAndShrinkAffineAnimCmds`
-	# opens `(-4, -5)` and `gShrinkAndGrowAffineAnimCmds` opens `(+4, +5)`
-	# (battle_anim_effects_2.c:490-504). Mega Punch's own -4 therefore makes
-	# the fist LOOM toward the viewer before the finisher snaps it back, which
-	# is what "the kick appears to land" means.
+	# ⚠️⚠️ **THE TWO AFFINE PATHS USE OPPOSITE SCALE CONVENTIONS FOR THE SAME
+	# TABLE FORMAT, AND THIS IS THE SPRITE ONE.** Reported from play — "mega
+	# punch the fist grows instead of shrinking" — after I had "corrected" it
+	# the other way. Both readings had real evidence; the resolution is that
+	# there are genuinely two runners:
+	#
+	#   SPRITE path (`AnimateSprite` -> `ApplyAffineAnimFrameRelativeAndUpdate
+	#   Matrix`, sprite.c:1327) sends the accumulator through
+	#   `ConvertScaleParam` = `0x10000 / scale` BEFORE `ObjAffineSet`, so the
+	#   accumulator is the VISUAL scale: a negative delta SHRINKS.
+	#
+	#   TASK path (`RunAffineAnimFromTaskData`, battle_anim_mons.c) passes the
+	#   accumulator STRAIGHT to `SetSpriteRotScale` with no conversion, so it
+	#   is the texture step: a negative delta GROWS. That is why
+	#   `gGrowAndShrinkAffineAnimCmds` opens `(-4, -5)` and is named "Grows" —
+	#   it is a TASK table, and `_run_affine_cmds` (which serves those tasks)
+	#   is right to use `256 / accumulator`.
+	#
+	# `AnimSpinningKickOrPunch` is a SPRITE, so it takes the first rule: Mega
+	# Punch's -4 shrinks the fist as it closes in. Do NOT "unify" these two.
 	var scale_per_frame: float = float(int(delta.get("scale", -4)))
 	var rot_per_frame: int = int(delta.get("rot", 20)) << _AFFINE_ROT_SHIFT
 	var st := {"t": 0, "phase": 0, "hold": 0}
@@ -4073,10 +4085,9 @@ static func _spinning_kick_or_punch(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		node.advance_frame()
 		if int(st["phase"]) == 0:
 			st["t"] = int(st["t"]) + 1
-			# Same accumulator convention as `_run_affine_cmds`: guard the
-			# divisor so a table walked to zero cannot produce an infinity.
+			# Sprite convention: the accumulator IS the visual scale.
 			var acc: float = _GBA_AFFINE_IDENTITY + scale_per_frame * float(st["t"])
-			node.scale = base_scale * (_GBA_AFFINE_IDENTITY / maxf(1.0, acc))
+			node.scale = base_scale * maxf(0.05, acc / _GBA_AFFINE_IDENTITY)
 			node.rotation += _gba_rot_to_radians(rot_per_frame)
 			if int(st["t"]) > spin:
 				# The snap back to full size and zero rotation is the point.

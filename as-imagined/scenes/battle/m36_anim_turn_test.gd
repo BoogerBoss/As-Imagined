@@ -442,11 +442,17 @@ func _test_section_e_affine_rotation_unit() -> void:
 	# genuinely inverted implementation, because it had been written from the
 	# code rather than from source.
 	var sc: float = fist.scale.x / base
-	_chk("E.04a ten frames GROWS the fist rather than shrinking it (%.3f of base)" % sc,
-			sc > 1.0)
+	# ⚠️ **SHRINKS — and an earlier version of this suite asserted the
+	# opposite and was WRONG.** `AnimSpinningKickOrPunch` is a SPRITE, and the
+	# sprite path sends the accumulator through `ConvertScaleParam` so it is
+	# the VISUAL scale; the TASK path (`_run_affine_cmds`) does not convert, so
+	# a negative delta grows there. Two runners, two conventions, one table
+	# format. Reported from play after I "corrected" it the wrong way.
+	_chk("E.04a ten frames SHRINKS the fist (sprite convention) (%.3f of base)" % sc,
+			sc < 1.0)
 	# THE discriminator for the wrong table: 256/(256-4t) vs 256/(256-8t).
-	_chk("E.04 the growth follows Mega Punch's own -4 table (1.185 of base), not -8 (1.455) — got %.3f" % sc,
-			absf(sc - 1.185) < 0.02)
+	_chk("E.04 the shrink follows Mega Punch's own -4 table (0.844 of base), not -8 (0.688) — got %.3f" % sc,
+			absf(sc - 0.84375) < 0.02)
 	(r["stage"] as FakeStage).layer_node.free()
 
 	# And the end state: at -4 the fist is still visible; at -8 it would have
@@ -454,12 +460,12 @@ func _test_section_e_affine_rotation_unit() -> void:
 	var r2 := _spin_mega_punch(_MEGA_SPIN_FRAMES)
 	var fist2: AnimSprite = r2["sprite"]
 	if fist2 != null:
-		# At -4 a 50-frame spin ends at 256/56 = 4.571 of base. At the wrong -8
-		# the accumulator goes NEGATIVE and the divisor guard pins it at 256x,
-		# so the two are unmistakable.
+		# At -4 a 50-frame spin ends at 56/256 = 0.219 of base. At the wrong -8
+		# the accumulator goes negative and the 0.05 clamp pins it, so the two
+		# are unmistakable.
 		var end_ratio: float = fist2.scale.x / base
-		_chk("E.05 a full 50-frame spin ends at ~4.57 of base, not the -8 table's runaway (%.2f)"
-				% end_ratio, absf(end_ratio - 4.571) < 0.15)
+		_chk("E.05 a full 50-frame spin ends at ~0.22 of base, not the -8 table's clamp (%.3f)"
+				% end_ratio, absf(end_ratio - 0.219) < 0.02)
 		var turns: float = absf(rad_to_deg(fist2.rotation)) / 360.0
 		_chk("E.06 the full spin is ~3.9 turns (got %.2f)" % turns,
 				turns > 3.5 and turns < 4.3)

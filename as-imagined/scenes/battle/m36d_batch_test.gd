@@ -1038,7 +1038,7 @@ func _test_batch4_strike_family() -> void:
 	var full := n2.scale if n2 != null else Vector2.ONE
 	_step(vm2, 6)
 	var mid := n2.scale if n2 != null and is_instance_valid(n2) else full
-	_chk("the kick GROWS while spinning (a negative xScale delta looms)", mid.x > full.x)
+	_chk("the kick shrinks while spinning (SPRITE path: the accumulator is the visual scale)", mid.x < full.x)
 	_step(vm2, 8)
 	_chk("...then snaps back to full size for the landing hold",
 			n2 != null and is_instance_valid(n2)
