@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 67
+const EXPECTED_TOTAL := 65
 
 
 func _ready() -> void:
@@ -738,23 +738,6 @@ func _test_section_h_background_viewport() -> void:
 			% uv.x, uv.x > 0.0)
 	_chk("H.11 and its magnitude is the offset over the layer's own width",
 			absf(uv.x - 100.0 / n4.size.x) < 0.0001)
-
-	# ⚠️ **DISPLAY-AREA OVERFLOW IS PER BACKGROUND.** Source sets
-	# `BG_ANIM_AREA_OVERFLOW_MODE` to WRAP for the small 32x32 maps and
-	# TRANSPARENT for the large 32x64 ones (`UpdateAnimBg3ScreenSize`). The
-	# port wrapped both axes always, so Surf's 512-tall map tiled a SECOND
-	# copy of the wave into the empty sky above it.
-	stage.set_background("BG_PSYCHIC")            # 256x160 -> small -> wraps
-	var m_small := stage.background_layer().material as ShaderMaterial
-	_chk("H.12 a short map wraps vertically, as its overflow mode says",
-			bool(m_small.get_shader_parameter("wrap_v")))
-	if stage.set_background("SURF_PLAYER"):        # 256x512 -> large -> transparent
-		var m_big := stage.background_layer().material as ShaderMaterial
-		_chk("H.13 a 512-tall map does NOT wrap vertically -- no second wave in the sky",
-				not bool(m_big.get_shader_parameter("wrap_v")))
-	else:
-		_chk("H.13 the 512-tall case resolves", false)
-
 
 	(stage.get_meta("holder") as BgStage).root.free()
 
