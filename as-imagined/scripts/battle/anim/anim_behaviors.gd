@@ -6387,11 +6387,31 @@ static func _solar_beam_big_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			maxi(1, vm.args[2]))
 
 
+const _SOLAR_BEAM_SMALL_ORB := "gSolarBeamSmallOrbSpriteTemplate"
+
+
 # AnimTask_CreateSmallSolarBeamOrbs (battle_anim_effects_1.c:3146). No args in
 # -- and it CLOBBERS gBattleAnimArgs[0..3] for each spawn, permanently. Spawns
 # 15 orbs, one every 7 frames (~99 frames). The source comment says a 7-frame
 # delay; the code uses 6, which with the -1 wrap is 7 frames between spawns.
+#
+# ⚠️ **IT MUST NAME ITS OWN TEMPLATE, AND PASSING THE TASK'S OWN `ctx` MEANT
+# NO ORB EVER SPAWNED.** A `createvisualtask` receives
+# `ctx = {"priority": N}` — there is no template in it, because a task is not
+# a `createsprite`. Forwarding that ctx to `_solar_beam_small_orb` made
+# `_make_sprite` return null every time, silently: **all 15 small orbs were
+# missing** and Solar Beam played only its big linear orbs. Reported from play
+# as "the animation is missing the rotating green element it just has the more
+# linear portion of the beam". Source names the template explicitly —
+# `CreateSpriteAndAnimate(&gSolarBeamSmallOrbSpriteTemplate, ...)`
+# (battle_anim_effects_1.c:3146) — and `_make_sprite_named` exists for exactly
+# this case.
 static func _create_small_solar_beam_orbs(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var orb_ctx := {
+		"template": _SOLAR_BEAM_SMALL_ORB,
+		"template_data": AnimData.template(_SOLAR_BEAM_SMALL_ORB),
+		"blend": ctx.get("blend", {}),
+	}
 	var st := {"t": 0, "made": 0}
 	vm.add_stepper(func() -> bool:
 		st["t"] = int(st["t"]) + 1
@@ -6400,7 +6420,7 @@ static func _create_small_solar_beam_orbs(vm: AnimScriptVM, ctx: Dictionary) -> 
 			vm.args[1] = 0
 			vm.args[2] = 80
 			vm.args[3] = 0
-			_solar_beam_small_orb(vm, ctx)
+			_solar_beam_small_orb(vm, orb_ctx)
 			st["made"] = int(st["made"]) + 1
 		return int(st["made"]) >= 15 and int(st["t"]) > 15 * 7)
 

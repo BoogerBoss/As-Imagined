@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 64
+const EXPECTED_TOTAL := 67
 
 
 func _ready() -> void:
@@ -48,6 +48,7 @@ func _ready() -> void:
 	_test_section_g_battler_pivot()
 	_test_section_h_background_viewport()
 	_test_section_i_central_sprite_tick()
+	_test_section_j_task_spawned_sprites()
 
 	_chk("Z.99 assertion count balances (%d of %d)" % [_pass + _fail, EXPECTED_TOTAL],
 			_pass + _fail == EXPECTED_TOTAL - 1)
@@ -859,3 +860,51 @@ func _test_section_i_central_sprite_tick() -> void:
 	_chk("I.07 EVERY sprite on the layer is reached by one step, not just one",
 			all_ticked)
 	(stage2.get_meta("holder") as BgStage).root.free()
+
+
+# ── Section J: a task that names its own template ──────────────────────────
+#
+# ⚠️ **A `createvisualtask` RECEIVES NO TEMPLATE.** Its ctx is
+# `{"priority": N}` — a task is not a `createsprite`. A spawner task that
+# forwards that ctx to a sprite behavior makes `_make_sprite` return null
+# every time, SILENTLY: no sprite, no error, no failing assertion.
+#
+# `AnimTask_CreateSmallSolarBeamOrbs` did exactly that, so all 15 of Solar
+# Beam's small weaving orbs were missing and only its big linear ones played.
+# Reported from play as "missing the rotating green element it just has the
+# more linear portion of the beam".
+
+func _test_section_j_task_spawned_sprites() -> void:
+	var registry := AnimBehaviorRegistry.new()
+	AnimBehaviors.register_all(registry)
+	var stage := FakeStage.new()
+	var vm := AnimScriptVM.new()
+	vm.registry = registry
+	vm.stage = stage
+	vm.state = AnimScriptVM.State.RUNNING
+
+	# Driven exactly as the VM drives it: a task ctx, with NO template in it.
+	registry.get_behavior("AnimTask_CreateSmallSolarBeamOrbs").call(vm, {"priority": 5})
+	# The first orb is spawned on the stepper's first frame.
+	vm._step_behaviors()
+	var orbs := 0
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite:
+			orbs += 1
+	# THE discriminator. The bug produced ZERO sprites while the task itself
+	# ran happily to completion — so "the task runs" or "no error" would both
+	# have passed. Only counting what reached the layer catches it.
+	_chk("J.01 a task ctx with NO template still spawns an orb (got %d)" % orbs,
+			orbs >= 1)
+
+	# And it keeps spawning: 15 orbs, one every 7 frames.
+	for _f in range(7 * 15):
+		vm._step_behaviors()
+	var total := 0
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite:
+			total += 1
+	_chk("J.02 it spawns more than one over time (got %d)" % total, total > 1)
+	_chk("J.03 the template it names really resolves",
+			not AnimData.template("gSolarBeamSmallOrbSpriteTemplate").is_empty())
+	stage.layer_node.free()
