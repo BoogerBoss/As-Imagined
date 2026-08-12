@@ -30,7 +30,7 @@ var _fail := 0
 
 # Balance guard, per this project's Z.99 convention: a section that bails
 # early would otherwise silently drop assertions and nothing would say so.
-const EXPECTED_TOTAL := 60
+const EXPECTED_TOTAL := 62
 
 
 func _ready() -> void:
@@ -720,6 +720,23 @@ func _test_section_h_background_viewport() -> void:
 				% n3.size.y, absf(n3.size.y - 112.0 * 5.0) < 0.5)
 	else:
 		_chk("H.09 the short-background case resolves", false)
+
+	# ⚠️ **THE SCROLL DIRECTION, WHICH NOTHING ASSERTED.** `m36e3` covers the
+	# accumulator and passed cleanly while every scrolling background travelled
+	# BACKWARDS — rule (17) again: the value was verified, the direction was
+	# not. A GBA `BGxHOFS` is the offset of the displayed WINDOW into the map,
+	# so a positive offset shows content further right and the background
+	# appears to move LEFT. Sampling `UV + offset/span` reproduces that; the
+	# port negated it.
+	stage.set_background("BG_PSYCHIC")
+	var n4 := stage.background_layer()
+	stage.set_background_scroll(Vector2(100.0, 0.0))
+	var mat := n4.material as ShaderMaterial
+	var uv: Vector2 = mat.get_shader_parameter("uv_offset")
+	_chk("H.10 a POSITIVE scroll gives a POSITIVE uv offset, so content moves left as on hardware (%.4f)"
+			% uv.x, uv.x > 0.0)
+	_chk("H.11 and its magnitude is the offset over the layer's own width",
+			absf(uv.x - 100.0 / n4.size.x) < 0.0001)
 
 	(stage.get_meta("holder") as BgStage).root.free()
 

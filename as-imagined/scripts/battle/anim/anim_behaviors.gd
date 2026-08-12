@@ -8641,7 +8641,17 @@ static func _ice_punch_swirling_particle(vm: AnimScriptVM,
 	if node == null:
 		return
 	var scale := _scale(vm)
-	var centre := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	# ⚠️ **THE TARGET, NOT THE ATTACKER.** Reported from play: "fire, thunder
+	# and ice punch the particle effect hits its own pokemon instead of the
+	# opponent." `TranslateSpriteInGrowingCircle` only writes `x2`/`y2` —
+	# OFFSETS — so the base position is whatever `createsprite` chose, and
+	# `Cmd_createsprite` places every sprite at
+	# `GetBattlerSpriteCoord(gBattleAnimTarget, ...)` (battle_anim.c). This
+	# behavior never repositions, so its circle is centred on the TARGET.
+	# Fixes Fire Punch and Ice Punch together — one behavior serves both
+	# `AnimFireSpiralInward` and `AnimIcePunchSwirlingParticle`, which are
+	# byte-identical upstream.
+	var centre := _battler_centre(vm, AnimStage.ANIM_TARGET)
 	node.centre = centre
 
 	var st := {"angle": float(vm.args[0]), "left": 60, "amp": 0}

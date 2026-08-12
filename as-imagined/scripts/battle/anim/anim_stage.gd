@@ -410,8 +410,22 @@ func _apply_bg_scroll(node: TextureRect) -> void:
 		return
 	var mat := _bg_material()
 	if mat != null:
+		# ⚠️ **THE SIGN IS NOT NEGATED, AND THAT WAS A REAL BUG.** A GBA
+		# `BGxHOFS` is the offset of the DISPLAYED WINDOW within the map, so
+		# increasing it shows content further right and the background appears
+		# to move LEFT. Sampling `UV + offset/span` reproduces that; negating
+		# it — which this did — makes every scrolling background travel
+		# BACKWARDS.
+		#
+		# Reported from play on two independent moves ("Blizzard background
+		# moves the wrong direction", "Surf moves wrong direction"), which is
+		# what settled it. ⚠️ I had retracted this suspicion once on the
+		# strength of a measurement that tracked the mean x of Surf's foam —
+		# an unreliable metric over a WRAPPING texture, where a feature
+		# entering on one edge while another leaves drags the mean the wrong
+		# way. Two eyes on two moves beat one bad statistic.
 		mat.set_shader_parameter("uv_offset",
-				Vector2(-_bg_scroll.x / span.x, -_bg_scroll.y / span.y))
+				Vector2(_bg_scroll.x / span.x, _bg_scroll.y / span.y))
 
 
 # 0.0 = normal, 1.0 = fully black. The port of the hardware palette fade.
