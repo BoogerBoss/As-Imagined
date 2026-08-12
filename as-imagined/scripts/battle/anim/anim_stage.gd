@@ -239,6 +239,13 @@ func _size_background_layer(node: TextureRect) -> void:
 		return
 	node.position = Vector2.ZERO
 	node.size = node.texture.get_size() * pixel_scale()
+	# ⚠️ Wrap vertically only for the SMALL (32x32 = 256px) maps. Source keys
+	# this off `UpdateAnimBg3ScreenSize`, whose large-screen case is exactly
+	# the 32x64 = 512px maps and sets overflow to TRANSPARENT. Deriving it from
+	# the asset height reproduces that without a per-background table.
+	var mat := _bg_material()
+	if mat != null:
+		mat.set_shader_parameter("wrap_v", node.texture.get_size().y <= 256.0)
 
 func clear_background() -> void:
 	var node := background_layer()
@@ -280,12 +287,29 @@ uniform int pal_count = 0;
 uniform float band_top = 0.0;
 uniform float band_bottom = 0.0;
 uniform float band_offset = 0.0;
+// ⚠️ **DISPLAY-AREA OVERFLOW: WRAP OR TRANSPARENT, AND IT IS PER BACKGROUND.**
+// `UpdateAnimBg3ScreenSize(largeScreenSize)` (battle_anim_mons.c:965) sets
+// `BG_ANIM_AREA_OVERFLOW_MODE` to 1 (WRAP) for the small 32x32 maps and 0
+// (TRANSPARENT) for the large 32x64 ones. This port wrapped BOTH axes
+// unconditionally, so a 512-tall map like Surf's tiled a SECOND copy of the
+// wave into the empty sky above it. Reported from play: "above the wave is
+// supposed to have no art ... there is a blue band at the top, also a second
+// wave is visible in the top left at the end."
+uniform bool wrap_v = true;
 void fragment() {
 	vec2 uv = UV + uv_offset;
 	if (band_bottom > band_top && UV.y >= band_top && UV.y < band_bottom) {
 		uv.x += band_offset;
 	}
-	vec4 c = texture(TEXTURE, fract(uv));
+	// Horizontal always wraps -- that is what makes Blizzard's endless
+	// leftward slide seamless, and its map really is overflow-mode 1.
+	uv.x = fract(uv.x);
+	if (!wrap_v && (uv.y < 0.0 || uv.y >= 1.0)) {
+		COLOR = vec4(0.0);
+		return;
+	}
+	uv.y = fract(uv.y);
+	vec4 c = texture(TEXTURE, uv);
 	if (c.a > 0.0) {
 		for (int i = 0; i < pal_count; i++) {
 			if (distance(c.rgb, pal_from[i].rgb) < 0.01) {
