@@ -58,6 +58,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = -63.0
+offset_bottom = -63.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -72,9 +74,9 @@ anchor_left = 0.05
 anchor_top = 0.52
 anchor_right = 0.05
 anchor_bottom = 0.52
-offset_left = -331.0
+offset_left = -349.0
 offset_top = -38.99997
-offset_right = 252.78949
+offset_right = 234.78949
 offset_bottom = 161.10059
 scale = Vector2(1.9, 1.9)
 mouse_filter = 2
@@ -89,10 +91,10 @@ anchor_left = 0.72
 anchor_top = 0.28
 anchor_right = 0.72
 anchor_bottom = 0.28
-offset_left = -405.00006
-offset_top = -4.0
-offset_right = 411.70575
-offset_bottom = 263.0
+offset_left = -302.00006
+offset_top = -63.0
+offset_right = 313.70575
+offset_bottom = 298.0
 mouse_filter = 2
 texture = ExtResource("4_enemy_base_preview")
 expand_mode = 1
@@ -117,12 +119,12 @@ stretch_mode = 4
 
 [node name="OpponentPanel0" parent="BattleStage" unique_id=1567867656 instance=ExtResource("6_opp_panel")]
 anchor_left = 0.0541667
-anchor_top = 0.1000000
+anchor_top = 0.1
 anchor_right = 0.0541667
-anchor_bottom = 0.1000000
-offset_left = 87.5000
+anchor_bottom = 0.1
+offset_left = 87.5
 offset_top = 21.1538
-offset_right = 607.5000
+offset_right = 607.5
 offset_bottom = 145.1538
 scale = Vector2(0.9615385, 0.9615385)
 
@@ -175,13 +177,13 @@ stretch_mode = 5
 
 [node name="PlayerPanel0" parent="BattleStage" unique_id=688733453 instance=ExtResource("7_ply_panel")]
 anchor_left = 0.5291667
-anchor_top = 0.3625000
+anchor_top = 0.3625
 anchor_right = 0.5291667
-anchor_bottom = 0.3625000
-offset_left = -126.7692
-offset_top = -92.1058
-offset_right = 393.2308
-offset_bottom = 75.8942
+anchor_bottom = 0.3625
+offset_left = -129.7692
+offset_top = 46.894196
+offset_right = 390.23077
+offset_bottom = 214.8942
 scale = Vector2(0.9903846, 0.9903846)
 
 [node name="EffectLayer" type="Control" parent="BattleStage" unique_id=1607399811]
