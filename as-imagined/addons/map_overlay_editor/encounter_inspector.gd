@@ -20,7 +20,11 @@ extends EditorInspectorPlugin
 ## `EditorFileSystem` rescan that made the collision brush unusable.
 
 
-const _MONO_SIZE := 11
+## Slot-row text size. 12 rather than the 11 `entity_inspector.gd` uses for its
+## script listing — Rob's call, 2026-08-13: a script dump is scanned, an
+## encounter table is READ, and 11 was too small for it. Only the slot rows set
+## a size at all; the heading and the summary line take the editor's own.
+const _MONO_SIZE := 12
 const _DIM := Color(1, 1, 1, 0.55)
 const _WARN := Color(1.0, 0.75, 0.25)
 
