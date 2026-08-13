@@ -1291,6 +1291,14 @@ var _pending_beats: Array[Dictionary] = []
 ## now belt-and-braces rather than the mechanism.
 var _anim_insert_index := -1
 
+
+## True for the whole of `_on_battle_ended` — from the result text through the
+## trainer's post-battle line. Mirrors `_intro_active`: both mark a stretch in
+## which SEVERAL drains play back to back and the action menu must not be
+## restored between them. See `_exit_message_mode()` for the flash this
+## prevents.
+var _battle_end_active := false
+
 ## Reentrancy guard for `_run_message_pacing()`. `_on_battle_ended` now drains
 ## beats itself (see that function's own comment for why), and its own await
 ## chain unwinds back through `_bm.advance()` to `_dispatch_move`'s ordinary
@@ -2527,6 +2535,9 @@ signal battle_finished(outcome: int)
 
 
 func _on_battle_ended(winner_side: int) -> void:
+	# Set BEFORE the first beat is queued: `_log_battle_end_result` below feeds
+	# the first drain, and the flash this guards happens when that drain ENDS.
+	_battle_end_active = true
 	_winner_side = winner_side
 	_log_battle_end_result(winner_side)
 	_clear_active_hit_effects()
@@ -2557,6 +2568,14 @@ func _on_battle_ended(winner_side: int) -> void:
 	# (_show_trainer_battle_end bypasses itself entirely under autoplay
 	# anyway, but the ordering is what makes that safe rather than lucky.)
 	await _show_trainer_battle_end(winner_side)
+	# Every end-of-battle drain has now played, so message mode can be left for
+	# real. ⚠️ The prompt is BLANKED rather than left to `_refresh_ui()`: there
+	# is no action to prompt for at BATTLE_END, and that function's prompt block
+	# is gated on MOVE_SELECTION, so it would leave the stale text standing —
+	# which is the bug this whole guard exists for, just one beat later.
+	_battle_end_active = false
+	_status_label.text = ""
+	_exit_message_mode()
 	# [M27H H4] ⚠️ A CATCH IS NOT A WIN, even though the wild side is empty and
 	# `winner_side` therefore reads 0. `BattleOutcome` keeps them distinct
 	# (CAUGHT is in neither the defeat set nor the win set), and the difference
@@ -5653,6 +5672,30 @@ func _exit_message_mode() -> void:
 	# (the real menu doesn't exist until the intro's final _refresh_ui()).
 	# _ready() clears the flag and calls this explicitly right before that.
 	if _intro_active:
+		return
+	# ⚠️ **THE SAME HAZARD AS `_intro_active` ABOVE, AT THE OTHER END OF THE
+	# BATTLE** [Bugfix, live-reported: "Choose move for bulbasaur shows quickly
+	# at end of battle" and "box asking what will xxx do shows in between
+	# transition from battle text to post-battle text from trainers" — ONE
+	# cause, two symptoms].
+	#
+	# `_on_battle_ended` plays its text in TWO drains: the result ("You win!"),
+	# then the trainer's own post-battle line ("You defeated X!"). Between them
+	# this function used to run, and its `_status_label.visible = true` put the
+	# LAST ACTION PROMPT back on screen — traced verbatim as
+	# `exit_message_mode -> status shown: 'Choose a move for Blaze.'`, which is
+	# the reported flash exactly.
+	#
+	# ⚠️ Nothing overwrites that stale text, and that is the whole reason it is
+	# visible rather than merely momentary: mid-battle, `_refresh_ui()` follows
+	# immediately and rewrites the prompt, but at BATTLE_END its prompt block
+	# is gated on `MOVE_SELECTION` and never runs, so the dead prompt simply
+	# stays up until the next drain covers it.
+	#
+	# Suppressing the exit for the whole sequence also re-arms `_refresh_ui()`'s
+	# OWN `_message_label.visible` guard, which is what let `_dispatch_move`'s
+	# trailing refresh intrude here in the first place.
+	if _battle_end_active:
 		return
 	_message_label.visible = false
 	_action_panel.add_theme_stylebox_override("panel", _action_panel_menu_style)
