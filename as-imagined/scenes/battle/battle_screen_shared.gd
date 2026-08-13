@@ -1386,8 +1386,28 @@ var _font_popup_ability: FontFile
 
 const _FONT_NORMAL_SIZE := 15
 const _FONT_SMALL_SIZE := 13
+
+# ⚠️ **THE 15 ABOVE IS THE BITMAP FONT'S OWN NATIVE SIZE, NOT A TUNABLE** —
+# `latin_small_healthbox.fnt` declares `size=15`, and `_MENU_BUTTON_FONT_SIZE`
+# is defined as 4x it. So Type/PP could not be enlarged by editing
+# `_FONT_NORMAL_SIZE`: that would also resize the INFO tab and change what
+# "native" means everywhere it is cited.
+#
+# [Bugfix, live-reported: "Type and PP is extremely small"] 3x native, which
+# lines Type/PP up with `_MESSAGE_FONT_SIZE` rather than with the 4x move
+# names beside it — it is secondary information sitting next to the thing it
+# describes, so matching the move names would compete with them.
+#
+# ⚠️ **THIS REVERSES A DELIBERATE EARLIER CALL, IT DOES NOT FIX AN OVERSIGHT.**
+# The `[M26 polish batch, item 4]` note below recorded that only the menu text
+# and the Fight/Switch/Item/Run labels were asked to grow 4x, "not the PP/Type"
+# — so Type/PP stayed native ON PURPOSE. Rob has now asked for it larger; that
+# clause of the comment is stale and is corrected rather than left to read as
+# though the current size were still the intended one.
+const _MOVE_INFO_FONT_SIZE := 45
+
 # [M26 polish batch, item 4] Deliberately a SEPARATE constant from
-# _FONT_NORMAL_SIZE (still 15, still governing MoveInfoType/PP) rather than
+# _FONT_NORMAL_SIZE (15, the font's own native size) rather than
 # scaling that shared constant directly -- only the battle menu text and the
 # Fight/Switch/Item/Run button labels were asked to grow 4x, not the PP/Type
 # info panel next to them. 60 = 15 * 4.
@@ -1720,7 +1740,33 @@ func _wire_cursor_group(buttons: Array[Button], columns: int = 1) -> void:
 	for i in range(buttons.size()):
 		var btn: Button = buttons[i]
 		btn.set_meta("cursor_base_text", btn.text)
-		_disconnect_all(btn.mouse_entered)
+		# ⚠️ **DISCONNECT ONLY THIS FUNCTION'S OWN LISTENER, NEVER THE WHOLE
+		# SIGNAL** [Bugfix, live-reported: "Type and PP … not dynamic",
+		# i.e. the move-info panel never changed when a different move was
+		# hovered].
+		#
+		# This used to call `_disconnect_all(btn.mouse_entered)`, which wipes
+		# EVERY listener — and `_build_fight_menu` connects
+		# `_on_fight_move_hovered` to that same signal BEFORE calling this
+		# function, so the move-info panel's listener was deleted on every
+		# rebuild. It looked like it worked because `_build_fight_menu` then
+		# sets the initial value by DIRECT CALL: the panel showed the first
+		# move's Type/PP correctly and never updated again.
+		#
+		# ⚠️ `_on_fight_move_hovered`'s own doc comment claims signals here
+		# are "additive, not exclusive" — true of Godot, and false of this
+		# codebase while a sibling function force-cleared the signal. A
+		# comment asserting a property another function silently violates is
+		# how this survived.
+		#
+		# The guard against duplicate connections on rebuild is still needed,
+		# so it is kept and merely narrowed to this function's own callable.
+		# Matching by METHOD NAME rather than by `is_connected(...)`: the
+		# binds carry a fresh `buttons` Array each rebuild, so an equality test
+		# would never match and duplicates would accumulate silently.
+		for conn in btn.mouse_entered.get_connections():
+			if conn["callable"].get_method() == "_set_cursor_selected":
+				btn.mouse_entered.disconnect(conn["callable"])
 		btn.mouse_entered.connect(_set_cursor_selected.bind(buttons, i))
 	_cursor_columns = columns
 	if buttons.size() > 0:
@@ -5513,7 +5559,7 @@ func _setup_action_region_panel() -> void:
 	# already IS the correct color).
 	for lbl: Label in [_move_info_type_label, _move_info_pp_label]:
 		lbl.add_theme_font_override("font", _font_menu)
-		lbl.add_theme_font_size_override("font_size", _FONT_NORMAL_SIZE)
+		lbl.add_theme_font_size_override("font_size", _MOVE_INFO_FONT_SIZE)
 		lbl.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 

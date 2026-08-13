@@ -24,6 +24,7 @@ func _ready() -> void:
 	_test_wire_cursor_group_defaults_to_first_option()
 	_test_set_cursor_selected_moves_the_marker()
 	_test_cursor_group_wires_a_real_mouse_entered_connection()
+	_test_wiring_the_cursor_does_not_evict_other_hover_listeners()
 	_test_top_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_fight_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_target_select_buttons_have_chrome_stripped_and_cursor_wired()
@@ -183,6 +184,51 @@ func _test_cursor_group_wires_a_real_mouse_entered_connection() -> void:
 
 	_chk("the button gained a real mouse_entered connection (hover tracking, this project's one real menu input method)",
 			a.mouse_entered.get_connections().size() > 0)
+
+
+var _probe_hovers := 0
+
+
+func _hover_probe() -> void:
+	_probe_hovers += 1
+
+
+func _test_wiring_the_cursor_does_not_evict_other_hover_listeners() -> void:
+	# ⚠️ **Regression guard for a real play bug, reported 2026-08-13: "Type and
+	# PP ... not dynamic as in doesn't change with hovering over a different
+	# move".** `_wire_cursor_group` used to clear the WHOLE `mouse_entered`
+	# signal before connecting the cursor, which silently evicted the fight
+	# menu's own `_on_fight_move_hovered` listener — the move-info panel's only
+	# update path. It looked correct in play because the panel's FIRST value is
+	# set by a direct call, so only the 2nd hover onward was dead.
+	#
+	# Derived from that negation ("wiring the cursor deletes every other
+	# listener"), so a re-broadened disconnect fails here rather than shipping.
+	var bs := BattleScreenShared.new()
+	var a := Button.new()
+	a.text = "Alpha"
+	var buttons: Array[Button] = [a]
+
+	a.mouse_entered.connect(_hover_probe)
+	bs._wire_cursor_group(buttons)
+
+	_probe_hovers = 0
+	a.mouse_entered.emit()
+	_chk("a hover listener wired by another subsystem still fires after the cursor is wired over it",
+			_probe_hovers == 1)
+
+	# The other half of the fix: the disconnect matches by METHOD NAME, because
+	# each rebuild binds a fresh `buttons` Array and so a Callable-equality test
+	# would never match. Negation: "the targeted disconnect never matches", which
+	# accumulates one more cursor listener per rebuild.
+	bs._wire_cursor_group(buttons)
+	bs._wire_cursor_group(buttons)
+	var cursor_conns := 0
+	for conn in a.mouse_entered.get_connections():
+		if conn["callable"].get_method() == "_set_cursor_selected":
+			cursor_conns += 1
+	_chk("re-wiring replaces the cursor listener instead of stacking duplicates (3 builds, 1 listener)",
+			cursor_conns == 1)
 
 
 # ── F. The 3 real in-scope builders (ActionPanel's own real window art)
