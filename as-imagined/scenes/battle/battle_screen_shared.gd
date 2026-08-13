@@ -8867,6 +8867,22 @@ func _on_run_pressed() -> void:
 				# escape jingle for it would say the opposite of what happened.
 				_queue_sfx("SE_FLEE")
 				_log("Got away safely!")
+				# ⚠️ **[Bugfix, live-reported: "Run button doesn't say 'you got
+				# away'".] `_log` ONLY QUEUES A BEAT — SOMETHING HAS TO DRAIN
+				# IT.** `_return_to_overworld_if_pending` emits
+				# `battle_finished` on this same frame and the overworld frees
+				# this whole screen in response, so the beat (and the SE_FLEE
+				# jingle queued with it) died in `_pending_beats` having never
+				# been played. `_on_battle_ended` already does exactly this
+				# await before returning control, for exactly this reason —
+				# this path was simply never given the same treatment. Safe to
+				# await here: `_run_message_pacing` sets `_pacing_active`
+				# synchronously before its first suspend, `_enter_message_mode`
+				# hides the button grid, and `_confirm_cursor_selection` is
+				# already `_pacing_active`-guarded, so the Run button cannot be
+				# re-entered mid-drain. Bypassed instantly under `--autoplay`
+				# and for bare test instances, so neither changes behaviour.
+				await _run_message_pacing()
 				_return_to_overworld_if_pending(BattleOutcome.RAN)
 			else:
 				# ⚠️ DISCLOSED GAP: source SPENDS the turn on a failed escape.
@@ -8875,10 +8891,21 @@ func _on_run_pressed() -> void:
 				# Closing it needs a real skip-turn action in the turn queue,
 				# which is a turn-machine change rather than an escape one.
 				_log("Couldn't escape!")
+				# The SAME queued-but-never-drained bug as the success branch
+				# above, and it stayed hidden for a different reason: the battle
+				# continues here, so the line eventually surfaced — at whatever
+				# unrelated moment the next real drain happened, typically
+				# stapled to the front of the next move's narration.
+				await _run_message_pacing()
 			return
 		# A trainer battle: refuse outright, matching source. No turn is
 		# spent, no outcome is produced, the battle continues untouched.
 		_log("No! There's no running from a Trainer battle!")
+		# ⚠️ THE THIRD INSTANCE. Nothing drains between here and the player's
+		# next action, so source's own STRINGID_NORUNNINGFROMTRAINERS refusal
+		# never appeared when it was pressed — pressing Run in a trainer battle
+		# looked like the button did nothing at all.
+		await _run_message_pacing()
 		return
 	_clear_active_hit_effects()
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
