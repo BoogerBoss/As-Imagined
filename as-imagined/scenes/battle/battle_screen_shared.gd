@@ -9044,12 +9044,22 @@ func _on_run_pressed() -> void:
 				await _run_message_pacing()
 				_return_to_overworld_if_pending(BattleOutcome.RAN)
 			else:
-				# ⚠️ DISCLOSED GAP: source SPENDS the turn on a failed escape.
-				# This project has no "do nothing" action to queue, so the player
-				# simply picks again — which makes fleeing free, only slower.
-				# Closing it needs a real skip-turn action in the turn queue,
-				# which is a turn-machine change rather than an escape one.
+				# [M27H H5 follow-up] ⚠️ **A FAILED ESCAPE SPENDS THE TURN**,
+				# closing the gap this branch used to disclose ("the player
+				# simply picks again — which makes fleeing free, only slower").
+				#
+				# Source models running as a real turn action: `HandleAction_Run`
+				# (`battle_util.c:638`) fails the roll, prints the can't-escape
+				# string and lets the turn carry on, so the opponent still
+				# attacks. `queue_forfeit_for` is the turn-machine equivalent —
+				# see its own comment for why the ROLL stays here at press time
+				# rather than moving into the action.
 				_log("Couldn't escape!")
+				# Combatant 0: the Run button is only reachable from the player's
+				# own active slot, and overworld wild battles are singles (M27D
+				# D5 flattens every doubles trainer to a singles fight).
+				_bm.queue_forfeit_for(0)
+				_bm.advance()
 				# The SAME queued-but-never-drained bug as the success branch
 				# above, and it stayed hidden for a different reason: the battle
 				# continues here, so the line eventually surfaced — at whatever
@@ -9058,8 +9068,11 @@ func _on_run_pressed() -> void:
 				await _run_message_pacing()
 				# ⚠️ See the trainer branch below — a drain that hands control
 				# BACK to the player must rebuild the menu, or there is nothing
-				# left on screen to press.
-				_refresh_ui()
+				# left on screen to press. Guarded off-tree for the same reason
+				# `_run_message_pacing` bypasses there: a bare test instance has
+				# no `@onready` menu nodes, so rebuilding would fault on null.
+				if is_inside_tree():
+					_refresh_ui()
 			return
 		# A trainer battle: refuse outright, matching source. No turn is
 		# spent, no outcome is produced, the battle continues untouched.
@@ -9089,7 +9102,15 @@ func _on_run_pressed() -> void:
 		#
 		# This is why the refusal could not simply be given the `await` that
 		# made its message appear; the two have to land together.
-		_refresh_ui()
+		#
+		# ⚠️ Guarded off-tree, and that guard is not theoretical: a bare
+		# `BattleScreenShared` drives this exact branch in
+		# `m27h_catching_test`, where the `@onready` menu nodes are all null and
+		# an unguarded rebuild raised a real engine error — which
+		# `run_overworld_tests.sh` treats as a failed run even when every
+		# assertion passes. Same bypass `_run_message_pacing` already applies.
+		if is_inside_tree():
+			_refresh_ui()
 		return
 	_clear_active_hit_effects()
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")

@@ -531,6 +531,14 @@ func try_flee(battler: BattlePokemon, opponent: BattlePokemon,
 			var speed_var := (own * 128) / theirs + run_tries * 30
 			success = speed_var > r.randi_range(0, 255)
 		run_tries += 1
+	# Test seam, matching `_force_roll`/`_force_crit` and the shake-roll seam.
+	# ⚠️ Applied HERE, after `run_tries` has been counted and the real roll made,
+	# so forcing an outcome does not also skip the accounting a later attempt
+	# depends on. Exists because `_on_run_pressed` passes no RNG, which made a
+	# failed escape undrivable — and the failed branch is precisely the one that
+	# has to spend the turn.
+	if _force_flee != null:
+		success = bool(_force_flee)
 	flee_attempted.emit(battler, success)
 	return success
 
@@ -552,6 +560,10 @@ var caught_pokemon: BattlePokemon = null
 ## marked dead. Fainting is this project's own stand-in for that removal (see the
 ## catch site), and this is the state that stand-in has to give back.
 var caught_hp: int = 0
+
+## Forces `try_flee`'s result. null = roll normally. See that function's own
+## note for why the override is applied after the accounting rather than before.
+var _force_flee = null
 
 ## Injected so a test can force the shake rolls, matching `_force_roll`/
 ## `_force_crit`'s own precedent rather than inventing a new seam shape.
@@ -580,6 +592,21 @@ var _chosen_switch_slots: Array[int] = []
 # [M22 Phase 1] chosen bag item per combatant (null = not using an item this turn).
 # Sized to 4 exactly like _chosen_moves/_chosen_switch_slots for doubles-readiness.
 var _chosen_items: Array = []
+
+## Per-combatant "this battler forfeits its action this turn" flag, consumed
+## once in ACTION_EXECUTION and cleared there.
+##
+## ⚠️ **THIS EXISTS BECAUSE A FAILED ESCAPE MUST COST THE TURN** [closes the
+## gap `[M27H H5]` disclosed and recorded as needing "a real skip-turn action
+## in the TURN MACHINE, not in the escape code"].
+##
+## Source models running as a real turn ACTION (`B_ACTION_RUN` ->
+## `HandleAction_Run`, `battle_util.c:638`): on failure it prints the
+## can't-escape string, sets `gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT` and
+## simply lets the turn carry on, so the opponent still attacks. Without an
+## equivalent here the player just picked again and fleeing was FREE — the
+## opponent never got a move for the attempt.
+var _forfeited_action: Array = []
 # [M22 Phase 1] PARTY SLOT (not combatant index) the item targets — a real,
 # source-confirmed distinction from every other "target" concept in this file.
 # Source: item_use.c's CannotUseItemsInBattle keys off gPartyMenu.slotId, a
@@ -1099,6 +1126,7 @@ func start_battle_with_parties(player_party: BattleParty,
 	_chosen_switch_slots = [-1, -1]
 	_chosen_targets = [1, 0]  # each targets the single opponent
 	_chosen_items = [null, null]
+	_forfeited_action = [false, false]
 	_chosen_item_targets = [-1, -1]
 	_set_phase(BattlePhase.BATTLE_START)
 	advance()
@@ -1123,6 +1151,7 @@ func start_battle_doubles(player_party: BattleParty,
 	_chosen_switch_slots = [-1, -1, -1, -1]
 	_chosen_targets = [2, 2, 0, 0]  # default: each targets first slot of opposing side
 	_chosen_items = [null, null, null, null]
+	_forfeited_action = [false, false, false, false]
 	_chosen_item_targets = [-1, -1, -1, -1]
 	_set_phase(BattlePhase.BATTLE_START)
 	advance()
@@ -1169,6 +1198,22 @@ func queue_item_for(combatant_idx: int, item_id: int, party_target: int = -1,
 	_action_queues[combatant_idx].append(
 		{"type": "item", "item_id": item_id, "party_target": party_target,
 		"target_idx": target_idx})
+
+# [M27H H5 follow-up] Forfeit this combatant's action for the turn. Queued by
+# the Run button when an escape attempt FAILS, so the turn still resolves and
+# the opponent still acts — source's own behaviour, see `_forfeited_action`.
+#
+# ⚠️ **THE ESCAPE ROLL ITSELF IS NOT MOVED HERE, AND THAT IS A DELIBERATE
+# DIVERGENCE.** Source rolls inside the action (`HandleAction_Run`); this
+# project rolls at selection time, in `try_flee`, when the button is pressed.
+# A player cannot tell: source sorts RUN ahead of every move
+# (`SetActionsAndBattlersTurnOrder` gives it `turnOrderId = 5`,
+# battle_main.c:4906), so the attempt resolves before the opponent's move under
+# either arrangement. Porting the roll into the action would change only which
+# function holds the RNG call.
+func queue_forfeit_for(combatant_idx: int) -> void:
+	_action_queues[combatant_idx].append({"type": "forfeit"})
+
 
 func queue_replacement_for(combatant_idx: int, slot: int) -> void:
 	_replacement_queues[combatant_idx].append(slot)
@@ -1492,7 +1537,12 @@ func _phase_move_selection() -> void:
 			_chosen_moves[i] = mon.encored_move
 		elif not _action_queues[i].is_empty():
 			var action: Dictionary = _action_queues[i].pop_front()
-			if action["type"] == "switch":
+			if action["type"] == "forfeit":
+				# No move, no switch, no item — ACTION_EXECUTION skips this
+				# battler outright. See `_forfeited_action`.
+				_forfeited_action[i] = true
+				_chosen_moves[i] = null
+			elif action["type"] == "switch":
 				_chosen_switch_slots[i] = action["slot"]
 				_chosen_moves[i] = null
 			elif action["type"] == "item":
@@ -1948,6 +1998,26 @@ func _phase_pre_move_checks() -> void:
 
 	if actor.fainted:
 		_set_phase(BattlePhase.MOVE_EXECUTION)
+		return
+
+	# [M27H H5 follow-up] A forfeited action — today only a FAILED ESCAPE.
+	# Checked before every status canceler below, because a battler that is not
+	# acting must not tick a sleep counter, roll paralysis, or take confusion
+	# self-damage for a move it never attempted. Same shape and same position as
+	# the Sky Drop canceler beneath it, which is this file's own precedent for
+	# "this battler does nothing this turn".
+	#
+	# ⚠️ Consumed here rather than at the end of the turn: the flag is per
+	# COMBATANT while `_turn_order` may hold the same combatant only once, so
+	# clearing it on use is what stops a forfeit leaking into a later turn if
+	# the action queue is drained more than once.
+	var forfeit_idx := _combatants.find(actor)
+	if forfeit_idx >= 0 and forfeit_idx < _forfeited_action.size() \
+			and _forfeited_action[forfeit_idx]:
+		_forfeited_action[forfeit_idx] = false
+		move_skipped.emit(actor, "forfeited")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
 	# [D4 Bundle 9] Sky Drop: a mon currently held aloft cannot act at all —

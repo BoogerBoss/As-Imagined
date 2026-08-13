@@ -14,7 +14,7 @@ extends Node
 ##   * a catch is NOT a win — CAUGHT is its own outcome, and conflating them
 ##     would pay prize money and could set a defeated-trainer flag.
 
-const EXPECTED_TOTAL := 60
+const EXPECTED_TOTAL := 66
 
 var _total := 0
 var _failed := 0
@@ -57,6 +57,7 @@ func _ready() -> void:
 	_test_outcome()
 	_test_wiring()
 	_test_fleeing()
+	_test_a_forfeited_action_costs_the_turn()
 	# ⚠️ AWAITED. This one suspends (it awaits the real `_on_run_pressed`, which
 	# now awaits its own message drain), so calling it bare would let `_ready`
 	# race ahead to Z.99 and count its four assertions as missing.
@@ -515,3 +516,102 @@ func _test_flee_message() -> void:
 	bm.queue_free()
 	bm2.queue_free()
 	bs.free()
+
+
+# ── H. A failed escape spends the turn ──────────────────────────────────────
+#
+# ⚠️ **CLOSES A GAP `[M27H H5]` SHIPPED AND DISCLOSED**: "source SPENDS the turn
+# on a failed escape ... which makes fleeing free, only slower", recorded as
+# needing "a real skip-turn action in the TURN MACHINE, not in the escape code".
+#
+# Source models running as a real turn ACTION. `HandleAction_Run`
+# (`battle_util.c:638`) rolls, and on failure prints the can't-escape string,
+# sets `gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT` and lets the turn carry on
+# — so the opponent still attacks. Before this, the player simply picked again
+# and the opponent never got a move for the attempt.
+#
+# Derived from the NEGATION rather than the truth: the wrong version is "the
+# forfeiting battler does nothing", which is ALSO true of the fixed version. The
+# claim that separates them is that the OPPONENT still acts, so that is what
+# G.02 asserts and what injection removes.
+func _test_a_forfeited_action_costs_the_turn() -> void:
+	var me := _target(45, 20, 1.0)
+	var foe := _target(45, 20, 1.0)
+
+	# Snapshot the FIRST turn through signals rather than reading post-battle
+	# state: `start_battle` runs the battle to completion, and with one move
+	# apiece auto-select keeps re-picking it, so anything read afterwards
+	# describes some later turn. This project's own standing convention.
+	var skipped: Array = []
+	var actors: Array = []
+	var bm := BattleManager.new()
+	bm.is_wild_battle = true
+	bm.move_skipped.connect(func(mon: BattlePokemon, reason: String) -> void:
+		skipped.append([mon, reason]))
+	bm.move_executed.connect(func(attacker: BattlePokemon, _d: BattlePokemon,
+			_m: MoveData, _dmg: int) -> void:
+		actors.append(attacker))
+
+	bm.queue_forfeit_for(0)
+	bm.start_battle(me, foe)
+
+	var first_skip_reason: String = str(skipped[0][1]) if not skipped.is_empty() else ""
+	var first_skip_mon = skipped[0][0] if not skipped.is_empty() else null
+	_chk("H.01 the forfeiting battler is skipped, and says why",
+			first_skip_mon == me and first_skip_reason == "forfeited")
+
+	# THE GUARD. Before the fix the turn never resolved at all, so the opponent
+	# had no chance to act — which is exactly what made fleeing free.
+	_chk("H.02 the opponent still gets its move on the forfeited turn",
+			not actors.is_empty() and actors[0] == foe)
+	_chk("H.03 and the forfeiting battler is not the one who acted first",
+			actors.is_empty() or actors[0] != me)
+
+	# Discriminator: the same fixture WITHOUT a forfeit must let the player act,
+	# or G.02/G.03 would pass against a build that simply never lets `me` move.
+	var actors2: Array = []
+	var bm2 := BattleManager.new()
+	bm2.is_wild_battle = true
+	bm2.move_executed.connect(func(attacker: BattlePokemon, _d: BattlePokemon,
+			_m: MoveData, _dmg: int) -> void:
+		actors2.append(attacker))
+	var me2 := _target(45, 20, 1.0)
+	bm2.start_battle(me2, _target(45, 20, 1.0))
+	var me_acted := false
+	for a in actors2:
+		if a == me2:
+			me_acted = true
+			break
+	_chk("H.04 discriminator: with no forfeit queued the player does act", me_acted)
+
+	# ⚠️ The flag is per COMBATANT and cleared on use, so a forfeit must not
+	# leak into a later turn — a battle that ran more than one turn above would
+	# otherwise keep skipping the player forever.
+	var player_skips := 0
+	for e in skipped:
+		if e[0] == me and str(e[1]) == "forfeited":
+			player_skips += 1
+	_chk("H.05 the forfeit is consumed once, not every turn", player_skips == 1)
+	_chk("H.06 fixture: the battle really ran (something was executed)",
+			not actors.is_empty())
+
+	# ⚠️ **THE WIRING IS NOT COVERED HERE, AND THAT IS A STATED GAP RATHER THAN
+	# AN OVERSIGHT.** H.01-H.06 drive `BattleManager` directly, so they pin the
+	# turn-machine primitive and say nothing about whether the Run button
+	# actually USES it — the "guard on the callee, blind to the call site" trap
+	# `[M27H H4]` already cost this project once. Injection shows the shape:
+	# deleting the skip fails H.01/H.05 and leaves H.02 GREEN, because a battler
+	# that simply takes its normal turn also lets the opponent act.
+	#
+	# An end-to-end version was written and WITHDRAWN: driving `_on_run_pressed`
+	# needs a live battle, `start_battle` runs to completion, and calling
+	# `advance()` on a finished battle hung the suite outright. Closing it wants
+	# a way to start a battle and stop at MOVE_SELECTION — a harness change
+	# rather than a test. `_force_flee` was added for that attempt and is KEPT:
+	# it is what makes a FAILED escape drivable at all, and the next attempt
+	# needs it.
+
+	# BattleManager is a Node — leaving these unfreed reports "resources still
+	# in use at exit", which `run_overworld_tests.sh` reads as a failed run.
+	bm.queue_free()
+	bm2.queue_free()
