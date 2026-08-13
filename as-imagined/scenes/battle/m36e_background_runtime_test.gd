@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_restore_clears()
 	_test_background_never_leaks()
 	_test_unknown_bg_still_costs_its_frames()
+	_test_real_stage_band_surfaces()
 
 	var total := _pass + _fail
 	print("m36e_background_runtime_test: %d/%d passed" % [_pass, total])
@@ -233,3 +234,65 @@ func _test_unknown_bg_still_costs_its_frames() -> void:
 	_chk("...and completes on the same schedule",
 			vm.bg_fade_state() == AnimScriptVM.BgFade.IDLE)
 	_chk("...having swapped nothing", stage.bg_name == "")
+
+
+# ── The REAL AnimStage, not a double ──────────────────────────────────────
+#
+# ⚠️ **EVERY OTHER TEST IN THIS FILE DRIVES A `BgStage` DOUBLE, WHICH IS WHY
+# A BUG IN THE REAL BACKGROUND CODE COULD SIT THERE UNSEEN.** The doubles
+# record what the VM ASKED FOR; nothing anywhere checked that `AnimStage`
+# then did it. This section builds the real thing and reads the shader
+# uniforms back.
+#
+# The bug it pins: `_apply_bg_band` read `node.material` instead of creating
+# it, so a band set while no material existed was silently dropped. The
+# material is made lazily by whichever effect asks first, and
+# `clear_background` nulls it while leaving the layer sized — so a run that
+# clears a background and then sets a band hit exactly that hole.
+func _test_real_stage_band_surfaces() -> void:
+	var root := Control.new()
+	root.size = Vector2(1200, 800)
+	var backdrop := Control.new()
+	root.add_child(backdrop)
+	var layer := Control.new()
+	layer.size = Vector2(1200, 800)
+	root.add_child(layer)
+	add_child(root)
+
+	var stage := AnimStage.new(func(_m): return null, func(): return layer)
+	# Size the layer the way a real run does, then drop the material.
+	_chk("real stage installs a pulled background", stage.set_background("SURF_PLAYER"))
+	stage.clear_background()
+	var node := stage.background_layer()
+	_chk("...and clearing it nulls the material but keeps the layer sized",
+			node.material == null and node.size.y > 0.0)
+
+	stage.set_background_band(100.0, 400.0, 25.0)
+	var mat := node.material as ShaderMaterial
+	_chk("a band set with no material present still reaches the shader",
+			mat != null)
+	if mat != null:
+		# Stage pixels -> UV against the layer's own height, the same
+		# convention `_apply_bg_scroll` uses.
+		var want: float = 100.0 / node.size.y
+		_chk("...at the right UV row (%.5f, want %.5f)"
+				% [float(mat.get_shader_parameter("band_top")), want],
+				is_equal_approx(float(mat.get_shader_parameter("band_top")), want))
+
+	# The [M36E5] alpha window, same question asked of the other surface.
+	stage.set_background_alpha_band(240.0, 560.0, 13.0 / 16.0, 0.0)
+	var mat2 := node.material as ShaderMaterial
+	_chk("the alpha window reaches the shader too", mat2 != null)
+	if mat2 != null:
+		_chk("...with its inside coefficient intact (%.4f)"
+				% float(mat2.get_shader_parameter("alpha_inside")),
+				is_equal_approx(float(mat2.get_shader_parameter("alpha_inside")),
+						13.0 / 16.0))
+		_chk("...and a fully transparent outside, which is what windows it",
+				is_equal_approx(float(mat2.get_shader_parameter("alpha_outside")),
+						0.0))
+	stage.clear_background_alpha_band()
+	_chk("clearing the window restores both coefficients to opaque",
+			stage.background_alpha_band() == Vector4(0.0, 0.0, 1.0, 1.0))
+
+	root.queue_free()

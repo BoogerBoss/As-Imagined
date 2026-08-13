@@ -1302,6 +1302,12 @@ static func _is_player_side(vm: AnimScriptVM) -> bool:
 	if vm.stage != null and vm.stage.has_method("attacker_is_player_side"):
 		return vm.stage.attacker_is_player_side()
 	return true
+# ⚠️ **`_is_player_side` IS THE ATTACKER'S SIDE AND NOTHING ELSE.** For "which
+# side is THIS battler on", use `_battler_is_player_side` (defined with the
+# M36D batch 8 group below) — it exists, it handles the self/ally-target case
+# this cannot, and reaching for the attacker instead is a sign error rather
+# than a missing value, because the two sides are always opposite in singles.
+# See that function's own note for the upstream idiom it serves.
 
 
 static func _battler_node(vm: AnimScriptVM, anim_battler: int) -> Control:
@@ -3829,11 +3835,30 @@ static func _gba_rgb_to_color(packed: int) -> Color:
 # over the first ~26 frames, holds, then ramps out (:1099-1113), which is what
 # ends the animation: roughly 134 frames total.
 #
-# DISCLOSED UNPORTED: AnimTask_SurfWaveScanlineEffect (:1140) is an HBlank
-# per-scanline horizontal offset -- a hardware raster trick that gives the wave
-# its rippled edge. There is no scanline hook to port it to here, so the wave
-# is a clean diagonal sweep rather than a rippled one. The scroll, the palette
-# cycle, the blend ramp and every frame count ARE ported.
+# ⚠️ **[M36E5] THE SCANLINE EFFECT IS A PER-ROW *ALPHA WINDOW*, NOT A
+# HORIZONTAL OFFSET — and this comment used to say the opposite.**
+# `AnimTask_SurfWaveScanlineEffect` (:1140) sets `params.dmaDest =
+# &REG_BLDALPHA` (:1164), so what varies per scanline is the BLEND WEIGHT:
+# rows inside a band show the wave at the ramping coefficient, and every row
+# outside shows `data[2]` = `0x1000` = eva 0 / evb 16, i.e. the battle backdrop
+# with the wave fully transparent.
+#
+# **That band is what makes the wave WASH ACROSS the screen**, and it moves in
+# opposite directions per side (:1044-1069, :1172-1183):
+#
+#   player-side attacker:   rows [d4, 112), d4 shrinking 48 -> 0  (opens UPWARD)
+#   opponent-side attacker: rows [0, d5),   d5 growing   0 -> 112 (opens DOWNWARD)
+#
+# It was previously stood in for by a uniform `modulate.a` over the whole
+# layer, which fades the wave in and out IN PLACE — the reason Surf read as
+# "appears, then disappears" rather than as a wave. `AnimStage`'s own
+# `set_background_band` could not serve it: that surface is the OTHER scanline
+# register (BG1HOFS/BG2HOFS, a per-row horizontal scroll), which is a genuinely
+# different effect that other moves use.
+#
+# ⚠️ The peak coefficient is **13/16, not 1.0** — `data[3]` ramps to 13 and the
+# blend is `eva/16` — so the wave is deliberately never fully opaque over the
+# battlers. Dividing by 13 (which is what stood here) made it opaque at peak.
 static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	var stage = vm.stage
 	if stage == null or not stage.has_method("scroll_background_by"):
@@ -3855,9 +3880,14 @@ static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 		for i in range(_SURF_CYCLE_COUNT):
 			from_colors.append(pal[_SURF_CYCLE_FIRST + i])
 
+	var has_band: bool = stage.has_method("set_background_alpha_band")
 	var layer = stage.background_layer() if stage.has_method(
 			"background_layer") else null
-	var st := {"frame": 0, "cyc": 0, "step": 0, "blend": 0}
+	# The band's own two edges, in GBA screen rows, seeded per side exactly as
+	# `AnimTask_CreateSurfWave` seeds `data[4]`/`data[5]` on the scanline task.
+	var st := {"frame": 0, "cyc": 0, "step": 0, "blend": 0,
+			"top": 48.0 if player_side else 0.0,
+			"bottom": float(_SURF_BAND_MAX) if player_side else 0.0}
 	vm.add_stepper(func() -> bool:
 		st["frame"] = int(st["frame"]) + 1
 		stage.scroll_background_by(vel * scale)
@@ -3871,6 +3901,14 @@ static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 				stage.set_background_palette_remap(from_colors,
 						_rotated_palette(from_colors, int(st["step"])))
 
+		# The band opens one row per frame and then stays put -- source's
+		# `--data[4]` / `++data[5]`, each clamped once it reaches its end.
+		if player_side:
+			st["top"] = maxf(0.0, float(st["top"]) - 1.0)
+		else:
+			st["bottom"] = minf(float(_SURF_BAND_MAX),
+					float(st["bottom"]) + 1.0)
+
 		# Blend ramp: in over 13 steps of 2 frames, hold, out again. The
 		# animation ends when it has ramped back to nothing.
 		var t: int = int(st["frame"]) / 2
@@ -3878,11 +3916,19 @@ static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			st["blend"] = t
 		elif t > 54:
 			st["blend"] = maxi(0, 13 - (t - 54))
-		if layer != null:
-			layer.modulate.a = clampf(int(st["blend"]) / 13.0, 0.0, 1.0)
+		var inside := clampf(int(st["blend"]) / 16.0, 0.0, 1.0)
+		if has_band:
+			stage.set_background_alpha_band(float(st["top"]) * scale,
+					float(st["bottom"]) * scale, inside, 0.0)
+		elif layer != null:
+			# No band surface on this stage (a test double): fall back to the
+			# uniform fade rather than rendering the wave at full opacity.
+			layer.modulate.a = inside
 		if t > 54 and int(st["blend"]) <= 0:
 			if layer != null:
 				layer.modulate.a = 1.0
+			if has_band:
+				stage.clear_background_alpha_band()
 			if stage.has_method("clear_background_palette_remap"):
 				stage.clear_background_palette_remap()
 			if stage.has_method("clear_background"):
@@ -3890,6 +3936,12 @@ static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			stage.set_background_scroll(Vector2.ZERO)
 			return true
 		return false)
+
+
+# The scanline band's far edge, in GBA screen rows: source pins the player-side
+# band's bottom at 112 and grows the opponent-side band's until `> 111`, so both
+# stop at the same row rather than at the screen's own 160.
+const _SURF_BAND_MAX := 112
 
 
 const _SURF_CYCLE_FIRST := 1
@@ -5059,38 +5111,80 @@ static func _small_drifting_bubbles(vm: AnimScriptVM, ctx: Dictionary) -> void:
 
 # ── electric ──────────────────────────────────────────────────────────────
 
+# The five segments' TILE offsets, by bolt style -- source's own `r8`, which is
+# a LOCAL reinitialised on every call, so it does not accumulate across the
+# five and the last segment deliberately reuses the first's tile
+# (`battle_anim_electric.c:832-889`):
+#
+#   style 0: r8 = 0, r2 = 1  ->  0, 0+1, 0+2, 0+3, 0
+#   style n: r8 = 8, r2 = 4  ->  8, 8+4, 8+8, 8+12, 8
+#
+# ⚠️ **THE SEGMENTS ARE MEANT TO LOOK DIFFERENT FROM EACH OTHER — that is the
+# whole reason the tile advances.** Drawing one tile five times renders a
+# repeated spark rather than a jagged bolt.
+const _BOLT_TILES := {
+	0: [0, 1, 2, 3, 0],
+	1: [8, 12, 16, 20, 8],
+}
+
+# `AnimElectricBoltSegment`'s own first-frame OAM override, by style: 8x16 for
+# style 0, 16x16 otherwise. The template declares 8x8, so without this every
+# segment draws at half (or a quarter of) its real area — and since the
+# segments sit 16px apart, an 8px-tall one leaves a visible gap between each.
+const _BOLT_FRAME := {
+	0: Vector2i(8, 16),
+	1: Vector2i(16, 16),
+}
+
+
 # AnimTask_ElectricBolt (battle_anim_electric.c:819, step :832). args: 0/1
 # offset from the target, 2 bolt style. Spawns FIVE segments, one every two
 # frames, each 16px lower than the last -- the bolt draws itself downward
 # rather than appearing at once. 11 frames, then the task ends; the segments
 # outlive it by their own 15-frame life.
+#
+# ⚠️ **`_apply_anim_variant` USED TO STAND HERE AND WAS A SILENT NO-OP.**
+# `gElectricBoltSegmentSpriteTemplate` carries no anim table at all, so the
+# style argument reached nothing: all five segments rendered as the same 8x8
+# tile. Source expresses the style through the tile offset and the OAM size
+# instead, which is what the two tables above are.
 static func _electric_bolt(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	var scale := _scale(vm)
 	var origin := _battler_centre(vm, AnimStage.ANIM_TARGET) \
 			+ Vector2(float(vm.args[0]), float(vm.args[1])) * scale
-	var style: int = vm.args[2]
+	# Source branches on `if (!data[2])`, so every nonzero style takes the same
+	# arm -- keyed as 0-or-not rather than as an index, which is why an
+	# unexpected value degrades to the wide bolt instead of off the end.
+	var style: int = 0 if vm.args[2] == 0 else 1
+	var tiles: Array = _BOLT_TILES[style]
+	var frame: Vector2i = _BOLT_FRAME[style]
 	var st := {"t": 0, "spawned": 0}
 	vm.add_stepper(func() -> bool:
 		var t: int = int(st["t"])
 		if t % 2 == 0 and int(st["spawned"]) < 5:
+			var i: int = int(st["spawned"])
 			var seg := _make_sprite(vm, ctx)
 			if seg != null:
+				seg.set_frame_size(frame.x, frame.y, int(tiles[i]))
 				seg.centre = origin + Vector2(0.0,
-						16.0 * float(int(st["spawned"]) + 1) * scale)
-				_apply_anim_variant(seg, ctx, style)
+						16.0 * float(i + 1) * scale)
 				_electric_segment_life(vm, seg)
-			st["spawned"] = int(st["spawned"]) + 1
+			st["spawned"] = i + 1
 		st["t"] = t + 1
 		return int(st["t"]) >= 11)
 
 
 # AnimElectricBoltSegment (battle_anim_electric.c:912). One segment: static,
 # 15 frames, then gone. Reached directly when a script creates a segment
-# itself rather than through the bolt task.
+# itself rather than through the bolt task -- which no script in the roster
+# does today (measured: 0 direct `createsprite` sites), so this is the
+# unreached half of the callback. `data[0]` is 0 for a sprite the task did not
+# seed, which is the 8x16 arm.
 static func _electric_bolt_segment(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	var node := _make_sprite(vm, ctx)
 	if node == null:
 		return
+	node.set_frame_size(_BOLT_FRAME[0].x, _BOLT_FRAME[0].y)
 	node.centre = _battler_centre(vm, AnimStage.ANIM_TARGET)
 	_electric_segment_life(vm, node)
 
@@ -6316,7 +6410,13 @@ static func _spark_electricity_flashing(vm: AnimScriptVM, ctx: Dictionary) -> vo
 	var battler: int = AnimStage.ANIM_TARGET if (flags & 0x8000) != 0 \
 			else AnimStage.ANIM_ATTACKER
 	var x := float(vm.args[0])
-	if _is_player_side(vm):
+	# ⚠️ Mirrored on the ANCHOR battler's side, not the attacker's — bit 15 of
+	# arg 7 above chose that anchor, and source negates on `IsOnPlayerSide(
+	# battler)` with the same `battler` it then positions against
+	# (`battle_anim_electric.c:761-776`). Using the attacker's side inverted
+	# the offset on 24 of this behavior's 236 call sites — every one whose
+	# anchor is the target and whose x offset is nonzero.
+	if _battler_is_player_side(vm, battler):
 		x = -x
 	var base := _battler_centre(vm, battler) \
 			+ Vector2(x, float(vm.args[1])) * scale
@@ -6349,7 +6449,12 @@ static func _thunderbolt_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		return
 	var scale := _scale(vm)
 	var x := float(vm.args[1])
-	if _is_player_side(vm):
+	# ⚠️ Source negates on `IsOnPlayerSide(gBattleAnimTarget)`
+	# (`battle_anim_electric.c:740`) — the TARGET, which is also what it
+	# positions against two lines later. The attacker's side is the opposite
+	# one in singles, so reading it flipped the offset on the 2 of this
+	# behavior's 9 call sites that pass a nonzero x.
+	if _battler_is_player_side(vm, AnimStage.ANIM_TARGET):
 		x = -x
 	node.centre = _battler_centre(vm, AnimStage.ANIM_TARGET) \
 			+ Vector2(x, float(vm.args[2])) * scale
@@ -7773,6 +7878,15 @@ static func _spawn_template_sprite(vm: AnimScriptVM, layer: Control,
 # Resolves whether a given anim-battler sits on the player's side. The
 # attacker's side is known outright; the others are the opposite of it unless
 # the stage resolves them to the same Pokemon (a self- or ally-target).
+#
+# ⚠️ **THIS IS THE ONE TO USE FOR UPSTREAM'S MIRRORING IDIOM, NOT
+# `_is_player_side`.** That idiom is `if (IsContest() || IsOnPlayerSide(
+# battler)) args[n] = -args[n]`, where `battler` is whichever battler the
+# sprite is ANCHORED to — frequently the target. Reading the attacker's side
+# there does not lose the offset, it INVERTS it, so the effect lands on the
+# wrong side of the mon and still looks deliberate. Two electric behaviors
+# shipped that way (`AnimSparkElectricityFlashing`, `AnimThunderboltOrb`) and
+# were only caught by reading their source beside the port.
 static func _battler_is_player_side(vm: AnimScriptVM, anim_battler: int) -> bool:
 	var atk_is_player := _is_player_side(vm)
 	if anim_battler == AnimStage.ANIM_ATTACKER \

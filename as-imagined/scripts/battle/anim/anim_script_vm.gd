@@ -672,6 +672,38 @@ func _capture_battler_baseline() -> void:
 			"mat": node.material,
 			"pivot": node.pivot_offset,
 		})
+		# ⚠️ **[M36P2] THE PER-NODE DEFORM METAS ARE CLEARED HERE, AND THAT IS
+		# THE WHOLE FIX.** `MonOffset`/`MonScale` record a battler's resting
+		# transform on the NODE the first time anything displaces it, and
+		# nothing ever cleared it — so the record survived the run that made it
+		# and every later run reused it. That is invisible only while the
+		# sprite never moves between animations, and it MOVES ON EVERY SWITCH:
+		# singles reuses ONE node per side, and
+		# `_apply_bottom_anchored_front_sprite` (`battle_screen_shared.gd:4600`)
+		# re-anchors it per species from `sprite_y_offsets.json`, whose values
+		# span 0-24 GBA px — **up to 120 stage px at this project's 5x scale**.
+		#
+		# So after the first faint or switch, every shake yanked the incoming
+		# Pokemon to the OUTGOING one's anchor for the duration of the script,
+		# and `_restore_battler_baseline` below snapped it back the instant the
+		# script ended. Reported from play as the opponent shifting to another
+		# position on Giga Drain and Solar Beam and snapping back afterwards —
+		# it is not those two moves, it is every one of the 436 that reach
+		# `AnimTask_ShakeMon`.
+		#
+		# Cleared rather than overwritten so the metas keep meaning exactly what
+		# `MonOffset`'s own doc comment already says they mean — "the FIRST
+		# behavior to displace a battler records its true position" — with the
+		# RUN, not the node, as the scope. `_finish`'s meta-driven nets then
+		# read a record this run made.
+		#
+		# ⚠️ Before the pivot write below, deliberately: `MonScale` stores
+		# `META_PIVOT` from whatever it finds, so clearing after would discard a
+		# record that had already been re-made.
+		node.remove_meta(AnimBehaviors.MonOffset.META_BASE)
+		node.remove_meta(AnimBehaviors.MonScale.META_SCALE)
+		node.remove_meta(AnimBehaviors.MonScale.META_ROT)
+		node.remove_meta(AnimBehaviors.MonScale.META_PIVOT)
 		# ⚠️ **[M36P] THE PIVOT IS SET HERE, FOR EVERY BATTLER, FOR THE WHOLE
 		# RUN.** A `Control` rotates and scales about `pivot_offset`, which
 		# defaults to `(0, 0)` — the TOP-LEFT CORNER of a 320-357px box — so

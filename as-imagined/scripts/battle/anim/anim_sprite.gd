@@ -90,8 +90,36 @@ func _configure(tag_name: String, frame_w: int, frame_h: int) -> void:
 	pivot_offset = size * 0.5
 
 
+# Re-frames an already-created sprite at a different OAM size.
+#
+# ⚠️ **THIS IS A REAL UPSTREAM IDIOM, NOT A CONVENIENCE.** A sprite's OAM shape
+# and size are template defaults that a callback may OVERRIDE on its first
+# frame — `AnimElectricBoltSegment` (`battle_anim_electric.c:912`) is the
+# worked example, writing `oam.shape/size` to 8x16 or 16x16 depending on the
+# bolt style while its template declares 8x8. Without this the port draws the
+# template default forever, which for that behavior meant five 8px sparks
+# spaced 16px apart: a dotted line where the reference draws a bolt.
+#
+# The tile offset is re-applied because `set_tile_offset` clamps against the
+# frame size, so a resize can legitimately change which rect a given tile
+# index resolves to. This class's own header already anticipated the case
+# ("ANIM_TAG_SPARK is used as 8x8 AND 8x16"); this is the setter that was
+# missing.
+func set_frame_size(frame_w: int, frame_h: int, tile: int = -1) -> void:
+	_frame_size = Vector2i(maxi(frame_w, 8), maxi(frame_h, 8))
+	size = Vector2(_frame_size)
+	pivot_offset = size * 0.5
+	set_tile_offset(tile if tile >= 0 else _current_tile)
+	_apply_position()
+
+
+# The tile index currently framed, so a resize can re-resolve it.
+var _current_tile: int = 0
+
+
 # The whole point of tile-offset framing: resolve `ANIMCMD_FRAME(tile, dur)`.
 func set_tile_offset(tile: int) -> void:
+	_current_tile = tile
 	if _atlas == null:
 		return
 	var x := (tile % _tiles_wide) * 8

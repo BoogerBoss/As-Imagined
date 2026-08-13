@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_shake_platforms()
 	_test_scrolling_fog()
 	_test_surf_wave()
+	_test_surf_scanline_alpha_band()
 	_test_metallic_shine()
 	_test_coverage()
 	_test_b19_scary_face_ramps_holds_and_clears()
@@ -119,6 +120,23 @@ class BgStage extends RefCounted:
 
 	func clear_background_palette_remap() -> void:
 		remap_cleared += 1
+
+	# [M36E5] The per-scanline ALPHA window: (top, bottom, inside, outside),
+	# top/bottom in stage pixels. `pixel_scale()` above is 1.0, so on this
+	# double they read as GBA screen rows directly.
+	var alpha_band := Vector4(0.0, 0.0, 1.0, 1.0)
+	var alpha_band_cleared := 0
+
+	func set_background_alpha_band(top: float, bottom: float,
+			inside: float, outside: float) -> void:
+		alpha_band = Vector4(top, bottom, inside, outside)
+
+	func clear_background_alpha_band() -> void:
+		alpha_band = Vector4(0.0, 0.0, 1.0, 1.0)
+		alpha_band_cleared += 1
+
+	func background_alpha_band() -> Vector4:
+		return alpha_band
 
 
 func _vm(stage: BgStage) -> AnimScriptVM:
@@ -367,6 +385,83 @@ func _test_surf_wave() -> void:
 	_run(vm3, "AnimTask_CreateSurfWave")
 	_chk("arg0 selects the muddy-water recolor where one was pulled",
 			s3.bg_name == "SURF_MUDDY_PLAYER")
+
+
+# [M36E5] Surf's scanline effect is a per-row ALPHA WINDOW, and the window is
+# what makes the wave wash across the screen rather than fade in on the spot.
+#
+# `AnimTask_SurfWaveScanlineEffect` points its DMA at REG_BLDALPHA
+# (`battle_anim_water.c:1164`), so rows inside `[data[4], data[5])` show the
+# wave at the ramping coefficient and every row outside shows the battle
+# backdrop with the wave fully transparent. The band's two edges are seeded
+# per side (:1044-1069) and one of them moves one row per frame (:1172-1183).
+#
+# ⚠️ **THE SIDES OPEN IN OPPOSITE DIRECTIONS, AND THAT IS THE ASSERTION.** A
+# port that installed a band but moved the wrong edge would still produce
+# "there is a band" and "it changes", so both directions are pinned
+# absolutely: the player-side band's TOP falls while its bottom holds, and
+# the opponent-side band's BOTTOM rises while its top holds.
+func _test_surf_scanline_alpha_band() -> void:
+	var stage := BgStage.new()
+	stage.player_side = true
+	var vm := _vm(stage)
+	_run(vm, "AnimTask_CreateSurfWave")
+	_pump(vm, 1)
+	var b0 := stage.background_alpha_band()
+	_chk("Surf installs a per-scanline alpha window at all (%s)" % b0,
+			b0.y > b0.x)
+	# The whole point of the window: outside it the wave is INVISIBLE, so the
+	# battlefield shows through. A uniform fade cannot express this.
+	_chk("...whose outside coefficient is fully transparent (%.2f)" % b0.w,
+			is_equal_approx(b0.w, 0.0))
+	_chk("...seeded on the player side as rows 48..112, per source's data[4]/"
+			+ "data[5] (%.0f..%.0f)" % [b0.x, b0.y],
+			is_equal_approx(b0.y, 112.0) and b0.x > 40.0 and b0.x <= 48.0)
+
+	_pump(vm, 20)
+	var b1 := stage.background_alpha_band()
+	_chk("...and OPENS UPWARD: the top edge climbs toward row 0 (%.0f -> %.0f)"
+			% [b0.x, b1.x], b1.x < b0.x)
+	_chk("...while the bottom edge stays pinned at 112 (%.0f)" % b1.y,
+			is_equal_approx(b1.y, 112.0))
+
+	# The opposite side sweeps the other way -- source swaps which edge moves.
+	var s2 := BgStage.new()
+	s2.player_side = false
+	var vm2 := _vm(s2)
+	_run(vm2, "AnimTask_CreateSurfWave")
+	_pump(vm2, 1)
+	var c0 := s2.background_alpha_band()
+	_pump(vm2, 20)
+	var c1 := s2.background_alpha_band()
+	_chk("an opponent-side Surf OPENS DOWNWARD instead (%.0f -> %.0f)"
+			% [c0.y, c1.y], c1.y > c0.y)
+	_chk("...with its top edge pinned at row 0 (%.0f)" % c1.x,
+			is_equal_approx(c1.x, 0.0))
+	_chk("...and stops at row 112 like the other side does",
+			_band_after(s2, vm2, 200).y <= 112.0)
+
+	# ⚠️ The peak coefficient is 13/16, NOT 1.0: `data[3]` ramps to 13 and the
+	# blend is `eva/16`, so the wave is never fully opaque over the battlers.
+	# Dividing by 13 -- which is what the uniform fade did -- reaches 1.0.
+	var s3 := BgStage.new()
+	var vm3 := _vm(s3)
+	_run(vm3, "AnimTask_CreateSurfWave")
+	_pump(vm3, 40)          # past the 26-frame ramp, inside the hold
+	var peak := s3.background_alpha_band().z
+	_chk("the wave holds at 13/16 opacity, not fully opaque (%.4f)" % peak,
+			is_equal_approx(peak, 13.0 / 16.0))
+
+	# And it takes the window down with it, or the next background installed
+	# on this layer would be rendered through Surf's window.
+	_pump(vm3, 400)
+	_chk("Surf clears its alpha window when it ends",
+			s3.alpha_band_cleared >= 1)
+
+
+func _band_after(stage: BgStage, vm: AnimScriptVM, frames: int) -> Vector4:
+	_pump(vm, frames)
+	return stage.background_alpha_band()
 
 
 # ── AnimTask_MetallicShine ────────────────────────────────────────────────

@@ -41,6 +41,7 @@ func _ready() -> void:
 	_test_query_tasks()
 	_test_full_scripts_run()
 	_test_abort_restores_mon()
+	_test_mon_base_is_per_run_not_per_node()
 
 	var total := _pass + _fail
 	print("m36c_anim_behaviors_test: %d/%d passed" % [_pass, total])
@@ -435,6 +436,75 @@ func _test_abort_restores_mon() -> void:
 			node.has_meta(AnimBehaviors.MonOffset.META_BASE)
 			and (node.get_meta(AnimBehaviors.MonOffset.META_BASE) as Vector2)
 				.is_equal_approx(base))
+
+
+# [M36P2] A battler's recorded base must be scoped to the RUN, not to the
+# NODE — the defect this exists for is the base OUTLIVING the run that made it.
+#
+# ⚠️ **IT IS NOT A HYPOTHETICAL, AND SINGLES IS THE WORST CASE.** There is ONE
+# sprite node per side for the whole battle, and
+# `_apply_bottom_anchored_front_sprite` (`battle_screen_shared.gd:4600`)
+# re-anchors it per species on every send-out from `sprite_y_offsets.json`,
+# whose values span 0-24 GBA px = **up to 120 stage px at 5x**. So the node's
+# resting position genuinely changes at every switch, and a base recorded
+# before one is wrong for every animation after it.
+#
+# ⚠️ **NO END-STATE ASSERTION CAN SEE THIS, which is why it reached play.**
+# `_restore_battler_baseline` snaps the mon back at `_finish()`, so
+# `m36_leak_harness` — which runs all ~780 scripts and checks exactly that
+# end state — passed throughout. The damage is entirely MID-RUN, so this
+# samples every frame. Standing rule (16), arrived at from a new direction.
+#
+# Driven through `vm.start()` rather than `_drive`, because the clearing lives
+# in `_capture_battler_baseline` and `_drive` deliberately bypasses it.
+func _test_mon_base_is_per_run_not_per_node() -> void:
+	const GIGA_DRAIN := 202
+	var label := AnimData.script_for_move(GIGA_DRAIN)
+	if label == "" or not _dispatcher.can_play_move(GIGA_DRAIN):
+		_chk("Giga Drain is playable (fixture for the per-run base)", false)
+		return
+
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_TARGET]
+	var first_rest := node.position
+
+	var vm1 := _make_vm(stage)
+	vm1.start(label)
+	_run(vm1)
+	# Non-vacuity: a "fix" that simply stopped recording a base would satisfy
+	# every assertion below, and would break the in-run restore nets.
+	_chk("a run still records the battler's base on the node",
+			node.has_meta(AnimBehaviors.MonOffset.META_BASE)
+			and (node.get_meta(AnimBehaviors.MonOffset.META_BASE) as Vector2)
+				.is_equal_approx(first_rest))
+
+	# The switch: one node, a new species, a new anchor.
+	var moved := first_rest + Vector2(0.0, -80.0)
+	node.position = moved
+
+	var vm2 := _make_vm(stage)
+	vm2.start(label)
+	_chk("start() drops the previous run's recorded base",
+			not node.has_meta(AnimBehaviors.MonOffset.META_BASE))
+
+	var worst := 0.0
+	var frames := 0
+	while vm2.is_running() and frames < 2000:
+		vm2.step()
+		frames += 1
+		worst = maxf(worst, absf(node.position.y - moved.y))
+
+	# Giga Drain shakes ANIM_TARGET by 5 GBA px (`AnimTask_ShakeMon, 5,
+	# ANIM_TARGET, 0, 5, 5, 1`), so the only legitimate excursion is that
+	# amplitude. Against a stale base it would be the amplitude PLUS the 80 px
+	# the sprite moved — the two are 4x apart, so this discriminates cleanly
+	# rather than resting on a tight tolerance.
+	var amplitude := 5.0 * stage.pixel_scale()
+	_chk("the shake still displaces the mon mid-run", worst > 1.0)
+	_chk("mid-run displacement is measured from the CURRENT resting position",
+			worst <= amplitude + 1.0)
+	_chk("the run ends with the mon at its real resting position",
+			node.position.is_equal_approx(moved))
 
 
 func _anim_sprites(stage: FakeStage) -> Array:

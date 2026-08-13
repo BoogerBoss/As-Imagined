@@ -248,6 +248,10 @@ func clear_background() -> void:
 		node.texture = null
 		node.material = null
 		_bg_scroll = Vector2.ZERO
+		# The material is gone, so the shader uniforms are too -- reset the
+		# mirror of them, or the next run's `background_alpha_band()` would
+		# report a window that is not installed anywhere.
+		_bg_alpha_band = Vector4(0.0, 0.0, 1.0, 1.0)
 
 
 # A palette-cycle on the background layer, the port of rotating gPlttBufferFaded
@@ -281,6 +285,16 @@ uniform int pal_count = 0;
 uniform float band_top = 0.0;
 uniform float band_bottom = 0.0;
 uniform float band_offset = 0.0;
+// [M36E5] The per-scanline ALPHA window -- a SECOND, unrelated scanline
+// surface. `ScanlineEffect_SetParams` is pointed at a register, and which
+// register decides what the effect IS: the band above is
+// REG_BG1HOFS/REG_BG2HOFS (a horizontal scroll that varies by row), this one
+// is REG_BLDALPHA (a blend weight that varies by row). Surf uses the SECOND.
+// Disabled when bottom <= top, in which case both coefficients are 1.
+uniform float alpha_band_top = 0.0;
+uniform float alpha_band_bottom = 0.0;
+uniform float alpha_inside = 1.0;
+uniform float alpha_outside = 1.0;
 // ⚠️ **BOTH AXES ALWAYS WRAP, AND A PREVIOUS "FIX" THAT MADE THE VERTICAL
 // CONDITIONAL WAS WRONG — DO NOT REINTRODUCE IT.** The tempting evidence is
 // `UpdateAnimBg3ScreenSize` (battle_anim_mons.c:965), which pairs a large
@@ -306,6 +320,14 @@ void fragment() {
 				break;
 			}
 		}
+	}
+	// The alpha window keys off the SCREEN row (UV.y is fixed to the layer,
+	// which is anchored top-left and never scrolled as a node), not off the
+	// scrolled `uv` -- a scanline effect is a property of the display, so a
+	// scrolling background must not drag its own window along with it.
+	if (alpha_band_bottom > alpha_band_top) {
+		c.a *= (UV.y >= alpha_band_top && UV.y < alpha_band_bottom)
+				? alpha_inside : alpha_outside;
 	}
 	COLOR = c;
 }
@@ -398,12 +420,89 @@ func background_band() -> Vector3:
 	return _bg_band
 
 
-func _apply_bg_band(node: TextureRect) -> void:
-	var mat := node.material as ShaderMaterial
+# ── [M36E5] The per-scanline ALPHA window ─────────────────────────────────
+#
+# The other thing `ScanlineEffect_SetParams` is used for, and the one Surf
+# actually needs: `AnimTask_SurfWaveScanlineEffect` sets
+# `params.dmaDest = &REG_BLDALPHA` (`battle_anim_water.c:1164`), so the wave's
+# BLEND WEIGHT varies per row -- rows inside a moving band show the layer at
+# the ramping coefficient, every row outside shows the battle backdrop
+# untouched. That band is what makes the wave WASH ACROSS the screen; a
+# uniform fade over the whole layer, which is what stood here before, makes it
+# appear and vanish in place.
+#
+# `top`/`bottom` are STAGE pixels, matching `set_background_band`'s convention.
+# `inside`/`outside` are 0..1 alpha. An empty band (bottom <= top) disables it.
+var _bg_alpha_band := Vector4(0.0, 0.0, 1.0, 1.0)  # top, bottom, inside, outside
+
+
+func set_background_alpha_band(top: float, bottom: float,
+		inside: float, outside: float) -> void:
+	var node := background_layer()
+	if node == null:
+		return
+	_bg_alpha_band = Vector4(top, bottom, clampf(inside, 0.0, 1.0),
+			clampf(outside, 0.0, 1.0))
+	_apply_bg_alpha_band(node)
+
+
+func clear_background_alpha_band() -> void:
+	set_background_alpha_band(0.0, 0.0, 1.0, 1.0)
+
+
+func background_alpha_band() -> Vector4:
+	return _bg_alpha_band
+
+
+func _apply_bg_alpha_band(node: TextureRect) -> void:
+	var span := node.size
+	if span.y <= 0.0:
+		return
+	# ⚠️ `_bg_material()`, not `node.material` -- this can be the FIRST effect
+	# a run installs (Surf sets its band before any palette remap when the
+	# background carries no cycling palette), and reading the material instead
+	# of creating it would silently drop the band in that case.
+	var mat := _bg_material()
 	if mat == null:
 		return
+	mat.set_shader_parameter("alpha_band_top", _bg_alpha_band.x / span.y)
+	mat.set_shader_parameter("alpha_band_bottom", _bg_alpha_band.y / span.y)
+	mat.set_shader_parameter("alpha_inside", _bg_alpha_band.z)
+	mat.set_shader_parameter("alpha_outside", _bg_alpha_band.w)
+
+
+func _apply_bg_band(node: TextureRect) -> void:
 	var span := node.size
 	if span.x <= 0.0 or span.y <= 0.0:
+		return
+	# ⚠️ **`_bg_material()`, NOT `node.material` — READING IT DROPPED THE BAND
+	# WHENEVER THIS WAS THE FIRST EFFECT A RUN INSTALLED.** The material is
+	# created lazily by whichever effect asks for it first, so a band set
+	# before the scroll or the palette found none and returned silently.
+	# Reachable today after `clear_background` (which nulls the material while
+	# leaving the layer sized), and now consistent with
+	# `_apply_bg_alpha_band` below, which had to create the material for
+	# exactly this reason.
+	#
+	# ⚠️ **THIS DOES NOT MAKE THE ELEVATION BAND VISIBLE, AND AN EARLIER
+	# VERSION OF THIS COMMENT CLAIMED THE OPPOSITE.** It said the only caller
+	# reaches here after `set_background`, "which is why it has never
+	# misfired". Measured, and both halves are false: **none of the five
+	# scripts that call `AnimTask_RapinSpinMonElevation` installs an animation
+	# background at all** (Rapid Spin, Ice Spinner, Aqua Step, Spin Out,
+	# Mortal Spin — zero `fadetobg`/`changebg` between the label and the
+	# task), so on those the layer is still `size == (0, 0)`, textureless and
+	# `visible == false`, and the `span` guard above returns first.
+	#
+	# That is a REAL, SEPARATE GAP and is flagged rather than fixed here: on
+	# hardware this scanline effect is pointed at BG1HOFS/BG2HOFS, which
+	# scroll the BATTLEFIELD BACKDROP, and in this port that backdrop is the
+	# battle scene's own `Background` node — not `AnimBgLayer`, which exists
+	# only to host a background a move installs. Making it visible means
+	# deciding which node the band owns, which is a design call rather than a
+	# guard fix.
+	var mat := _bg_material()
+	if mat == null:
 		return
 	# Same stage-pixels-to-UV convention `_apply_bg_scroll` uses.
 	mat.set_shader_parameter("band_top", _bg_band.x / span.y)

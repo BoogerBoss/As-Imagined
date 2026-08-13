@@ -287,6 +287,8 @@ func _ready() -> void:
 	_test_b39_eruption_rocks_all_launch_upward()
 	_test_b39_eruption_gravity_is_quadratic_and_subpixel()
 	_test_b39_coverage()
+	_test_rev_electric_bolt_segments_vary()
+	_test_rev_electric_mirrors_key_on_the_anchor_battler()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -9128,3 +9130,132 @@ func _test_b39_coverage() -> void:
 	_chk("b39 coverage reaches the measured level (%d)" % int(cov["playable"]),
 			int(cov["playable"]) >= 860)
 	_chk("b39 Eruption plays", _dispatcher.can_play_move(284))
+
+
+# ─── [M36 review] the electric-family corrections ─────────────────────────
+#
+# Both of these were found by reading the reference beside the port rather
+# than from a failing test, and neither is visible in Thunderbolt itself —
+# the one script that uses all three behaviors passes a ZERO x offset to the
+# two mirrored ones, so the sign error there is inert. They are asserted on
+# fixtures built to make the divergence expressible, which is the only way
+# this class of bug is observable at all.
+
+
+# `AnimTask_ElectricBolt_Step` (battle_anim_electric.c:832) gives each of the
+# five segments its OWN tile, and `AnimElectricBoltSegment` (:912) overrides
+# the OAM to 8x16 or 16x16 by style. The port did neither: it called
+# `_apply_anim_variant`, which is a silent no-op for this template (it has no
+# anim table), so five identical 8x8 tiles were stacked 16px apart — a dotted
+# line rather than a bolt.
+#
+# ⚠️ **THE FIFTH SEGMENT DELIBERATELY REUSES THE FIRST'S TILE**, because `r8`
+# is a local reinitialised on every call and the `case 8` arm never adds to
+# it. That is the assertion worth having: a plausible "advance the tile each
+# time" implementation gives five DISTINCT tiles and passes any test that
+# only checks the segments differ from each other.
+func _test_rev_electric_bolt_segments_vary() -> void:
+	for style in [0, 1]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[2] = style
+		_run_b5(vm, "AnimTask_ElectricBolt", "gElectricBoltSegmentSpriteTemplate")
+		_step(vm, 12)
+		var segs := _sprites_of(stage)
+		if segs.size() != 5:
+			_chk("rev bolt style %d spawns five segments (%d)"
+					% [style, segs.size()], false)
+			continue
+		# Spawn order is child order, which is the order the tiles are keyed by.
+		var regions: Array = []
+		var sizes: Array = []
+		for sp in segs:
+			regions.append((sp as AnimSprite)._atlas.region)
+			sizes.append((sp as AnimSprite).size)
+
+		var want_size := Vector2(8, 16) if style == 0 else Vector2(16, 16)
+		var all_sized := true
+		for s in sizes:
+			if not (s as Vector2).is_equal_approx(want_size):
+				all_sized = false
+		_chk("rev bolt style %d frames its segments %s, not the template's 8x8"
+				% [style, want_size], all_sized)
+
+		var distinct: Dictionary = {}
+		for i in range(4):
+			distinct[regions[i]] = true
+		_chk("rev bolt style %d gives its first four segments four DIFFERENT "
+				% style + "tiles (%d distinct)" % distinct.size(),
+				distinct.size() == 4)
+		_chk("rev bolt style %d wraps: the fifth segment reuses the first's tile"
+				% style,
+				(regions[4] as Rect2).is_equal_approx(regions[0] as Rect2))
+
+
+# Upstream's mirroring idiom negates the x offset when the battler the sprite
+# is ANCHORED TO is on the player's side — `IsOnPlayerSide(battler)` for
+# `AnimSparkElectricityFlashing` (:761-776, anchor chosen by bit 15 of arg 7)
+# and `IsOnPlayerSide(gBattleAnimTarget)` for `AnimThunderboltOrb` (:740).
+# Both ported functions read the ATTACKER's side, which in singles is always
+# the opposite one, so the offset landed mirrored rather than missing.
+#
+# ⚠️ **THE FIXTURE HAS TO PUT THE ANCHOR AND THE ATTACKER ON DIFFERENT SIDES,
+# OR THE TWO RULES AGREE AND THE TEST PROVES NOTHING** (standing rule 13).
+# Both cases below anchor on the TARGET with a player-side attacker, and the
+# sign is asserted against the anchor's own centre — absolutely, not merely
+# "the two sides differ", which would hold whichever battler you keyed on.
+func _test_rev_electric_mirrors_key_on_the_anchor_battler() -> void:
+	const X := 20
+
+	# Spark: arg 7 bit 15 anchors it on the target; arg 0 is the x offset.
+	var stage := FakeStage.new()
+	stage.player_side = true          # attacker player-side => target is not
+	var vm := _vm(stage)
+	vm.args[0] = X
+	vm.args[2] = 0                    # zero orbit radius, so only the base shows
+	vm.args[3] = 40
+	vm.args[7] = -32765               # 0x8003: anchor = target, modulus 3
+	_run_b5(vm, "AnimSparkElectricityFlashing",
+			"gSparkElectricityFlashingSpriteTemplate")
+	_step(vm, 1)
+	var spark: AnimSprite = _b5_last
+	if spark == null:
+		_chk("rev spark spawns", false)
+	else:
+		var anchor := stage.center_of(AnimStage.ANIM_TARGET)
+		var dx: float = spark.centre.x - anchor.x
+		_chk("rev spark anchored on the TARGET offsets +x when the target is "
+				+ "NOT player-side (dx=%.1f)" % dx, dx > 0.0)
+
+	# Orb: always anchored on the target; arg 1 is the x offset.
+	var s2 := FakeStage.new()
+	s2.player_side = true
+	var vm2 := _vm(s2)
+	vm2.args[0] = 44                  # lifetime
+	vm2.args[1] = X
+	vm2.args[3] = 3                   # flicker interval
+	_run_b5(vm2, "AnimThunderboltOrb", "gThunderboltOrbSpriteTemplate")
+	var orb: AnimSprite = _b5_last
+	if orb == null:
+		_chk("rev thunderbolt orb spawns", false)
+	else:
+		var anchor2 := s2.center_of(AnimStage.ANIM_TARGET)
+		var dx2: float = orb.centre.x - anchor2.x
+		_chk("rev thunderbolt orb offsets +x when the target is NOT "
+				+ "player-side (dx=%.1f)" % dx2, dx2 > 0.0)
+
+	# The other side, so neither assertion above can be passing on a constant.
+	var s3 := FakeStage.new()
+	s3.player_side = false            # attacker opponent-side => target IS player
+	var vm3 := _vm(s3)
+	vm3.args[0] = 44
+	vm3.args[1] = X
+	vm3.args[3] = 3
+	_run_b5(vm3, "AnimThunderboltOrb", "gThunderboltOrbSpriteTemplate")
+	var orb3: AnimSprite = _b5_last
+	if orb3 == null:
+		_chk("rev thunderbolt orb spawns on the mirrored side", false)
+	else:
+		var dx3: float = orb3.centre.x - s3.center_of(AnimStage.ANIM_TARGET).x
+		_chk("rev thunderbolt orb NEGATES x when the target IS player-side "
+				+ "(dx=%.1f)" % dx3, dx3 < 0.0)
