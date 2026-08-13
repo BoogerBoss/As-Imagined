@@ -1103,11 +1103,25 @@ milestones above track state — do not let it go stale.
 
 ### Handoff: who does what
 
-- **Rob commits.** Claude Code does not commit or push. Sessions end with
-  changes left in the working tree; the standard closing line in this file's
-  own status history is *"No commit made this session — per standing
-  instruction, Rob commits."* (later sessions phrase it *"Nothing committed to
-  git, per standing instruction."*). Both mean the same thing.
+- **Confirm with Rob before committing.** *(Rule changed 2026-08-13. It
+  previously read "Rob commits — Claude Code does not commit or push"; Claude
+  Code may now commit, but only after asking.)* The default is still to end a
+  session with changes in the working tree. When committing looks right, **say
+  what you would commit and ask** — do not commit as the closing act of a task
+  because the work is done. One approval covers one commit: it does not carry
+  to the next piece of work, and it never extends to `push`, which is a
+  separate ask.
+
+  ⚠️ **Stage by explicit path, never `git add -A` or `git add .`.** This
+  working tree routinely carries hundreds of unrelated modified files
+  (regenerated map scenes, atlases, `.import` metadata), so a bulk add would
+  sweep another session's uncommitted work into your commit. Name every path.
+
+  Older status entries in this file and in `docs/status/` end with *"No commit
+  made this session — per standing instruction, Rob commits."* or *"Nothing
+  committed to git, per standing instruction."* Both are accurate records of
+  the rule as it stood when they were written; they are history, not the
+  current rule, and are deliberately not rewritten.
 - **Rob runs full-suite sweeps.** Full `scripts/count_assertions.sh` sweeps
   are Rob's manual step. Claude Code runs tier-specific suites for the work in
   hand; it does not run a full sweep to populate a status column (see the
