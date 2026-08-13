@@ -411,10 +411,24 @@ func _test_exp_fill_sits_inside_the_databox_groove() -> void:
 			is_equal_approx(exp_fill.offset_left, ox + 62.0 * scale))
 	_chk("ExpFill right edge is the groove's own right edge",
 			is_equal_approx(exp_fill.offset_right, ox + 232.0 * scale))
-	_chk("ExpFill top edge is the groove's own top edge",
-			is_equal_approx(exp_fill.offset_top, oy + 78.0 * scale))
-	_chk("ExpFill bottom edge is the groove's own bottom edge",
-			is_equal_approx(exp_fill.offset_bottom, oy + 82.0 * scale))
+	# ⚠️ **A DELIBERATE 1px LIFT OFF THE ART-DERIVED GROOVE — Rob's call from
+	# play, 2026-08-13: "exp bar fill needs to move 1px up".** The measurement
+	# above says the fill sat exactly on the groove, and it was moved anyway
+	# because it reads low on screen; the likeliest reason is the fill
+	# texture's own top padding, which the groove measurement cannot see.
+	#
+	# Kept as `groove + NUDGE` rather than by editing the 78/82 literals, so
+	# the derivation this test exists for still holds: re-authoring the
+	# Background still moves the expectation with it, and the divergence stays
+	# NAMED instead of hiding inside a number that looks measured.
+	#
+	# ⚠️ Vertical only — left/right above are still flush to the groove, so a
+	# future session must not "restore symmetry" by nudging those too.
+	var exp_nudge_y := -1.0
+	_chk("ExpFill top edge is the groove's own top edge, lifted 1px",
+			is_equal_approx(exp_fill.offset_top, oy + 78.0 * scale + exp_nudge_y))
+	_chk("ExpFill bottom edge is the groove's own bottom edge, lifted 1px",
+			is_equal_approx(exp_fill.offset_bottom, oy + 82.0 * scale + exp_nudge_y))
 	# The old geometry reached its right edge via scale.x = 0.92 on an
 	# over-wide rect, which is why the four offsets alone did not describe
 	# where the bar actually drew. A non-unit scale here would make every
