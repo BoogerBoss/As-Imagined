@@ -35,6 +35,11 @@ func _ready() -> void:
 	_test_leech_seed_line_is_buffered_not_logged()
 	_test_yawn_line_is_buffered_not_logged()
 	_test_buffered_effect_lines_drain_after_the_anim_beat()
+	_test_anim_beat_lands_after_the_announcement_not_at_the_end()
+	_test_multiple_anims_for_one_move_keep_emit_order()
+	_test_anim_beat_appends_when_no_move_is_announced()
+	_test_clearing_the_queue_resets_the_insert_position()
+	_test_real_handler_queues_its_anim_after_the_announcement()
 	_test_move_executed_pushes_hp_drain_beat_on_damage()
 	_test_move_executed_no_hp_drain_beat_when_no_damage()
 	_test_hp_drain_beat_from_frac_clamped_at_one()
@@ -1082,3 +1087,177 @@ func _test_battle_end_line_is_source_shaped_per_battle_kind() -> void:
 			sim_lose._pending_beats.size() == 1
 			and sim_lose._pending_beats[0].get("text", "") == "You lose!")
 	sim_lose.free()
+
+
+# ── The move's animation plays BEFORE its effect text, at the queue site ────
+#
+# [Bugfix, live-reported: "move effects like leech seed and yawn text trigger
+# before animation"] The two reported moves were fixed by buffering, but the
+# cause is general: BattleManager emits a move's effect signals BEFORE
+# `move_executed`, and `move_executed` is what queues the animation — so ANY
+# handler that logs directly lands ahead of it. Measured: 62 distinct signals
+# qualify. Rather than convert 62 handlers (some of which, like
+# `move_announced` and `move_called`, correctly precede the animation), the
+# animation is queued at its own correct POSITION: immediately after the
+# announcement, which is source's `attackstring` -> `attackanimation` order.
+
+func _anim_probe(tag: int) -> Dictionary:
+	return {"kind": "anim", "start": func(): pass, "_probe": tag}
+
+
+func _test_anim_beat_lands_after_the_announcement_not_at_the_end() -> void:
+	var bs := BattleScreenShared.new()
+	var attacker := _make_typed_mon("Attacker", TypeChart.TYPE_GRASS)
+	var defender := _make_typed_mon("Target", TypeChart.TYPE_NORMAL)
+	bs._player_party = _singles_party(attacker)
+	bs._opp_party = _singles_party(defender)
+
+	var move := MoveData.new()
+	move.move_name = "Leech Seed"
+	bs._on_log_move_announced(attacker, defender, move)
+	# Stands in for any of the 62 signals that log directly before
+	# move_executed fires.
+	bs._log("Target was seeded!")
+	bs._queue_anim_beat(_anim_probe(1))
+
+	var kinds: Array = []
+	for b: Dictionary in bs._pending_beats:
+		kinds.append(b.get("kind"))
+	var anim_idx: int = kinds.find("anim")
+	var seeded_idx := -1
+	var announce_idx := -1
+	for i in range(bs._pending_beats.size()):
+		var t: String = str(bs._pending_beats[i].get("text", ""))
+		if "used Leech Seed" in t:
+			announce_idx = i
+		elif "was seeded!" in t:
+			seeded_idx = i
+
+	_chk("the announcement is still first", announce_idx == 0)
+	# ⚠️ THE DISCRIMINATOR. Appending (the old behaviour) also produces an
+	# anim beat and also keeps the announcement first — only its position
+	# RELATIVE to the effect line separates the two implementations.
+	_chk("the anim beat sits directly after the announcement",
+			anim_idx == announce_idx + 1)
+	_chk("the effect line drains AFTER the animation, not before",
+			seeded_idx != -1 and anim_idx != -1 and anim_idx < seeded_idx)
+
+
+# ⚠️ `_on_hit_effect_move_executed` fires once per TARGET, so a doubles spread
+# move queues two or three animations for ONE announcement. Inserting each at
+# a FIXED index would put the last-emitted one first — correct-looking for
+# identical animations and wrong the moment they differ.
+func _test_multiple_anims_for_one_move_keep_emit_order() -> void:
+	var bs := BattleScreenShared.new()
+	var attacker := _make_typed_mon("Attacker", TypeChart.TYPE_WATER)
+	bs._player_party = _singles_party(attacker)
+	bs._opp_party = _singles_party(_make_typed_mon("Target", TypeChart.TYPE_NORMAL))
+
+	var move := MoveData.new()
+	move.move_name = "Surf"
+	bs._on_log_move_announced(attacker, null, move)
+	bs._log("It's super effective!")
+	bs._queue_anim_beat(_anim_probe(1))
+	bs._queue_anim_beat(_anim_probe(2))
+
+	var probes: Array = []
+	var text_after_probes := true
+	var seen_probe := false
+	for b: Dictionary in bs._pending_beats:
+		if b.has("_probe"):
+			probes.append(b.get("_probe"))
+			seen_probe = true
+		elif seen_probe and b.get("kind") == "text" and probes.size() < 2:
+			text_after_probes = false
+
+	_chk("both per-target anims were queued", probes.size() == 2)
+	_chk("they keep emit order rather than reversing", probes == [1, 2])
+	_chk("no effect text is stranded between them", text_after_probes)
+
+
+# Without a live announcement there is nothing to sit behind, so it appends —
+# a stale index must never splice an animation into an unrelated move's beats.
+func _test_anim_beat_appends_when_no_move_is_announced() -> void:
+	var bs := BattleScreenShared.new()
+	bs._player_party = _singles_party(_make_typed_mon("A", TypeChart.TYPE_NORMAL))
+	bs._opp_party = _singles_party(_make_typed_mon("B", TypeChart.TYPE_NORMAL))
+
+	bs._log("A can't move!")
+	bs._queue_anim_beat(_anim_probe(1))
+	_chk("with no announcement the anim appends at the end",
+			bs._pending_beats.size() == 2 and bs._pending_beats[1].has("_probe"))
+
+
+
+# ⚠️ **THIS FIXTURE TOOK THREE ATTEMPTS AND THE TWO FAILURES ARE THE LESSON.**
+# The claim is that `_clear_pending_beats()` clears the INDEX as well as the
+# queue. A stale index is only observable when it is still IN RANGE of the
+# rebuilt queue — otherwise `_queue_anim_beat`'s own out-of-range guard falls
+# back to appending and the broken version looks identical.
+#
+#   draft 1: announce, clear, log ONE line, expect append.
+#            Stale index exceeded the size-1 queue -> guard appended -> PASSED
+#            with the reset deleted.
+#   draft 2: same, rebuilt to three lines — but the announcement had ridden on
+#            an already-2-deep queue, so the stale index was 3 against a size-3
+#            queue, which is the end. PASSED again.
+#   draft 3: a FRESH screen, so the announcement is beat 0 and the stale index
+#            is 1 — genuinely inside a size-3 queue, and the animation splices
+#            between the first and second lines instead of landing last.
+#
+# Both earlier drafts were arithmetic that looked right without being checked
+# against what the broken version would actually do.
+func _test_clearing_the_queue_resets_the_insert_position() -> void:
+	var bs := BattleScreenShared.new()
+	var attacker := _make_typed_mon("A", TypeChart.TYPE_NORMAL)
+	bs._player_party = _singles_party(attacker)
+	bs._opp_party = _singles_party(_make_typed_mon("B", TypeChart.TYPE_NORMAL))
+
+	bs._on_log_move_announced(attacker, null, _make_named_move("Tackle"))
+	_chk("precondition: the announcement is beat 0, so the index is 1",
+			bs._pending_beats.size() == 1 and bs._anim_insert_index == 1)
+
+	bs._clear_pending_beats()
+	bs._log("First line.")
+	bs._log("Second line.")
+	bs._log("Third line.")
+	bs._queue_anim_beat(_anim_probe(2))
+	_chk("clearing the queue resets the insert position too",
+			bs._pending_beats.size() == 4 and bs._pending_beats[3].has("_probe"))
+
+
+func _make_named_move(n: String) -> MoveData:
+	var m := MoveData.new()
+	m.move_name = n
+	return m
+
+
+# End to end through the REAL handler rather than the helper: a weather move's
+# animation is queued by _on_hit_effect_move_executed, and that branch runs
+# before the target-sprite lookup, so it needs no scene nodes.
+func _test_real_handler_queues_its_anim_after_the_announcement() -> void:
+	var bs := BattleScreenShared.new()
+	var attacker := _make_typed_mon("Caster", TypeChart.TYPE_WATER)
+	bs._player_party = _singles_party(attacker)
+	bs._opp_party = _singles_party(_make_typed_mon("Target", TypeChart.TYPE_NORMAL))
+
+	var move := MoveData.new()
+	move.move_name = "Rain Dance"
+	move.weather_type = DamageCalculator.WEATHER_RAIN
+
+	bs._on_log_move_announced(attacker, null, move)
+	bs._log("It started to rain!")
+	bs._on_hit_effect_move_executed(attacker, null, move, 0)
+
+	var anim_idx := -1
+	var rain_idx := -1
+	for i in range(bs._pending_beats.size()):
+		var k: String = str(bs._pending_beats[i].get("kind"))
+		if k == "anim_async" and anim_idx == -1:
+			anim_idx = i
+		elif "started to rain" in str(bs._pending_beats[i].get("text", "")):
+			rain_idx = i
+	_chk("the real handler queued an animation beat", anim_idx != -1)
+	_chk("it landed directly after the announcement", anim_idx == 1)
+	_chk("and ahead of the effect line the old order put first",
+			rain_idx != -1 and anim_idx < rain_idx)

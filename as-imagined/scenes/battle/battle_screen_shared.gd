@@ -1261,6 +1261,36 @@ const _TRAINER_SLIDE_OUT_SECONDS := 0.58
 # ([EXP bar animation fix] same shape as "hp_drain" minus the color re-tint).
 var _pending_beats: Array[Dictionary] = []
 
+## Where THIS move's animation beat belongs in `_pending_beats` — the index
+## immediately after its own "X used Y!" announcement. `-1` means "no move is
+## announced right now, just append".
+##
+## ⚠️ **THE MOVE'S ANIMATION IS QUEUED LAST AND HAS TO PLAY FIRST, AND FIXING
+## THAT AT THE QUEUE SITE FIXES 62 SIGNALS AT ONCE** [Bugfix, live-reported:
+## "move effects like leech seed and yawn text trigger before animation"].
+##
+## BattleManager emits a move's effect signals BEFORE `move_executed`, and
+## `move_executed` is what `_on_hit_effect_move_executed` hangs the animation
+## off — so any handler that logs directly appends its text AHEAD of the
+## animation. Measured across `battle_manager.gd`: **62 distinct signals are
+## emitted within a move's own branch before `move_executed` AND have a handler
+## that calls `_log()`** (`move_effect_failed` alone is 134 emit sites,
+## `hp_restored` 12, `move_missed` 12).
+##
+## ⚠️ **CONVERTING ALL 62 TO BUFFER WOULD BE WRONG, NOT MERELY LARGE.** Some of
+## those lines genuinely precede the animation — `move_announced` is the whole
+## point of going first, and `move_called` (Metronome naming its rolled move)
+## is the same shape. It would be 62 individual judgements about whether a line
+## is a CAUSE or a RESULT, each changing what a player sees.
+##
+## So the ordering is fixed where it is CREATED instead. Source's own order is
+## `attackstring` -> `attackanimation` -> effect messages
+## (BattleScript_Hit_RetFromAtkAnimation), i.e. the animation belongs directly
+## after the announcement — which is exactly this index. Leech Seed and Yawn
+## keep their `_pending_effect_lines` buffering from the earlier fix; it is
+## now belt-and-braces rather than the mechanism.
+var _anim_insert_index := -1
+
 ## Reentrancy guard for `_run_message_pacing()`. `_on_battle_ended` now drains
 ## beats itself (see that function's own comment for why), and its own await
 ## chain unwinds back through `_bm.advance()` to `_dispatch_move`'s ordinary
@@ -3381,6 +3411,46 @@ func _on_log_move_announced(attacker: BattlePokemon, defender: BattlePokemon, mo
 	# other _log() call site keeps the default _WAIT_TIME_LONG hold; this is
 	# the one deliberate exception.
 	_log(text + "!", 0.0)
+	# The animation belongs immediately after this line — see
+	# `_anim_insert_index`'s own doc comment. Recorded AFTER `_log()`, because
+	# `_log()` also flushes any still-buffered effect lines from the PREVIOUS
+	# move, and those must stay behind this announcement rather than being
+	# straddled by the next move's animation.
+	_anim_insert_index = _pending_beats.size()
+
+
+## Queue a move's own animation beat at its announcement position rather than
+## at the end — see `_anim_insert_index`'s own doc comment for why.
+##
+## ⚠️ **THE INDEX ADVANCES, AND A FIXED ONE WOULD SILENTLY REVERSE SPREAD
+## MOVES.** `_on_hit_effect_move_executed` fires once per TARGET, so a doubles
+## spread move queues two or three animations for one move; inserting each at
+## the same index puts the last-emitted one first. Advancing keeps them in
+## emit order while still holding all of them ahead of the effect text.
+##
+## Falls back to appending whenever there is no live announcement to sit
+## behind — a move whose pre-move check cancelled it emits `move_skipped`
+## rather than `move_announced`, and the four `_pending_beats.clear()` sites
+## reset the index — so a stale position can never splice an animation into
+## an unrelated move's beats.
+func _queue_anim_beat(beat: Dictionary) -> void:
+	if _anim_insert_index < 0 or _anim_insert_index > _pending_beats.size():
+		_pending_beats.append(beat)
+		return
+	_pending_beats.insert(_anim_insert_index, beat)
+	_anim_insert_index += 1
+
+
+## Drop every queued beat AND the animation insert position together.
+##
+## ⚠️ A helper rather than a reset line at each `clear()`, deliberately: the
+## index is only meaningful relative to the queue it indexes, so the two must
+## never be cleared apart. Four sites clear the queue today, and a fifth added
+## later would otherwise silently reintroduce a stale index that splices an
+## animation into an unrelated move's beats — the bug class rather than the bug.
+func _clear_pending_beats() -> void:
+	_pending_beats.clear()
+	_anim_insert_index = -1
 
 
 # [EXP bar animation fix] BattleManager applies `current_exp += amount`
@@ -3631,7 +3701,7 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	if move.weather_type != DamageCalculator.WEATHER_NONE:
 		var weather_for_move: int = move.weather_type
 		var is_snowscape: bool = move_id == _MOVE_ID_SNOWSCAPE
-		_pending_beats.append({"kind": "anim_async", "start": func():
+		_queue_anim_beat({"kind": "anim_async", "start": func():
 			if is_snowscape:
 				await _play_weather_snow()
 			else:
@@ -3669,7 +3739,7 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	if _anim_dispatcher != null and _anim_dispatcher.can_play_move(move_id):
 		var vm_stage := _make_anim_stage(attacker, target_mon)
 		var anim_turn := _anim_turn_for(attacker)
-		_pending_beats.append({"kind": "anim_async", "start": func():
+		_queue_anim_beat({"kind": "anim_async", "start": func():
 			await _run_anim_script(move_id, vm_stage, anim_turn)})
 		return
 
@@ -3697,7 +3767,7 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 		# beat sequence, between the announce line and the HP-bar drain, per
 		# BattleScript_Hit_RetFromAtkAnimation's real attackanimation+
 		# waitanimation ordering. See _pending_beats' own doc comment.
-		_pending_beats.append({"kind": "anim", "start": start_effect})
+		_queue_anim_beat({"kind": "anim", "start": start_effect})
 
 
 # [M36B] Builds the coordinate/scene bridge the VM's behaviors work through.
@@ -4145,7 +4215,7 @@ func _stash_battle_start_beats() -> Array[Dictionary]:
 	# to a typed Array field silently fails (this project's own documented
 	# GDScript gotcha, the exact bug class m26_b3_6c's suite once caught).
 	var stash: Array[Dictionary] = _pending_beats.duplicate()
-	_pending_beats.clear()
+	_clear_pending_beats()
 	return stash
 
 
@@ -5592,7 +5662,7 @@ func _run_message_pacing() -> void:
 	if _pending_beats.is_empty():
 		return
 	if _is_autoplay_run or not is_inside_tree():
-		_pending_beats.clear()
+		_clear_pending_beats()
 		return
 
 	_pacing_active = true
@@ -5820,7 +5890,7 @@ func _run_message_pacing() -> void:
 				if recalled != null:
 					await _play_recall_to_ball(recalled)
 
-	_pending_beats.clear()
+	_clear_pending_beats()
 	_pacing_active = false
 	_exit_message_mode()
 	# Releases every re-entrant caller parked at the top of this function.
@@ -8972,7 +9042,7 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		# coroutine. Any beats this advance() generated are discarded rather
 		# than narrated, so they can't leak stale/misordered text into a
 		# LATER turn's real paced sequence.
-		_pending_beats.clear()
+		_clear_pending_beats()
 		_refresh_ui()
 		return
 
