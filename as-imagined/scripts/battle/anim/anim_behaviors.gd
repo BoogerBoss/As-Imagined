@@ -1357,6 +1357,10 @@ static func _make_sprite(vm: AnimScriptVM, ctx: Dictionary) -> AnimSprite:
 	# same fraction of the screen it occupies on hardware.
 	node.scale = Vector2.ONE * _scale(vm)
 	node.pivot_offset = node.size * 0.5
+	# [M36F] Binds the template's own affine table. One seam for all 291 spawn
+	# sites, and it is a no-op for the 655 templates that name no table and the
+	# 19 that name one while declaring `AffineOff`.
+	node.setup_affine(tmpl_name, oam)
 	var seqs := AnimData.anim_sequences_for(tmpl_name)
 	if not seqs.is_empty():
 		node.play_sequence(seqs[0])
@@ -1914,6 +1918,28 @@ static func _play_until_anim_ends(vm: AnimScriptVM, node: AnimSprite,
 		node.advance_frame()
 		st["t"] = int(st["t"]) + 1
 		if int(st["t"]) >= cap:
+			node.finish()
+			return true
+		return false)
+
+
+# [M36F] The AFFINE-clock counterpart of `_play_until_anim_ends` above, for
+# `RunStoredCallbackWhenAffineAnimEnds`'s consumers.
+#
+# ⚠️ **THE CAP IS LOAD-BEARING HERE IN A WAY IT IS NOT ABOVE.** A sequence that
+# JUMPs never sets `affineAnimEnded` on hardware either, and 60 of the corpus's
+# affine commands are JUMPs — so without the cap such a sprite would sit on the
+# battler for the rest of the animation. The cel-frame tick is kept because the
+# two clocks are independent and the sprite still has art to play.
+static func _play_until_affine_ends(vm: AnimScriptVM, node: AnimSprite,
+		cap: int) -> void:
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if node.affine_ended() or int(st["t"]) >= cap:
 			node.finish()
 			return true
 		return false)
@@ -4593,7 +4619,6 @@ static func _mimic_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	node.centre = start
 	node.visible = false
 	var dest := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
-	var base_scale := node.scale
 	var st := {"phase": 0, "t": 0}
 	vm.add_stepper(func() -> bool:
 		if not is_instance_valid(node):
@@ -4603,12 +4628,20 @@ static func _mimic_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
 				node.visible = true
 				st["phase"] = 1
 			1:
-				# The grow-in-place leg, upstream the template's affine anim.
+				# ⚠️ **[M36F] THE GROW LEG IS THE TEMPLATE'S OWN AFFINE ANIM AND
+				# IS NO LONGER HAND-ROLLED HERE.** This used to lerp to full size
+				# over 8 frames; `gMimicOrbAffineAnimCmds1` opens at scale ZERO
+				# and adds 48 per frame for 14, so the orb swells to ~2.6x rather
+				# than settling at 1.0. Source waits on `sprite->affineAnimEnded`
+				# for exactly that.
 				st["t"] = int(st["t"]) + 1
-				var g := clampf(float(st["t"]) / 8.0, 0.0, 1.0)
-				node.scale = base_scale * g
-				if int(st["t"]) >= 8:
-					node.scale = base_scale
+				if node.affine_ended() or int(st["t"]) >= _ANIM_END_CAP:
+					# ⚠️ **`change_affine_anim`, NOT `start_affine_anim`** —
+					# `gMimicOrbAffineAnimCmds2` subtracts 16 per frame from
+					# whatever the first sequence reached, so the orb shrinks back
+					# toward normal size across the 25-frame flight. Resetting the
+					# accumulator would snap it to 1.0 first and lose the taper.
+					node.change_affine_anim(1)
 					st["phase"] = 2
 					st["t"] = 0
 			2:
@@ -10780,7 +10813,13 @@ static func _sprite_on_mon_until_affine_ends(vm: AnimScriptVM,
 	if node == null:
 		return
 	node.centre = _battler_centre(vm, target)
-	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+	# ⚠️ **[M36F] AFFINE end, not CEL end — the name is the specification.**
+	# Source hands off to `RunStoredCallbackWhenAffineAnimEnds`
+	# (`battle_anim_new.c`), so this sprite outlives its frame sequence and dies
+	# when its MATRIX animation terminates. Waiting on `anim_ended()` is the
+	# plausible misreading and cuts it short on any template whose two clocks
+	# differ, which is most of them.
+	_play_until_affine_ends(vm, node, _ANIM_END_CAP)
 
 
 # ── [M36D batch 16] ───────────────────────────────────────────────────────

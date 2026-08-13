@@ -187,6 +187,63 @@ def decode_oam_name(name):
             "width": int(m.group(3)), "height": int(m.group(4))}
 
 
+# ⚠️ **[M36F] NOT EVERY TEMPLATE'S OAM IS ONE OF THE SHARED `gOamData_*`
+# SYMBOLS, AND THE NAMING CONVENTION IS THE ONLY THING `decode_oam_name` CAN
+# READ.** `battle_anim_new.c` declares a handful of bespoke `struct OamData`
+# statics (`sGrowingSuperpowerOAM`, `sAppleOAM`, `sSunsteelStrikeBlastOAM`,
+# `sOamData_EerieSpellFlame`), and those fell through to `{"raw": <symbol>}`
+# with no `affine` field at all.
+#
+# That was harmless while nothing consumed the mode. It stopped being harmless
+# the moment the affine player started GATING on it: 8 templates carry an
+# affine table AND a bespoke OAM, all 8 are affine-ON in source (7 DOUBLE, 1
+# NORMAL), and a missing field reads as "off" to any sane default — so the
+# player would have silenced 8 templates hardware animates. Same shape as
+# `[M27B]`'s tileset-directory lesson: READ the declaration, do not derive it
+# from the name.
+_OAM_STRUCT_RE = re.compile(
+    r"struct\s+OamData\s+(\w+)\s*=\s*\{(.*?)\};", flags=re.S)
+_OAM_AFFINE_RE = re.compile(r"\.affineMode\s*=\s*(\w+)")
+_OAM_SIZE_RE = re.compile(r"\.size\s*=\s*SPRITE_SIZE\(\s*(\d+)x(\d+)\s*\)")
+
+# `ST_OAM_AFFINE_ON_MASK` is 1, so OFF (0) and OBJ_DISABLE (2) are both "not
+# affine" and NORMAL (1) / DOUBLE (3) are both "affine".
+_AFFINE_MODE_NAMES = {
+    "ST_OAM_AFFINE_OFF": "AffineOff",
+    "ST_OAM_OBJ_DISABLE": "AffineOff",
+    "ST_OAM_AFFINE_NORMAL": "AffineNormal",
+    "ST_OAM_AFFINE_DOUBLE": "AffineDouble",
+    "ST_OAM_AFFINE_ERASE": "AffineOff",
+}
+
+
+def parse_oam_structs(text):
+    """symbol -> decoded oam dict, for the inline `struct OamData` statics."""
+    out = {}
+    for m in _OAM_STRUCT_RE.finditer(text):
+        symbol, body = m.group(1), m.group(2)
+        mode = _OAM_AFFINE_RE.search(body)
+        if mode is None:
+            continue
+        name = _AFFINE_MODE_NAMES.get(mode.group(1))
+        if name is None:
+            # ⚠️ No silent drops — the same rule the command-macro parser
+            # already enforces. An unrecognised mode means the constant set
+            # moved and the gate would quietly go wrong for every template
+            # using it.
+            raise SystemExit(
+                "gen_battle_anim_meta: unrecognised OamData affineMode %r on "
+                "%r -- add it to _AFFINE_MODE_NAMES rather than letting it "
+                "default." % (mode.group(1), symbol))
+        entry = {"affine": name}
+        size = _OAM_SIZE_RE.search(body)
+        if size is not None:
+            entry["width"] = int(size.group(1))
+            entry["height"] = int(size.group(2))
+        out[symbol] = entry
+    return out
+
+
 _INDEXED_REF_RE = re.compile(r"^(\w+)\s*\[\s*(\d+)\s*\]$")
 
 
@@ -234,6 +291,13 @@ def parse_templates(base_defines, anim_tables, affine_tables):
     tmpl_pat = re.compile(
         r"const\s+struct\s+SpriteTemplate\s+(\w+)\s*=\s*\{(.*?)\};",
         flags=re.S)
+    # Collected across ALL files first: the bespoke OAM statics are file-scoped
+    # today, but a template referencing one from another translation unit would
+    # otherwise silently lose its affine mode, which is exactly the failure
+    # this pass exists to close.
+    oam_structs = {}
+    for path in sorted(glob.glob(ANIM_C_GLOB)):
+        oam_structs.update(parse_oam_structs(strip_comments(open(path).read())))
     for path in sorted(glob.glob(ANIM_C_GLOB)):
         raw = open(path).read()
         resolver = file_scoped_resolver(base_defines, raw)
@@ -265,7 +329,9 @@ def parse_templates(base_defines, anim_tables, affine_tables):
                 "file": os.path.basename(path),
                 "tile_tag": tag_field("tileTag"),
                 "palette_tag": tag_field("paletteTag"),
-                "oam": decode_oam_name(oam_raw),
+                "oam": (decode_oam_name(oam_raw)
+                        if oam_raw not in oam_structs
+                        else dict(oam_structs[oam_raw], raw=oam_raw)),
                 "oam_symbol": oam_raw,
                 "anims": sym_field("anims"),
                 "anims_key": resolve_frame_key(

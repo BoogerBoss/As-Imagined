@@ -1632,12 +1632,52 @@ reads are Step 0 inside it. Verification ends the same way M36P's does — a
 screenshot pass, since this defect passed every existing test.
 
 
-## M36 Affine — the sprite-path affine player — SCOPED 2026-08-13, NOT BUILT
+## M36F Affine — the sprite-path affine player — **BUILT 2026-08-13**
 
-**The data has been extracted since M36A and nothing has ever played it.** This
-section is the plan. **No code was written and nothing is approved.** Every
-number below is measured against the real artifacts, and the command that
-produced it is the one in the paragraph.
+⚠️ **STATUS: BUILT AND TESTED, NOT APPROVED, AND NOT SEEN ON SCREEN.** The
+sub-tier letter **F** was assigned during the build. `AnimSprite.advance_affine()`
+now runs the state machine; `_make_sprite` binds every template's table; both
+`affine_ended` consumers are wired. New suite `m36f_affine_test` **39/39**, with
+all six injections confirmed failing. Every other M36 suite is unchanged
+(`m36a` 71, `m36b` 53, `m36c` 71, `m36d` 1243, `m36_anim_turn` 65, `m36e*`
+24/38/70) and `m36_leak_harness` is **785/785**.
+
+**Three findings from the build, each of which corrected something in the plan
+below — read these before trusting a number in it:**
+
+1. ⚠️ **`ChangeSpriteAffineAnim` does NOT reset the accumulators and
+   `StartSpriteAffineAnim` does** (`sprite.c:1391` vs `:1407`). The plan treated
+   them as one entry point. They are the difference between the Mimic orb
+   tapering from 2.6x down to ~1.0 across its flight and snapping to 1.0 first.
+2. ⚠️ **8 templates carried an affine table and an OAM struct the extractor had
+   never decoded**, so they had no `affine` field and any default read as "off".
+   All 8 are affine-ON in source. Fixed at the extractor
+   (`gen_battle_anim_meta.parse_oam_structs`), which also gave 11 templates
+   their real sprite dimensions instead of the 32x32 fallback. **This is why
+   the AffineOff count wobbled 19 -> 27 -> 19 mid-session**: the 27 was my own
+   bad measurement, not a correction, and the original 19 stands.
+3. ⚠️ **The AffineNormal clipping figure below (153 of 273) is WRONG and is
+   retracted.** Re-measured by walking every table: **21 of 274**. The ceiling
+   is real and still not reproduced, but it is a twentieth of the size the plan
+   claimed.
+
+**One divergence added during the build, not in the plan:** a sequence whose
+first command is a LOOP marker is not union-punned. `GetAffineAnimFrame` reads
+the command union's frame fields whatever the command is, so hardware
+reinterprets the 0x7FFD opcode word as an xScale; the extractor has already
+resolved the type words away, so the port skips the apply and leaves the cursor
+on the marker instead — which the following LOOP then rewinds to correctly.
+
+**The 10 hand-rolled workarounds M36F's triage identified are now INERT rather
+than removed.** `_step_behaviors()` runs before `_tick_sprites()`, which is
+source's own `callback` then `AnimateSprite` order, so the table wins the frame
+wherever both write the same channel. Retiring the dead code — `_mimic_orb`'s
+grow leg is already gone, `_spinning_kick_or_punch`'s `_affine_loop_delta`
+mini-player is the next candidate — is a separate pass with its own regression
+run, not a rider on this one.
+
+The original plan follows, kept as written except where the three corrections
+above supersede it.
 
 ### What exists today
 
