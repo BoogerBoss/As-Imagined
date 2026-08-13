@@ -16,12 +16,36 @@ extends RefCounted
 
 const TABLE_PATH := "res://data/land_encounters.json"
 
-## `MAX_ENCOUNTER_RATE` (`wild_encounter.c:36`). The denominator of the odds roll.
-const MAX_ENCOUNTER_RATE := 2880
+## `MAX_ENCOUNTER_RATE`. The denominator of the odds roll.
+##
+## ⚠️ **THIS IS FIRE RED'S 1600 (`pokefirered/src/wild_encounter.c:31`), NOT
+## EMERALD'S 2880 (`pokeemerald_expansion/src/wild_encounter.c:36`) — Rob's
+## call, 2026-08-12, and a DELIBERATE departure from this project's default
+## reference.** `[M27H H2]` ported Emerald's `WildEncounterCheck` and pointed it
+## at Fire Red's per-map rate values, which quietly halved encounter frequency
+## everywhere for as long as grass has worked.
+##
+## The obvious defence — that the two games' rate VALUES compensate for their
+## different denominators — was measured and does not hold: Kanto's land rates
+## span 1-21 (median 7) and Hoenn's span 4-25 (median 10), the same numeric
+## band. So the denominator alone sets felt density, and Fire Red is genuinely
+## the denser game. Viridian Forest's 14 is 14.0% a step here, where at 2880 it
+## was 7.8% — one encounter every ~7 steps rather than every ~13.
+##
+## The change is cleanly linear because **the cap never binds**: the highest
+## rate in the whole corpus is 25, i.e. 400 after `RATE_SCALE`, well under
+## either ceiling even with a lead ability doubling it. `effective_rate`'s clamp
+## below is therefore unreachable in practice and kept for source fidelity.
+##
+## See `docs/m27t_encounter_authoring_scope.md` §2.1.
+const MAX_ENCOUNTER_RATE := 1600
 
 ## `WildEncounterCheck`'s own first line: `encounterRate *= 16`. Without it every
 ## table's rate would be 16x too low and grass would feel dead — Viridian Forest's
-## 14 would be 0.5% a step rather than 7.8%.
+## 14 would be 0.875% a step rather than 14%.
+##
+## (Those two figures were 0.5% and 7.8% until `MAX_ENCOUNTER_RATE` moved to Fire
+## Red's 1600; see the note there.)
 const RATE_SCALE := 16
 
 ## `AllowWildCheckOnNewMetatile`: `Random() % 100 >= 60` -> refuse.

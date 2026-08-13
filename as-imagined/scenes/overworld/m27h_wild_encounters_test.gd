@@ -88,12 +88,17 @@ func _test_table() -> void:
 ## --- B. the rate math ---
 func _test_rate_math() -> void:
 	# ⚠️ THE x16. `WildEncounterCheck`'s own first line. Without it Viridian
-	# Forest's 14 is 0.5% a step instead of 7.8% and grass reads as broken.
+	# Forest's 14 is 0.875% a step instead of 14% and grass reads as broken.
 	_chk("B.01 the rate is scaled by 16", WildEncounters.effective_rate(14, -1) == 224)
-	_chk("B.02 and the denominator is source's own 2880",
-			WildEncounters.MAX_ENCOUNTER_RATE == 2880)
-	_chk("B.03 which puts Viridian Forest near 7.8%%",
-			abs(224.0 / 2880.0 - 0.0778) < 0.001)
+	# ⚠️ FIRE RED'S DENOMINATOR, NOT EMERALD'S — Rob's call, 2026-08-12. The
+	# rate VALUES are Fire Red's, so running them against Emerald's 2880 halved
+	# encounter frequency everywhere. Asserted against 2880 too, so a revert to
+	# the old constant fails here loudly rather than just making grass quiet.
+	_chk("B.02 the denominator is Fire Red's 1600, not Emerald's 2880",
+			WildEncounters.MAX_ENCOUNTER_RATE == 1600
+			and WildEncounters.MAX_ENCOUNTER_RATE != 2880)
+	_chk("B.03 which puts Viridian Forest at 14%% a step, not 7.8%%",
+			abs(224.0 / float(WildEncounters.MAX_ENCOUNTER_RATE) - 0.14) < 0.001)
 
 	# Lead-ability modifiers are part of the same source function, not a
 	# separate gate — porting the roll without them ports half a function.
