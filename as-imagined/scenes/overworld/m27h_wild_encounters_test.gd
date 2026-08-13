@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 108
+const EXPECTED_TOTAL := 114
 
 var _total := 0
 var _failed := 0
@@ -786,10 +786,26 @@ func _test_encounter_preview() -> void:
 			str(authored["source"]) == "authored"
 			and int(authored["encounter_rate"]) == 21
 			and (authored["slots"] as Array).size() == 15)
-	var generated := EncounterPreview.digest_for("Route2_Frlg")
-	_chk("I.03 an imported map reports itself as generated",
-			str(generated["source"]) == "generated"
-			and int(generated["encounter_rate"]) == 21)
+	# ⚠️ **THE GENERATED FIXTURE IS CHOSEN AT RUN TIME, NOT NAMED — and this
+	# assertion broke the first day the feature was used, which is exactly why.**
+	# It hardcoded `Route2_Frlg`, then Rob pressed "Take ownership" on Route 2
+	# (the obvious first map to take), an authored table appeared, and the map
+	# correctly stopped being generated. The test was wrong, not the button.
+	# Same shape as `[M27C]`'s "known unbaked" map that got baked and took ten
+	# assertions with it, and `[M27F]`'s implicit `start_map`: **a fixture that
+	# depends on a state someone may reasonably change is a fixture that will
+	# break.** Any map with a table and no authored override does.
+	var gen_name := ""
+	for m in (WildEncounters._load().get("maps", {}) as Dictionary):
+		if not (str(m) in WildEncounters.authored_map_names()):
+			gen_name = str(m)
+			break
+	var generated := EncounterPreview.digest_for(gen_name)
+	_chk("I.03 an imported map with no override reports itself as generated (%s)"
+			% gen_name,
+			gen_name != "" and str(generated["source"]) == "generated"
+			and int(generated["encounter_rate"]) > 0
+			and (generated["slots"] as Array).size() == 15)
 	var none := EncounterPreview.digest_for("PalletTown_Frlg")
 	_chk("I.04 and a map with no land table reports none, with no slots",
 			str(none["source"]) == "none"
@@ -840,9 +856,9 @@ func _test_encounter_preview() -> void:
 
 	# ⚠️ SEEDING IS WHAT SEPARATES "TAKE OWNERSHIP" FROM "START OVER". Retyping
 	# 15 slots to change one would make the button pointless on imported maps.
-	var seeded := EncounterPreview.seed_table("Route2_Frlg")
+	var seeded := EncounterPreview.seed_table(gen_name)
 	_chk("I.13 taking ownership of an imported map copies its real table",
-			seeded.map_name == "Route2_Frlg" and seeded.encounter_rate == 21
+			seeded.map_name == gen_name and seeded.encounter_rate > 0
 			and seeded.slots.size() == 15 and seeded.is_complete(15)
 			and seeded.slots[0].dex > 0)
 	var blank := EncounterPreview.seed_table("SomewhereNew")
@@ -874,3 +890,48 @@ func _test_encounter_preview() -> void:
 	_chk("I.17 while a map whose tiles and table agree says nothing at all",
 			EncounterPreview.mismatch_for("XanaduNursery",
 					load("res://scenes/maps/XanaduNursery_data.tres") as MapData) == "")
+
+	# ⚠️ **THE INSPECTOR SHOWS `resource_name` INSTEAD OF THE CLASS NAME**, which
+	# is what turns fifteen array rows reading `EncounterSlot` into a table you
+	# can read. Rob's ask, 2026-08-13.
+	var lab := EncounterSlot.new()
+	lab.dex = 25
+	lab.max_level = 5
+	lab.min_level = 3
+	_chk("I.18 a slot names itself after its species and level band",
+			lab.resource_name == "Pikachu Lv3-5")
+	lab.min_level = 5
+	_chk("I.19 collapsing to a single level drops the band",
+			lab.resource_name == "Pikachu Lv5")
+	# ⚠️ THE DISCRIMINATOR, AND IT IS WHY THE BAND IS IN THE LABEL AT ALL.
+	# Xanadu carries dex 19 in FOUR slots at levels 3/4/2/5 — species alone
+	# leaves four identical rows, so a prettier label would still not tell you
+	# which slot you were editing.
+	var a := EncounterSlot.new()
+	a.dex = 19
+	a.max_level = 3
+	a.min_level = 3
+	var b := EncounterSlot.new()
+	b.dex = 19
+	b.max_level = 5
+	b.min_level = 5
+	_chk("I.20 two slots of the same species at different levels read differently"
+			+ " (%s vs %s)" % [a.resource_name, b.resource_name],
+			a.resource_name != b.resource_name)
+	_chk("I.21 an unfilled slot says so rather than showing a class name",
+			EncounterSlot.new().resource_name == "(empty)")
+
+	# ⚠️ **AND IT NEVER REACHES DISK.** A stored species name goes stale the
+	# moment pokemon.json is edited — a derived value kept beside its own source,
+	# which is exactly what the per-slot percentage refuses to be. The setters
+	# recompute it on load, so the live value is always current while the .tres
+	# is unchanged.
+	const NAME_PROBE := "user://m27t_name_probe.tres"
+	ResourceSaver.save(lab, NAME_PROBE)
+	var text := FileAccess.get_file_as_string(NAME_PROBE)
+	_chk("I.22 but the label is never serialised, so it cannot go stale",
+			text != "" and not text.contains("resource_name"))
+	var reloaded := ResourceLoader.load(NAME_PROBE, "", ResourceLoader.CACHE_MODE_IGNORE) as EncounterSlot
+	_chk("I.23 and it is recomputed on load rather than restored",
+			reloaded != null and reloaded.resource_name == "Pikachu Lv5")
+	DirAccess.remove_absolute(NAME_PROBE)

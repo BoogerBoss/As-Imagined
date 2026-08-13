@@ -27,6 +27,7 @@ extends Resource
 @export var dex: int = 0:
 	set(value):
 		dex = maxi(0, value)
+		_refresh_name()
 		emit_changed()
 
 ## ⚠️ **THE PAIR CLAMPS EACH OTHER, IN BOTH DIRECTIONS, AND IT LIVES HERE RATHER
@@ -45,6 +46,7 @@ extends Resource
 		min_level = clampi(value, 1, 100)
 		if max_level < min_level:
 			max_level = min_level
+		_refresh_name()
 		emit_changed()
 
 @export_range(1, 100) var max_level: int = 1:
@@ -52,6 +54,7 @@ extends Resource
 		max_level = clampi(value, 1, 100)
 		if min_level > max_level:
 			min_level = max_level
+		_refresh_name()
 		emit_changed()
 
 
@@ -69,3 +72,63 @@ func is_valid() -> bool:
 ## thing. See `EncounterTable.to_runtime()`.
 func to_runtime() -> Dictionary:
 	return {"dex": dex, "min": min_level, "max": max_level}
+
+
+## ⚠️ **THE INSPECTOR SHOWS A RESOURCE'S `resource_name` IN PLACE OF ITS CLASS
+## NAME**, so keeping it current is what turns fifteen rows reading
+## `EncounterSlot` into a readable table. Rob's ask, 2026-08-13.
+##
+## ⚠️ **THE LEVEL BAND IS PART OF THE LABEL BECAUSE THE SPECIES ALONE IS NOT
+## UNIQUE — measured, not assumed.** Xanadu Nursery carries dex 19 in FOUR slots,
+## at levels 3, 4, 2 and 5; without the band those four rows are indistinguishable
+## and the label would be prettier while still not telling you which slot you are
+## editing. Same for its other three species, which appear 4, 3 and 4 times.
+func _refresh_name() -> void:
+	resource_name = slot_label()
+
+
+func _init() -> void:
+	# A default-constructed slot has no `dex` line in a `.tres`, so its setter
+	# never fires on load and the name would stay blank. Seeded here instead.
+	_refresh_name()
+
+
+## ⚠️ **NEVER WRITTEN TO DISK.** `resource_name` is an ordinary stored property,
+## so without this every slot would persist a species name that goes stale the
+## moment `pokemon.json` is edited — a derived value kept beside its own source,
+## which is the shape this project already refuses for per-slot percentages. The
+## setters above recompute it on load, so the live value is always current and
+## the `.tres` stays exactly as it is today.
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "resource_name":
+		property.usage = int(property.usage) & ~PROPERTY_USAGE_STORAGE
+
+
+## `"Rattata Lv3"`, or `"Rattata Lv3-5"` across a band. The array-element label.
+func slot_label() -> String:
+	if dex <= 0:
+		return "(empty)"
+	var name := TrainerData.species_name_for(dex)
+	if name == "":
+		return "#%d (unresolved)" % dex
+	if min_level == max_level:
+		return "%s Lv%d" % [name, min_level]
+	return "%s Lv%d-%d" % [name, min_level, max_level]
+
+
+## `"019 Rattata"` — dex-first, for the digest panel and the picker button, where
+## the number sorts and identifies. `EncounterPreview.species_label` delegates
+## here rather than restating it.
+##
+## ⚠️ **STATIC AND ON THIS CLASS DELIBERATELY.** The natural home looks like
+## `EncounterPreview`, but `EncounterSlot` -> `EncounterPreview` ->
+## `EncounterTable` -> `EncounterSlot` is a `class_name` CYCLE, which Godot 4
+## resolves badly and intermittently — the same reason `EncounterTable.is_complete`
+## takes its slot count as a parameter instead of reading it back.
+static func species_label(species_dex: int) -> String:
+	if species_dex <= 0:
+		return "(empty)"
+	var name := TrainerData.species_name_for(species_dex)
+	if name == "":
+		return "#%d (unresolved)" % species_dex
+	return "%03d %s" % [species_dex, name]

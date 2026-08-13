@@ -130,12 +130,7 @@ static func mismatch_for(map_name: String, md: MapData) -> String:
 ## completely different problem from a slot pointing at a species this roster
 ## does not have — and the second one is the one that would ship broken.
 static func species_label(dex: int) -> String:
-	if dex <= 0:
-		return "(empty)"
-	var name := TrainerData.species_name_for(dex)
-	if name == "":
-		return "#%d (unresolved)" % dex
-	return "%03d %s" % [dex, name]
+	return EncounterSlot.species_label(dex)
 
 
 ## Species matching `query`, for the picker. Empty query returns everything.
