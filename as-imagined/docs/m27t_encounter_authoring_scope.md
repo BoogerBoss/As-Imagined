@@ -315,7 +315,7 @@ those three slots replaced with real species in the Inspector.
 | 2 | ✅ **Converter rebuild** — LeafGreen, first-per-map, Kanto guard, `ref_path`, all four fields | — | yes (fixes Altering Cave, drops Hoenn) |
 | 3 | ✅ **Import the stamp** — per-pair sidecar + ENCOUNTERS overlay mode | — | no |
 | 4 | ✅ **Switch the trigger** — stamp + `BEHAVIOR_EXPLICIT` override | 3 | no (one corridor map, no table) |
-| 5 | **Authored table layer** — `EncounterTable`/`EncounterSlot`, `data/encounters/`, migrate Xanadu | — | no |
+| 5 | ✅ **Authored table layer** — `EncounterTable`/`EncounterSlot`, `data/encounters/`, migrate Xanadu | — | no |
 | 6 | **The editor** — Inspector plugin, species picker, map-root panel | 5 | no |
 | 7 | **Validation** — suite section, both mismatch directions baselined | grows with 5/6 | no |
 
@@ -356,6 +356,54 @@ species resolution, rate in range, `min ≤ max`, slot-count agreement, map-name
 resolution.
 
 **Order:** 1 and 2 are independent. 3 → 4. 5 → 6. 7 grows alongside 5 and 6.
+
+### Piece 5 as built — the authored layer
+
+`EncounterSlot` (dex, min, max) and `EncounterTable` (map, field, rate, slots)
+are Resources under `data/encounters/<Map>_<field>.tres`. **Xanadu migrated and
+`data/authored_encounters.json` is retired** — two files claiming to be the
+authored source, one silently ignored, is worse than either.
+
+⚠️ **`to_runtime()` IS WHAT KEPT THIS FROM TOUCHING ANYTHING DOWNSTREAM.** It
+returns the generated layer's exact dictionary, so `should_encounter`,
+`build_wild_party` and every older test are unchanged — the storage swap is
+invisible past `table_for()`.
+
+⚠️ **DEX NUMBERS, NOT SPECIES KEYS**, against the original proposal. This
+project already resolves species names to dex at GENERATION time and is numeric
+at runtime; a key here would add a second resolution path and re-open the
+dangling-key class `[M27B Step 4]`'s Nidoran collision already cost. The number
+is unreadable in a raw Inspector — that is what piece 6's picker answers, not a
+reason to change the storage.
+
+⚠️ **AN INCOMPLETE TABLE IS TREATED AS NO TABLE.** A fresh one is all-zero by
+construction and an unset slot would resolve to species 0, so the loader refuses
+it and says why. Clamping lives in the setters, not the UI, so it holds for a
+script edit and a fixture as well as a spinbox — and both directions are tested
+separately, per the pair-symmetry convention.
+
+**Section H, 14 assertions** (`EXPECTED_TOTAL` 76 → 91). Four injections, each
+failing exactly its own guard:
+
+| injection | fails |
+|---|---|
+| loader accepts an incomplete table | **H.14** |
+| min/max clamp only one direction | H.09 |
+| `to_runtime()` emits a different slot shape | **H.03** |
+| filename ignores the field | H.12 |
+
+⚠️ **TWO OF THOSE FOUR ONLY EXIST BECAUSE THE INJECTION WENT FIRST.** The
+loader's completeness gate was untestable while the scan was welded to the live
+directory — removing it failed nothing — so the scan was split into
+`scan_authored_dir(path)` and is now driven against a throwaway `user://`
+directory. And **H.03 was vacuous**: it compared top-level keys and only checked
+`dex` inside a slot, so renaming `min`/`max` passed while `build_wild_party`
+would have read nothing at runtime. Both are the callee-tested/caller-untested
+shape this arc keeps producing — after `[M27H H4]`'s accessor, BG.10 and G.10.
+
+⚠️ **The converter re-run question dissolves here as predicted**: generated
+files are never hand-edited, so regenerating is always safe and no `--force`
+guard is needed.
 
 ### Piece 2 as built — the measured delta
 

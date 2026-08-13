@@ -226,38 +226,82 @@ static func has_table(map_name: String) -> bool:
 ## split as `AuthoredMaps` beside the generated `MapConstants`, for the same
 ## reason and with the same delegate-on-miss shape.
 ##
-## ⚠️ **JSON, not fields on `MapData` — Rob's call, 2026-08-09**, and it follows
-## this project's own two-layer data rule: full dataset in JSON, implemented
-## BEHAVIOUR in `.tres`. An encounter table is dataset, and every other
-## encounter table in the project is already JSON; a second storage shape for
-## one kind of data would be drift arriving disguised as a convenience.
-const AUTHORED_PATH := "res://data/authored_encounters.json"
+## ⚠️ **`.tres` SINCE [M27T piece 5] — WAS JSON, AND THAT REVERSAL IS A RULING
+## RATHER THAN A DRIFT.** D4b (`docs/m27m5_map_creator_scope.md:226-245`, Rob,
+## 2026-08-09) chose JSON and explicitly weighed and REJECTED "rename-safety and
+## Inspector editability". Rob reopened it 2026-08-12 on information that
+## decision did not have: in-Godot encounter editing became a requirement, and
+## Godot gives free undo, dirty-tracking and per-property interception only for
+## Resources. The generated corpus stays JSON — so the two-layer rule (full
+## dataset in JSON, the authored subset in `.tres`) is honoured, not reversed —
+## and because generated files are then never hand-edited, re-running the
+## converter is always safe and needs no `--force` guard.
+const AUTHORED_DIR := "res://data/encounters/"
 
 static var _authored: Dictionary = {}
 static var _authored_loaded := false
 
 
+## Scans `AUTHORED_DIR` once and keys the tables by map name.
+##
+## ⚠️ **`.res` AND `.remap` ARE HANDLED, NOT AN OVERSIGHT AVOIDED.** An export
+## preset with "convert text resources to binary" turns every `.tres` into
+## `.res`, and a remapped resource is listed as `<name>.tres.remap` — a scan
+## matching only `.tres` finds NOTHING in such a build, and the symptom would be
+## every authored map silently losing its encounters in the exported game only.
+## `addons/` gets unloaded in exports too, so this could not be caught by the
+## editor-side plumbing.
 static func _load_authored() -> Dictionary:
 	if _authored_loaded:
 		return _authored
 	_authored_loaded = true
-	# Absent is the NORMAL state, not an error: a project with no authored map
-	# has no such file, and warning about it every boot would train the eye to
-	# ignore the one time it matters.
-	if not FileAccess.file_exists(AUTHORED_PATH):
-		return _authored
-	var f := FileAccess.open(AUTHORED_PATH, FileAccess.READ)
-	if f == null:
-		return _authored
-	var parsed = JSON.new()
-	var err := parsed.parse(f.get_as_text())
-	f.close()
-	if err != OK or typeof(parsed.data) != TYPE_DICTIONARY:
-		push_error("WildEncounters: %s is malformed — authored encounters "
-				% AUTHORED_PATH + "ignored (line %d)" % parsed.get_error_line())
-		return _authored
-	_authored = parsed.data.get("maps", {})
+	_authored = scan_authored_dir(AUTHORED_DIR)
 	return _authored
+
+
+## The scan itself, against any directory.
+##
+## ⚠️ **SPLIT OUT SO THE COMPLETENESS GATE BELOW IS REACHABLE FROM A TEST.** That
+## gate is the one thing standing between a half-edited table and the player
+## being handed species 0 — and with the scan welded to `AUTHORED_DIR` it could
+## only be exercised by writing junk into the live directory, so removing it
+## would have failed nothing. A test now points this at a throwaway `user://`
+## directory instead.
+static func scan_authored_dir(dir_path: String) -> Dictionary:
+	var out: Dictionary = {}
+	# Absent is the NORMAL state, not an error: a project with no authored table
+	# has no such directory, and warning every boot would train the eye to
+	# ignore the one time it matters.
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return out
+	var expected := slot_rates().size()
+	for file in dir.get_files():
+		var name := file.trim_suffix(".remap")
+		if not (name.ends_with(".tres") or name.ends_with(".res")):
+			continue
+		var res := ResourceLoader.load(dir_path + name)
+		if res == null or not (res is EncounterTable):
+			push_error("WildEncounters: %s is not an EncounterTable — ignored."
+					% (dir_path + name))
+			continue
+		var table: EncounterTable = res
+		# ⚠️ AN INCOMPLETE TABLE IS TREATED AS NO TABLE, WHICH IS THE ONLY SAFE
+		# READING. A freshly created one is all-zero by construction, and an
+		# unset slot would otherwise resolve to species 0 and hand the player a
+		# nonsense encounter. Loud, because a table that silently does nothing
+		# is the exact failure this layer exists to prevent.
+		if not table.is_complete(expected):
+			push_warning("WildEncounters: %s is not usable yet — %s. The map"
+					% [name, table.incomplete_reason(expected)]
+					+ " will behave as though it has no table.")
+			continue
+		if out.has(table.map_name):
+			push_error("WildEncounters: two authored tables both claim %s — %s"
+					% [table.map_name, name] + " ignored.")
+			continue
+		out[table.map_name] = table.to_runtime()
+	return out
 
 
 ## Every authored map name that has a table. Used by the integrity guard below

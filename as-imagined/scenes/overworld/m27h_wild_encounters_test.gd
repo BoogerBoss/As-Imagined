@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 77
+const EXPECTED_TOTAL := 91
 
 var _total := 0
 var _failed := 0
@@ -42,6 +42,7 @@ func _ready() -> void:
 	_test_party_and_mount()
 	_test_converter_rulings()
 	_test_stamp_trigger()
+	_test_authored_layer()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -580,3 +581,172 @@ func _test_stamp_trigger() -> void:
 			WildEncounters.encounter_type_at(mm, probe + ORIGIN)
 			== MapManager.EncounterType.LAND)
 	mm.free()
+
+
+## --- H. [M27T piece 5] the authored table layer ---
+##
+## Authored tables are `.tres` Resources under `data/encounters/`, overriding the
+## generated JSON per map. ⚠️ **THIS REVERSES D4b** (`m27m5_map_creator_scope.md`,
+## Rob 2026-08-09, which chose JSON and rejected Inspector editability by name) —
+## reopened by Rob 2026-08-12 because in-Godot editing became a requirement and
+## Godot gives free undo and property interception only for Resources.
+##
+## ⚠️ **H.05/H.06 ARE THE PAIR-SYMMETRY CONVENTION**, tested independently
+## because a symmetric-LOOKING clamp where only one direction fires is exactly
+## what a one-directional test passes.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §4.
+func _test_authored_layer() -> void:
+	# The migrated table. Xanadu is the project's only authored map, and its
+	# grass exists ONLY because of piece 4's override — so this layer and that
+	# one are load-bearing for the same 91 cells.
+	_chk("H.01 Xanadu's authored table still resolves after the move to .tres",
+			WildEncounters.has_table("XanaduNursery"))
+	var x := WildEncounters.table_for("XanaduNursery")
+	var dexes := {}
+	for s in x.get("slots", []):
+		dexes[int(s.get("dex", 0))] = true
+	_chk("H.02 with its rate, its 15 slots and its own species intact",
+			int(x.get("encounter_rate", 0)) == 21
+			and x.get("slots", []).size() == 15
+			and dexes.has(19) and dexes.has(16) and dexes.has(10) and dexes.has(13))
+	# ⚠️ THE SHAPE IS THE GENERATED ONE. `to_runtime()` meets the JSON layer's
+	# dictionary exactly, which is what kept this storage change invisible past
+	# `table_for()` — the roll, the party builder and every older test are
+	# untouched.
+	# ⚠️ **COMPARED KEY-FOR-KEY AGAINST THE GENERATED LAYER, INCLUDING INSIDE A
+	# SLOT — the first version of this checked only the top level plus `dex`, and
+	# renaming `min`/`max` to `min_level`/`max_level` passed it while
+	# `build_wild_party` would have read nothing at runtime.** Found by
+	# injection, not by reading. The slot keys are where the two layers most
+	# easily drift, because `EncounterSlot` names its own fields differently on
+	# purpose and `to_runtime()` is the only thing translating them.
+	var g := WildEncounters.table_for("ViridianForest_Frlg")
+	var x_slot: Dictionary = x["slots"][0]
+	var g_slot: Dictionary = g["slots"][0]
+	var x_keys := x.keys(); x_keys.sort()
+	var g_keys := g.keys(); g_keys.sort()
+	var xs_keys := x_slot.keys(); xs_keys.sort()
+	var gs_keys := g_slot.keys(); gs_keys.sort()
+	_chk("H.03 and it is the same shape the generated layer returns, slots"
+			+ " included (%s / %s)" % [x_keys, xs_keys],
+			x_keys == g_keys and xs_keys == gs_keys
+			and x.has("encounter_rate") and xs_keys.has("dex"))
+
+	# ⚠️ A BLANK TABLE MUST BEHAVE AS NO TABLE. A freshly created one is all-zero
+	# by construction, and an unset slot would otherwise resolve to species 0 and
+	# hand the player a nonsense encounter.
+	var blank := EncounterTable.new()
+	_chk("H.04 a blank table is not complete, so it can never reach the roll",
+			not blank.is_complete(15) and blank.incomplete_reason(15) != "")
+	blank.map_name = "Somewhere"
+	blank.encounter_rate = 21
+	for i in range(15):
+		blank.slots.append(EncounterSlot.new())
+	_chk("H.05 nor is one whose slots have no species yet",
+			not blank.is_complete(15)
+			and blank.incomplete_reason(15).contains("no species"))
+	for s in blank.slots:
+		s.dex = 16
+	_chk("H.06 but it becomes usable once every slot is filled",
+			blank.is_complete(15) and blank.incomplete_reason(15) == "")
+	# The wrong slot COUNT is its own failure: the rate table indexes by slot,
+	# so a short list would point the odds at the wrong mon.
+	blank.slots.remove_at(0)
+	_chk("H.07 and a short slot list is refused rather than silently indexed",
+			not blank.is_complete(15)
+			and blank.incomplete_reason(15).contains("needs 15"))
+
+	# ⚠️ CLAMPING LIVES IN THE SETTER, NOT THE UI — it has to hold for a script
+	# edit, a converter and a fixture, not just for someone dragging a spinbox.
+	var slot := EncounterSlot.new()
+	slot.min_level = 10
+	slot.max_level = 20
+	slot.min_level = 30
+	_chk("H.08 pushing min above max carries max up with it (%d-%d)"
+			% [slot.min_level, slot.max_level],
+			slot.min_level == 30 and slot.max_level == 30)
+	# ⚠️ THE MIRROR, TESTED SEPARATELY. Same convention as every other pair in
+	# this project: one direction passing proves nothing about the other.
+	var slot2 := EncounterSlot.new()
+	slot2.max_level = 40
+	slot2.min_level = 20
+	slot2.max_level = 5
+	_chk("H.09 and pulling max below min carries min down (%d-%d)"
+			% [slot2.min_level, slot2.max_level],
+			slot2.min_level == 5 and slot2.max_level == 5)
+	var slot3 := EncounterSlot.new()
+	slot3.max_level = 999
+	slot3.min_level = -5
+	_chk("H.10 levels stay inside 1-100 whatever they are handed (%d-%d)"
+			% [slot3.min_level, slot3.max_level],
+			slot3.min_level == 1 and slot3.max_level == 100)
+
+	# ⚠️ **THE LOADER'S OWN GATE, AND NOTHING ABOVE COVERS IT.** H.04-H.07 drive
+	# `is_complete()` directly; the scan is what has to ACT on it, and with the
+	# scan welded to the live directory the only way to exercise the refusal was
+	# to write junk into `data/encounters/`. Removing the gate would have failed
+	# nothing — the same callee-tested/caller-untested seam as `[M27H H4]`'s
+	# accessor, BG.10 and G.10 before it. Pointed at a throwaway `user://`
+	# directory so the game's own corpus is never involved.
+	const SCRATCH := "user://m27t_scan_probe/"
+	DirAccess.make_dir_recursive_absolute(SCRATCH)
+	var half := EncounterTable.new()
+	half.map_name = "HalfEdited"
+	half.encounter_rate = 21
+	for i in range(15):
+		half.slots.append(EncounterSlot.new())
+	half.slots[7].dex = 0                      # the one unset slot
+	for s in half.slots:
+		if s != half.slots[7]:
+			s.dex = 16
+	var whole := EncounterTable.new()
+	whole.map_name = "Finished"
+	whole.encounter_rate = 21
+	for i in range(15):
+		var s2 := EncounterSlot.new()
+		s2.dex = 16
+		whole.slots.append(s2)
+	ResourceSaver.save(half, SCRATCH + "HalfEdited_land.tres")
+	ResourceSaver.save(whole, SCRATCH + "Finished_land.tres")
+	var scanned := WildEncounters.scan_authored_dir(SCRATCH)
+	_chk("H.13 the loader admits a complete table",
+			scanned.has("Finished")
+			and (scanned["Finished"] as Dictionary).get("encounter_rate", 0) == 21)
+	# ⚠️ THE DISCRIMINATOR. Without H.13 beside it, "the half-edited one is
+	# absent" would also pass if the scan found nothing at all.
+	_chk("H.14 and refuses the one with an unfilled slot, so the map plays as"
+			+ " though it has no table",
+			not scanned.has("HalfEdited") and scanned.size() == 1)
+	DirAccess.remove_absolute(SCRATCH + "HalfEdited_land.tres")
+	DirAccess.remove_absolute(SCRATCH + "Finished_land.tres")
+	DirAccess.remove_absolute(SCRATCH)
+
+	# ⚠️ THE SHIPPED CORPUS, swept rather than sampled — the whole point of a
+	# hand-authored layer is that nobody regenerates it, so a table that went
+	# stale or got half-edited stays broken until something looks.
+	var dir := DirAccess.open(WildEncounters.AUTHORED_DIR)
+	if dir == null:
+		_gated += 2
+		return
+	var expected := WildEncounters.slot_rates().size()
+	var bad_tables: Array = []
+	var misnamed: Array = []
+	var count := 0
+	for file in dir.get_files():
+		var fname := file.trim_suffix(".remap")
+		if not (fname.ends_with(".tres") or fname.ends_with(".res")):
+			continue
+		count += 1
+		var t := ResourceLoader.load(WildEncounters.AUTHORED_DIR + fname) as EncounterTable
+		if t == null or not t.is_complete(expected):
+			bad_tables.append(fname)
+			continue
+		# A file whose NAME and CONTENTS disagree is worse than either being
+		# wrong on its own — it makes the map it feeds unguessable.
+		if fname.get_basename() != t.expected_basename():
+			misnamed.append(fname)
+	_chk("H.11 every shipped authored table is complete (%d table(s), bad: %s)"
+			% [count, bad_tables], count > 0 and bad_tables.is_empty())
+	_chk("H.12 and its filename matches the map and field inside it (%s)"
+			% [misnamed], misnamed.is_empty())
