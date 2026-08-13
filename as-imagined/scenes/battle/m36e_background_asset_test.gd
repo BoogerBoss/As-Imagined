@@ -15,7 +15,23 @@ const DIR := "res://assets/sprites/battle_anims/backgrounds"
 # The reference's own table length. If a reference update changes it, this
 # should fail loudly rather than let the recon's figures go stale.
 const EXPECTED_TABLE_ENTRIES := 84
-const TILEMAP_WIDTH_PX := 256  # 32 cells x 8 px, always
+# ⚠️ **256 IS THE RULE, NOT A UNIVERSAL — AND THE EXCEPTION IS THE ONE THAT
+# WAS RENDERING WRONG.** A text BG's shape comes from its BGCNT screen size,
+# not from the tilemap's byte count. Every move background sets size 0
+# (256 wide) except Surf, which sets 1 = 512x256
+# (`SetAnimBgAttribute(1, BG_ANIM_SCREEN_SIZE, 1)`, battle_anim_water.c:1000)
+# and is therefore two 32x32 screenblocks SIDE BY SIDE.
+#
+# This constant read "always" and the assertion below took it literally, which
+# is why a 256x512 Surf passed for the whole of M36E: the pull was verified,
+# the SHAPE never was. Standing rule (17) in its third dress.
+const TILEMAP_WIDTH_PX := 256  # 32 cells x 8 px, for every BG at screen size 0
+const WIDE_WIDTH_PX := 512     # 64 cells; screen size 1, Surf only
+const WIDE_HEIGHT_PX := 256    # a 512-wide text BG is exactly 32 cells tall
+# Keyed by name rather than derived from the size, so a background that
+# silently CHANGED shape is caught instead of being waved through.
+const WIDE_BACKGROUNDS := ["SURF_PLAYER", "SURF_OPPONENT", "SURF_CONTEST",
+		"SURF_MUDDY_PLAYER"]
 
 
 func _ready() -> void:
@@ -49,8 +65,14 @@ func _ready() -> void:
 			bad_load = str(name)
 			break
 		var size := tex.get_size()
-		if int(size.x) != TILEMAP_WIDTH_PX:
-			bad_width = "%s (%d px)" % [name, int(size.x)]
+		var want_w: int = WIDE_WIDTH_PX if WIDE_BACKGROUNDS.has(str(name)) \
+				else TILEMAP_WIDTH_PX
+		if int(size.x) != want_w:
+			bad_width = "%s (%d px, want %d)" % [name, int(size.x), want_w]
+			break
+		if WIDE_BACKGROUNDS.has(str(name)) and int(size.y) != WIDE_HEIGHT_PX:
+			bad_width = "%s is %dpx tall, a 512-wide text BG is %d" \
+					% [name, int(size.y), WIDE_HEIGHT_PX]
 			break
 		if int(size.y) % 8 != 0 or size.y <= 0:
 			bad_align = str(name)

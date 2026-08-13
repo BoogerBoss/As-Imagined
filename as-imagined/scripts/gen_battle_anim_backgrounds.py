@@ -77,6 +77,40 @@ OUT_DIR = assert_inside_project(
 INDEX_PATH = os.path.join(OUT_DIR, "index.json")
 
 TILEMAP_WIDTH = 32  # cells; the GBA screen is 30 wide plus a scroll margin
+
+# ⚠️ **THE 32-WIDE RULE IS NOT UNIVERSAL, AND SURF IS THE EXCEPTION.**
+# A text BG's shape comes from its BGCNT screen size, not from the tilemap's
+# byte count: 0 = 256x256, 1 = 512x256, 2 = 256x512. Every move background in
+# the tree sets size 0 EXCEPT Surf, which sets 1
+# (`SetAnimBgAttribute(1, BG_ANIM_SCREEN_SIZE, 1)`, battle_anim_water.c:1000).
+# So Surf's 2048 cells are 64 wide x 32 tall, and folding them 32x64 -- which
+# this generator did, because it derived height from a fixed width -- halves
+# the horizontal wrap period and stacks the right half of the wave underneath
+# the left instead of beside it.
+#
+# Reported from play: "towards the end of the animation the top left corner
+# has another wave sneak in." That is the wrap firing at 256px when hardware
+# wraps at 512. Surf scrolls -2px/frame for ~134 frames = 268px, which clears
+# 256 (so the port wraps, late, visibly) and does not clear 512 (so hardware
+# never wraps at all).
+#
+# ⚠️ **AND A 512-WIDE TEXT BG IS TWO 32x32 SCREENBLOCKS SIDE BY SIDE, NOT ONE
+# 64-WIDE GRID.** Cells 0-1023 are the left block and 1024-2047 the right, each
+# row-major within itself. A plain 64-wide reshape would interleave the two and
+# produce a finely striped image that still measures 512x256.
+WIDE_TILEMAPS = {
+    "graphics/battle_anims/backgrounds/water_player.bin",
+    "graphics/battle_anims/backgrounds/water_opponent.bin",
+    "graphics/battle_anims/backgrounds/water_contest.bin",
+}
+SCREENBLOCK_CELLS = 32 * 32
+
+# ⚠️ **TEN OTHER TILEMAPS ARE ALSO 2048 CELLS AND ARE DELIBERATELY NOT LISTED**
+# -- the four terrain families (this project has no terrain system; M17e is
+# VOID) plus Hydro Cannon and Fissure. None of them sets screen size 1, so the
+# ambiguity is not theirs; they are folded 32-wide as before. Flagged rather
+# than swept in, because "2048 cells" is the symptom and "sets screen size 1"
+# is the cause, and only Surf has the cause.
 # The GBA shows 30x20 tiles of the 32-wide map; the rest is scroll margin.
 VISIBLE_TILES_X = 30
 VISIBLE_TILES_Y = 20
@@ -165,10 +199,28 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
     if len(raw) % 2:
         return None, None, "tilemap length %d is not u16-aligned" % len(raw)
     cells = struct.unpack("<%dH" % (len(raw) // 2), raw)
-    rows = len(cells) // TILEMAP_WIDTH
-    if rows * TILEMAP_WIDTH != len(cells):
-        return None, None, "tilemap %d cells is not a multiple of %d" % (
-            len(cells), TILEMAP_WIDTH)
+    # Surf and only Surf is a 512x256 BG -- see WIDE_TILEMAPS.
+    wide = tilemap_rel in WIDE_TILEMAPS
+    if wide:
+        if len(cells) != 2 * SCREENBLOCK_CELLS:
+            return None, None, ("wide tilemap %d cells, expected %d"
+                                % (len(cells), 2 * SCREENBLOCK_CELLS))
+        cols, rows = TILEMAP_WIDTH * 2, TILEMAP_WIDTH
+    else:
+        cols = TILEMAP_WIDTH
+        rows = len(cells) // TILEMAP_WIDTH
+        if rows * TILEMAP_WIDTH != len(cells):
+            return None, None, "tilemap %d cells is not a multiple of %d" % (
+                len(cells), TILEMAP_WIDTH)
+
+    def cell_xy(i):
+        """Cell index -> (tile x, tile y) for this BG's real screen size."""
+        if not wide:
+            return i % TILEMAP_WIDTH, i // TILEMAP_WIDTH
+        # Two side-by-side 32x32 screenblocks, each row-major within itself.
+        block, within = divmod(i, SCREENBLOCK_CELLS)
+        return (within % TILEMAP_WIDTH) + block * TILEMAP_WIDTH, \
+            within // TILEMAP_WIDTH
 
     # Bank 0 with tile index 0 is an EMPTY cell and carries no colour, so it
     # never conflicts. What matters is that all actual content shares one
@@ -202,8 +254,9 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
         for idx, cell in enumerate(cells):
             if (cell & 0x3FF) == 0:
                 continue
-            if only_visible and (idx % TILEMAP_WIDTH >= VISIBLE_TILES_X
-                    or idx // TILEMAP_WIDTH >= VISIBLE_TILES_Y):
+            cx, cy = cell_xy(idx)
+            if only_visible and (cx >= VISIBLE_TILES_X
+                    or cy >= VISIBLE_TILES_Y):
                 continue
             out.add((cell >> 12) & 0xF)
         return out
@@ -221,7 +274,7 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
               % (os.path.basename(map_path), sorted(offscreen_only)))
 
     # Composite in RGBA so palette index 0 becomes real transparency.
-    canvas = Image.new("RGBA", (TILEMAP_WIDTH * 8, rows * 8), (0, 0, 0, 0))
+    canvas = Image.new("RGBA", (cols * 8, rows * 8), (0, 0, 0, 0))
     pal = sheet.getpalette()
     for i, cell in enumerate(cells):
         idx = cell & 0x3FF
@@ -243,8 +296,8 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
                 if v != 0:
                     out[x, y] = (pal[v * 3], pal[v * 3 + 1], pal[v * 3 + 2],
                                  255)
-        canvas.paste(rgba, ((i % TILEMAP_WIDTH) * 8,
-                            (i // TILEMAP_WIDTH) * 8), rgba)
+        cx, cy = cell_xy(i)
+        canvas.paste(rgba, (cx * 8, cy * 8), rgba)
     return canvas, bank_pal, None
 
 
