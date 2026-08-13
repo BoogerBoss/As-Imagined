@@ -227,6 +227,26 @@ func get_exp_fill_bar() -> TextureProgressBar:
 	return _exp_fill
 
 
+# [HP-number drain fix] The HP NUMBER, written on its own rather than as part
+# of a whole-panel refresh() -- the "hp_drain" beat (battle_screen_shared.gd)
+# tweens the bar between two fractions and, before this, had no way to carry
+# the printed number along with it, so the bar drained smoothly while the
+# number sat stale until _refresh_ui() snapped it at the END of the turn.
+#
+# Source updates both together: BattleScript_Hit_RetFromAtkAnimation's own
+# `healthbarupdate` and `datahpupdate` are adjacent commands on the same
+# beat, which is why the number is not a separate later step there either.
+#
+# Null-tolerant in exactly the same way get_hp_fill_bar/get_exp_fill_bar are
+# -- the opponent-shaped and both doubles-shaped panels genuinely have no
+# HpNumberLabel (real doubles never prints HP numbers), so a caller holding
+# any panel can call this unconditionally.
+func set_hp_number(current_hp: int, max_hp: int) -> void:
+	if _hp_number_label == null:
+		return
+	_hp_number_label.text = "%d/%d" % [current_hp, max_hp]
+
+
 func refresh(name_text: String, gender_glyph: String, level_text: String, status: int,
 		current_hp: int, max_hp: int, hp_color: Color, exp_fraction: float = -1.0) -> void:
 	_name_label.text = name_text

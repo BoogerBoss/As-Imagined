@@ -189,6 +189,31 @@ static func create_battle_pokemon(
 	var bp := BattlePokemon.from_species(
 			species, clamped_level, forced_nature, forced_ivs, forced_friendship)
 
+	# ⚠️ **A POKÉMON'S EXP MUST START AT ITS OWN LEVEL'S FLOOR, NOT AT ZERO**
+	# [Bugfix, live-reported as "no exp fill"]. `BattlePokemon.current_exp`
+	# defaults to 0 and nothing anywhere set it from `level` — the only other
+	# writers in the whole project are the save loader and BattleManager's own
+	# `_award_exp_for_fainted_opponent`. So every Pokémon this factory built
+	# was internally a level-1-worth-of-Exp mon wearing a level-N label.
+	#
+	# It broke two things at once, only one of them cosmetic:
+	#   • the EXP bar read `(0 - exp_for_level(N)) / needed`, clamped to 0.0,
+	#     so it was permanently empty and its "exp_drain" beat had zero
+	#     distance to tween;
+	#   • `_check_level_up` re-derives level from the CUMULATIVE total
+	#     (source's own GetLevelFromMonExp), so a level-5 mon starting at 0
+	#     had to earn the entire cumulative Exp for level 6 before it gained
+	#     a single level.
+	#
+	# Growth rate is read FRESH from PokemonRegistry by dex rather than off
+	# the species instance, matching `_check_level_up`'s own deliberate
+	# discipline (PokemonSpecies.growth_rate is a dormant int field with no
+	# defined mapping — see build_species' own note above). A species with no
+	# curve data returns 0, which leaves current_exp at 0 exactly as before —
+	# no fabricated value, and no regression for hand-built fixtures.
+	var growth_rate: String = PokemonRegistry.get_species(dex).get("growth_rate", "")
+	bp.current_exp = PokemonRegistry.get_exp_for_level(growth_rate, clamped_level)
+
 	if evs != null and evs is Array and evs.size() == 6:
 		var typed_evs: Array[int] = []
 		for v in evs:

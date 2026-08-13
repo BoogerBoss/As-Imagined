@@ -2973,8 +2973,16 @@ func _wire_log_signals() -> void:
 		_log("%s was subjected to torment!" % _mon_label(target)))
 	_bm.infatuated.connect(func(mon: BattlePokemon):
 		_log("%s fell in love!" % _mon_label(mon)))
+	# ⚠️ **BUFFERED, NOT LOGGED** [Bugfix, live-reported: "move effects like
+	# leech seed and yawn text trigger before animation"]. `leech_seeded.emit`
+	# fires one line BEFORE `move_executed.emit` (battle_manager.gd:4703-4704),
+	# and `move_executed` is what `_on_hit_effect_move_executed` hangs the
+	# "anim" beat off — so a direct `_log()` here appended its text beat to
+	# `_pending_beats` ahead of the animation and drained first. Routing it
+	# through `_pending_effect_lines` is the mechanism `_flush_pending_effect_
+	# lines()` already exists for; see that function's own doc comment.
 	_bm.leech_seeded.connect(func(target: BattlePokemon, _source: BattlePokemon):
-		_log("%s was seeded!" % _mon_label(target)))
+		_pending_effect_lines.append("%s was seeded!" % _mon_label(target)))
 	_bm.nightmare_set.connect(func(target: BattlePokemon):
 		_log("%s began having a nightmare!" % _mon_label(target)))
 	# DISCLOSED: source's line is a COMBINED cost+effect sentence naming both
@@ -3025,8 +3033,11 @@ func _wire_log_signals() -> void:
 			confused: bool):
 		if confused:
 			_log("%s became confused due to fatigue!" % _mon_label(attacker)))
+	# ⚠️ Buffered for the same reason as `leech_seeded` above — `yawn_set.emit`
+	# likewise precedes `move_executed.emit` (battle_manager.gd:2785-2786), so
+	# a direct `_log()` printed "grew drowsy!" before Yawn's own animation.
 	_bm.yawn_set.connect(func(target: BattlePokemon):
-		_log("%s grew drowsy!" % _mon_label(target)))
+		_pending_effect_lines.append("%s grew drowsy!" % _mon_label(target)))
 	_bm.destiny_bond_set.connect(func(attacker: BattlePokemon):
 		_log("%s is hoping to take its attacker down with it!" % _mon_label(attacker)))
 	_bm.destiny_bond_triggered.connect(func(fainted_mon: BattlePokemon,
@@ -3429,8 +3440,13 @@ func _on_log_move_executed(_attacker: BattlePokemon, defender: BattlePokemon,
 			# is already set by `_on_hit_effectiveness_computed`, which runs
 			# ahead of this handler.
 			_queue_sfx(AudioMap.damage_se(_pending_hit_effectiveness))
+			# [HP-number drain fix] `panel`/`max_hp` ride along so the beat can
+			# tick the printed HP number in lockstep with the bar (source's own
+			# adjacent healthbarupdate/datahpupdate). `panel` is null on every
+			# shape with no HpNumberLabel, which set_hp_number tolerates.
 			_pending_beats.append({
 				"kind": "hp_drain", "bar": bar,
+				"panel": _panel_for(defender), "max_hp": defender.max_hp,
 				"from_frac": from_frac, "to_frac": to_frac,
 				"color": _hp_bar_color(defender.current_hp, defender.max_hp),
 			})
@@ -5672,13 +5688,31 @@ func _run_message_pacing() -> void:
 					bar.max_value = 1.0
 					bar.value = from_frac
 					bar.tint_progress = beat.get("color", Color(1, 1, 1))
+					# [HP-number drain fix] The printed number follows the bar
+					# rather than waiting for _refresh_ui()'s own end-of-turn
+					# panel.refresh(). Derived from the SAME interpolated
+					# fraction the bar is being tweened to, so the two can
+					# never disagree mid-drain, and rounded rather than
+					# truncated so a full bar reads its real max_hp instead of
+					# one short. Both branches below set it -- a zero-length
+					# drain still has to print the new number.
+					var hp_panel: HealthGroupPanel = beat.get("panel", null)
+					var beat_max_hp: int = beat.get("max_hp", 0)
 					var duration: float = _HP_DRAIN_SECONDS_FULL_BAR * abs(to_frac - from_frac)
 					if duration > 0.0:
 						var drain_tween := create_tween()
 						drain_tween.tween_property(bar, "value", to_frac, duration)
+						if hp_panel != null and beat_max_hp > 0:
+							drain_tween.parallel().tween_method(
+									func(frac: float) -> void:
+										hp_panel.set_hp_number(
+												int(round(frac * beat_max_hp)), beat_max_hp),
+									from_frac, to_frac, duration)
 						await drain_tween.finished
 					else:
 						bar.value = to_frac
+					if hp_panel != null and beat_max_hp > 0:
+						hp_panel.set_hp_number(int(round(to_frac * beat_max_hp)), beat_max_hp)
 			# [EXP bar animation fix] Same shape as "hp_drain" immediately
 			# above -- the tween that was previously entirely missing for
 			# the EXP bar, which is why it only ever snapped instead of
@@ -8366,8 +8400,26 @@ func _refresh_ui() -> void:
 	_refresh_battlefield_side(_player_party, true)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
-		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
-		_build_battle_end_buttons()
+		# ⚠️ **THE WIN/LOSE SCREEN IS SIMULATOR-ONLY, AND THIS GUARD IS WHY IT
+		# STOPPED FLASHING UP OVER THE OVERWORLD** [Bugfix, live-reported:
+		# "still see you win / lose for a second after battle, play again
+		# button is there"]. Both halves of this branch are this project's own
+		# invention with no source counterpart — source fades straight back to
+		# the field and draws no end-of-battle screen at all (recorded under
+		# M35). `_log_battle_end_result` and `_on_play_again_pressed` were
+		# ALREADY guarded on `overlay_mode` for exactly that reason; the screen
+		# that draws them was not, so an overworld battle still built both.
+		#
+		# It was visible rather than harmless because `_dispatch_move` ends
+		# with an unconditional `_refresh_ui()` AFTER its own
+		# `await _run_message_pacing()`. On a battle-ending turn
+		# `_on_battle_ended` has already drained the beats and emitted
+		# `battle_finished`, so that trailing refresh runs after the overworld
+		# was told to tear down — and the overworld frees the overlay behind a
+		# fade, which is the second the player sees.
+		if not overlay_mode:
+			_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
+			_build_battle_end_buttons()
 		return
 
 	# [M23.11 Phase 4f] SWITCH_PROMPT (mandatory faint replacement) —
