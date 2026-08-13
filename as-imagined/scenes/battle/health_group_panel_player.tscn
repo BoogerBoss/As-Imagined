@@ -39,17 +39,17 @@ stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="."]
 layout_mode = 1
-offset_left = 399.0
-offset_top = 170.0
-offset_right = 593.0
-offset_bottom = 184.0
+offset_left = 400.0
+offset_top = 173.0
+offset_right = 592.0
+offset_bottom = 181.0
 
 [node name="HpNumberLabel" type="Label" parent="."]
 layout_mode = 1
 offset_left = 320.0
-offset_top = 185.0
+offset_top = 177.0
 offset_right = 600.0
-offset_bottom = 243.0
+offset_bottom = 235.0
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 64
 text = "100/100"

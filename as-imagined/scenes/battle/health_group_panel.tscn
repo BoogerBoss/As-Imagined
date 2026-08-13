@@ -37,10 +37,10 @@ stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="."]
 layout_mode = 1
-offset_left = 144.0
-offset_top = 55.0
-offset_right = 338.0
-offset_bottom = 69.0
+offset_left = 145.0
+offset_top = 58.0
+offset_right = 337.0
+offset_bottom = 66.0
 
 [node name="NameLabel" type="Label" parent="."]
 layout_mode = 1

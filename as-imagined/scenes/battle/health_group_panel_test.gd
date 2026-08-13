@@ -17,6 +17,7 @@ func _ready() -> void:
 	_test_ready_wires_font()
 	_test_ready_wires_default_databox_and_status()
 	_test_ready_configures_solid_fill_bar()
+	_test_hp_fill_rect_matches_the_databox_groove()
 	_test_status_icon_row_mapping()
 	_test_refresh_sets_name_and_level()
 	_test_refresh_gender_glyph_positions_after_name()
@@ -126,6 +127,88 @@ func _test_ready_configures_solid_fill_bar() -> void:
 			hp_fill.nine_patch_stretch)
 	_chk("HpFill step is 0 (no value rounding)", hp_fill.step == 0.0)
 	panel.queue_free()
+
+
+# ── HpFill GEOMETRY, measured against the databox art itself ───────────────
+#
+# ⚠️ **NOTHING HAD EVER ASSERTED WHERE THE BAR LANDS, ONLY THAT IT EXISTED**
+# [Bugfix, live-reported: "hp bar is square instead of rounded"]. The bar is
+# drawn as a flat tinted rect, and its authored rect was 3px taller than the
+# groove on each side and 1px wider on each end -- so it painted straight
+# over the databox's own white border rows AND its rounded end caps, which is
+# what made a rounded, framed bar read as a plain square block. The art was
+# always correct; only the rect over it was wrong.
+#
+# This derives the expected rect FROM THE ART at runtime rather than
+# hardcoding the numbers, so art and geometry cannot drift apart again:
+# (74, 66, 90) is the databox's own empty-fill colour, occupying exactly the
+# two fill rows of the bar groove (confirmed against the real bar strip
+# assets -- hpbar.png's own 8x8 tile is transparent/frame/white/FILL/FILL/
+# white/frame/transparent, and the databox is exactly 2x that). Runs for BOTH
+# panel shapes, since the opponent variant carried the identical defect.
+const _EMPTY_FILL_RGB8 := Color8(74, 66, 90)
+
+
+func _test_hp_fill_rect_matches_the_databox_groove() -> void:
+	for variant in [["opponent", _make_panel()], ["player", _make_player_panel()]]:
+		var label: String = variant[0]
+		var panel: HealthGroupPanel = variant[1]
+		var bg: TextureRect = panel.get_node("Background")
+		var hp_fill: TextureProgressBar = panel.get_node("HpFill")
+		var img: Image = bg.texture.get_image()
+
+		# Scan the art for the contiguous empty-fill band.
+		var min_x := img.get_width()
+		var max_x := -1
+		var min_y := img.get_height()
+		var max_y := -1
+		for y in range(img.get_height()):
+			for x in range(img.get_width()):
+				if not img.get_pixel(x, y).is_equal_approx(_EMPTY_FILL_RGB8):
+					continue
+				min_x = mini(min_x, x)
+				max_x = maxi(max_x, x)
+				min_y = mini(min_y, y)
+				max_y = maxi(max_y, y)
+		_chk("%s: databox art contains a real empty-fill band" % label, max_x >= 0)
+		if max_x < 0:
+			panel.queue_free()
+			continue
+
+		# ⚠️ **THE BAND IS TWO FILL ROWS AND ONLY THE FIRST IS FINDABLE BY
+		# COLOUR.** The bar strip's own 8x8 tile carries TWO fill rows, and
+		# while the upper one is empty-coloured (74, 66, 90), the lower one's
+		# empty colour is (82, 107, 90) -- the SAME value as the surrounding
+		# frame, so a colour scan cannot tell them apart. Scanning for the
+		# empty-fill colour alone therefore finds exactly half the band and
+		# would "prove" a bar one row too short. The groove's real bottom is
+		# the white border row beneath it, which IS unambiguous.
+		var band_bottom := max_y + 1
+		while band_bottom < img.get_height() \
+				and not img.get_pixel(min_x, band_bottom).is_equal_approx(Color(1, 1, 1)):
+			band_bottom += 1
+		_chk("%s: groove is closed by a white border row below the fill band" % label,
+				band_bottom < img.get_height())
+
+		# Art -> panel space, via the Background's own authored rect.
+		var sx: float = (bg.offset_right - bg.offset_left) / float(img.get_width())
+		var sy: float = (bg.offset_bottom - bg.offset_top) / float(img.get_height())
+		var want_l: float = bg.offset_left + min_x * sx
+		var want_r: float = bg.offset_left + (max_x + 1) * sx
+		var want_t: float = bg.offset_top + min_y * sy
+		var want_b: float = bg.offset_top + band_bottom * sy
+
+		_chk("%s: HpFill left edge sits on the groove (want %.1f, got %.1f)"
+				% [label, want_l, hp_fill.offset_left], is_equal_approx(hp_fill.offset_left, want_l))
+		_chk("%s: HpFill right edge sits on the groove (want %.1f, got %.1f)"
+				% [label, want_r, hp_fill.offset_right], is_equal_approx(hp_fill.offset_right, want_r))
+		# ⚠️ The vertical pair is the one that regressed -- a bar 3px too tall
+		# on each side is exactly what buried the white borders.
+		_chk("%s: HpFill top edge sits on the groove, not over its border (want %.1f, got %.1f)"
+				% [label, want_t, hp_fill.offset_top], is_equal_approx(hp_fill.offset_top, want_t))
+		_chk("%s: HpFill bottom edge sits on the groove, not over its border (want %.1f, got %.1f)"
+				% [label, want_b, hp_fill.offset_bottom], is_equal_approx(hp_fill.offset_bottom, want_b))
+		panel.queue_free()
 
 
 # ── status_icon_row (static mapping, matches battle_screen.gd's own) ────
