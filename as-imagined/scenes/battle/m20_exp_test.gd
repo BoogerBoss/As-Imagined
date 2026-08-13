@@ -40,6 +40,7 @@ func _ready() -> void:
 	_test_player_side_faint_negative_control()
 	_test_real_species_data_integration()
 	_test_factory_seeds_current_exp_from_level()
+	_test_from_save_floors_exp_at_the_level()
 
 	var total := _pass + _fail
 	print("m20_exp_test: %d/%d passed" % [_pass, total])
@@ -487,3 +488,36 @@ func _test_factory_seeds_current_exp_from_level() -> void:
 	_chk("J.4 one level's worth of Exp from the floor levels it exactly once",
 			lv50.level == 51)
 	bm.free()
+
+
+# ── K. from_save floors current_exp at the level, not at zero ──────────────
+#
+# The other half of J. `create_battle_pokemon` seeds the floor, and
+# BattlePokemon.from_save then assigns the STORED value straight over it --
+# so every save written before that seed existed stores 0 (or omits "exp"
+# entirely) and re-introduces the bug on every single load, silently, forever.
+#
+# ⚠️ Free to close only while no save on disk carries real progress; the
+# moment one does this becomes a migration rather than a one-line floor.
+func _test_from_save_floors_exp_at_the_level() -> void:
+	var growth: String = PokemonRegistry.get_species(6).get("growth_rate", "")
+	var floor50: int = PokemonRegistry.get_exp_for_level(growth, 50)
+
+	# A pre-fix save: real level, zero Exp.
+	var stale := {"dex": 6, "level": 50, "exp": 0}
+	var loaded: BattlePokemon = BattlePokemon.from_save(stale)
+	_chk("K.1 a pre-fix save (exp 0) loads at its level's floor, not 0",
+			loaded != null and loaded.current_exp == floor50)
+
+	# A save that predates the field entirely -- no "exp" key at all.
+	var older: BattlePokemon = BattlePokemon.from_save({"dex": 6, "level": 50})
+	_chk("K.2 a save with no exp key at all is floored the same way",
+			older != null and older.current_exp == floor50)
+
+	# ⚠️ THE DISCRIMINATOR: a blanket "always use the floor" would pass K.1 and
+	# K.2 and silently DESTROY real mid-level progress on every load. Genuine
+	# progress above the floor must survive untouched.
+	var progressed: BattlePokemon = BattlePokemon.from_save(
+			{"dex": 6, "level": 50, "exp": floor50 + 500})
+	_chk("K.3 real mid-level progress above the floor is preserved, not clamped",
+			progressed != null and progressed.current_exp == floor50 + 500)

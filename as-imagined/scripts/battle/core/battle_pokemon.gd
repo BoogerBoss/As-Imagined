@@ -1568,7 +1568,20 @@ static func from_save(data: Dictionary) -> BattlePokemon:
 		mon.nickname = nick
 	mon.gender = clampi(int(data.get("gender", GENDER_MALE)),
 			GENDER_MALE, GENDER_GENDERLESS)
-	mon.current_exp = maxi(0, int(data.get("exp", 0)))
+	# ⚠️ **FLOORED AT THE LEVEL'S OWN EXP, NOT AT ZERO — OTHERWISE A SAVE
+	# WRITTEN BEFORE THE FACTORY SEEDED `current_exp` RE-INTRODUCES THE BUG ON
+	# EVERY LOAD.** `create_battle_pokemon` above has already set the correct
+	# floor for `level`; this line used to clobber it with the stored value,
+	# and every save written before that fix stores 0 (or omits the key
+	# entirely), which is exactly the state that emptied the EXP bar and made
+	# `_check_level_up` demand a whole cumulative level's worth of Exp from
+	# scratch.
+	#
+	# Taking the MAX rather than re-deriving the curve here is deliberate: it
+	# reuses the factory's own seed as the floor, so there is no second copy of
+	# the growth-rate lookup to drift, and a legitimately higher stored value
+	# (real mid-level progress) is preserved untouched.
+	mon.current_exp = maxi(mon.current_exp, int(data.get("exp", 0)))
 	mon.status = clampi(int(data.get("status", STATUS_NONE)),
 			STATUS_NONE, STATUS_SLEEP)
 	mon.sleep_turns = maxi(0, int(data.get("sleep_turns", 0)))
