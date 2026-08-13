@@ -182,16 +182,32 @@ static func encounter_type_at(manager: MapManager, gcell: Vector2i) -> int:
 	if d == null:
 		return MapManager.EncounterType.NONE
 	var l := manager.local_of(gcell)
-	if d.behavior_is_explicit(l.x, l.y):
-		return type_from_behavior(d.behavior_at(l.x, l.y))
-	var stamped := MapManager.encounter_type_for(d.atlas, d.metatile_at(l.x, l.y))
+	return resolve_encounter_type(d, l.x, l.y)
+
+
+## The rule itself, against a bare `MapData` in LOCAL cells.
+##
+## ⚠️ **SPLIT OUT SO THE EDITOR AND THE GAME CANNOT DISAGREE.** The overlay works
+## on an open `MapData` with no `MapManager` anywhere, so it cannot call
+## `encounter_type_at` — and the first cut of it therefore read the raw stamp
+## and skipped the hand-painted override entirely. That made the ENCOUNTERS view
+## silently WRONG on exactly the maps the override exists for: Xanadu Nursery's
+## 91 painted grass cells drew as empty while the game encountered on them. Two
+## hand-kept copies of one rule is the drift that has already cost this project
+## a permanent `check_bake_diff` false positive; one function, two callers.
+static func resolve_encounter_type(d: MapData, x: int, y: int) -> int:
+	if d == null or not d.in_bounds(x, y):
+		return MapManager.EncounterType.NONE
+	if d.behavior_is_explicit(x, y):
+		return type_from_behavior(d.behavior_at(x, y))
+	var stamped := MapManager.encounter_type_for(d.atlas, d.metatile_at(x, y))
 	# ⚠️ -1 is "this pair has no sidecar", NOT "nothing here". Degrading to the
 	# behaviour rule keeps an unregenerated checkout playing exactly as it did
 	# before piece 4, where treating it as NONE would silently empty every map
 	# on that pair. The loudness lives where it can be acted on instead: the
-	# overlay draws a `?` and the suite asserts all 60 tables exist.
+	# overlay flags the pair and the suite asserts all 60 tables exist.
 	if stamped < 0:
-		return type_from_behavior(d.behavior_at(l.x, l.y))
+		return type_from_behavior(d.behavior_at(x, y))
 	return stamped
 
 

@@ -492,6 +492,22 @@ conversion inside `encounter_type_at` would pass anyway.
 **Nothing a player can currently reach changed**: the one corridor map that
 differs carries no encounter table.
 
+⚠️ **THE ENCOUNTERS OVERLAY WAS WRONG UNTIL THIS TIER FIXED IT, AND IT WAS FOUND
+BY ASKING WHAT A HUMAN WOULD SEE.** Piece 3 wrote the view against the raw
+stamp; piece 4 added the override and did not repoint it — so the view drew
+Xanadu Nursery's 91 painted grass cells as EMPTY while the game encountered on
+them, which is the single most misleading thing it could have shown. **Third
+caller-not-updated instance in this arc**, after `[M27H H4]`'s `caught_pokemon()`
+accessor and BG.10 itself.
+
+Fixed by extracting `WildEncounters.resolve_encounter_type(map_data, x, y)` and
+having BOTH the runtime and the overlay call it — one rule, two callers, rather
+than the two hand-kept copies that already cost this project a permanent
+`check_bake_diff` false positive. The view now also **outlines any cell whose
+behaviour a human chose**, which is useful on its own: it is the difference
+between "this grass came with the tileset" and "I put it here". G.13 pins that
+the two sides cannot drift apart again.
+
 ---
 
 ## 6. Deliberately not here

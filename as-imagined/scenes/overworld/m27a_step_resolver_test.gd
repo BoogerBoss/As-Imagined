@@ -5034,14 +5034,19 @@ func _test_m27t_encounter_stamp() -> void:
 	var ov := MapOverlay.new()
 	ov.map_data = md
 	add_child(ov)
+	# ⚠️ The dict is `cell_info()`'s shape, and it needs the CELL as well as the
+	# metatile — [M27T piece 4] made the overlay resolve the hand-painted
+	# override, which is a per-cell fact rather than a per-tile one.
 	var stamps := {}
-	for i in range(md.metatile.size()):
-		stamps[ov.encounter_type_of({"metatile": md.metatile[i]})] = true
+	for y in range(md.height):
+		for x in range(md.width):
+			stamps[ov.encounter_type_of({"cell": Vector2i(x, y),
+					"metatile": md.metatile_at(x, y)})] = true
 	_chk("BG.10 the overlay resolves real stamps off its own map_data (%s)"
 			% [stamps.keys()], not stamps.has(-1) and stamps.size() > 0)
 	ov.map_data = null
 	_chk("BG.11 and answers -1 rather than NONE with no map assigned",
-			ov.encounter_type_of({"metatile": 13}) == -1)
+			ov.encounter_type_of({"cell": Vector2i.ZERO, "metatile": 13}) == -1)
 	ov.free()
 
 

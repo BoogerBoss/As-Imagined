@@ -87,6 +87,9 @@ const DEFAULT_ENCOUNTER_COLORS := {
 }
 const ENCOUNTER_TYPE_NAMES := {0: "no encounters", 1: "LAND", 2: "WATER"}
 
+## Outline for a cell whose behaviour a human overrode — see `_draw_cell`.
+const DEFAULT_OVERRIDE_COLOR := Color(1.0, 0.85, 0.2, 0.95)
+
 ## [Events mode] The baked entities made visible.
 ##
 ## Every other mode draws PER-CELL data derived from `StepResolver.cell_info()`.
@@ -240,6 +243,12 @@ enum Mode { OFF, BEHAVIOR, MOVEMENT, PROVENANCE, LAYER_TYPE, EVENTS, CONNECTIONS
 		review_color = value
 		queue_redraw()
 
+## [M27T piece 4] Outlines a cell whose behaviour a human chose.
+@export var override_color: Color = DEFAULT_OVERRIDE_COLOR:
+	set(value):
+		override_color = value
+		queue_redraw()
+
 @export var dead_warp_color: Color = DEFAULT_DEAD_WARP_COLOR:
 	set(value):
 		dead_warp_color = value
@@ -285,7 +294,22 @@ func layer_type_color(lt: int) -> Color:
 func encounter_type_of(info: Dictionary) -> int:
 	if map_data == null:
 		return -1
-	return MapManager.encounter_type_for(map_data.atlas, int(info["metatile"]))
+	var c: Vector2i = info["cell"]
+	# ⚠️ **THE RESOLVED ANSWER, NOT THE RAW STAMP — [M27T piece 4].** This view
+	# has to show what the GAME will do, and for a hand-painted cell that is the
+	# behaviour someone painted rather than the stamp of the metatile underneath
+	# it. Shared with the runtime rather than restated here; see
+	# `WildEncounters.resolve_encounter_type`.
+	return WildEncounters.resolve_encounter_type(map_data, c.x, c.y)
+
+
+## Whether this pair has a stamp table at all, asked once per map rather than
+## per cell. `resolve_encounter_type` degrades a missing table to the behaviour
+## rule so the GAME keeps working; the editor still needs to say so, because an
+## unregenerated checkout and a genuinely empty map look identical otherwise.
+func has_encounter_table() -> bool:
+	return map_data != null \
+			and MapManager.encounter_type_for(map_data.atlas, 0) != -1
 
 
 # ------------------------------------------------------ events mode (read)
@@ -1033,16 +1057,18 @@ func _note_legend(legend: Dictionary, info: Dictionary) -> void:
 			legend[str(LAYER_TYPE_NAMES.get(lt, "layer %d" % lt))] = layer_type_color(lt)
 		Mode.ENCOUNTERS:
 			# ⚠️ Built from the cells actually drawn, like every other mode — so
-			# a map with no water tile never claims a WATER key, and a map whose
-			# pair has no table says THAT rather than saying nothing.
+			# a map with no water tile never claims a WATER key.
 			var et := encounter_type_of(info)
-			if et == -1:
-				legend["? no table for this tileset pair"] = review_color
-			elif DEFAULT_ENCOUNTER_COLORS.has(et):
+			if DEFAULT_ENCOUNTER_COLORS.has(et):
 				legend[str(ENCOUNTER_TYPE_NAMES.get(et, "stamp %d" % et))] = \
 						DEFAULT_ENCOUNTER_COLORS[et]
 			else:
 				legend[str(ENCOUNTER_TYPE_NAMES.get(et, "stamp %d" % et))] = text_color
+			var c2: Vector2i = info["cell"]
+			if map_data != null and map_data.behavior_is_explicit(c2.x, c2.y):
+				legend["hand-painted (behaviour, not stamp)"] = override_color
+			if not has_encounter_table():
+				legend["⚠ no stamp table for this pair — using behaviour"] = review_color
 
 
 ## [M27M5] Hide the legend without leaving the mode.
@@ -1253,11 +1279,13 @@ func _draw_cell(info: Dictionary) -> void:
 			var et := encounter_type_of(info)
 			if DEFAULT_ENCOUNTER_COLORS.has(et):
 				draw_rect(box, _fill(DEFAULT_ENCOUNTER_COLORS[et]))
-			elif et == -1:
-				# The pair has no sidecar. Loud, because the alternative reading
-				# — a map where nothing spawns — looks completely normal.
-				draw_rect(box, review_color, false, 2.0)
-				_draw_letter(at, "?", review_color)
+			# A cell whose meaning a HUMAN chose is outlined, whatever it
+			# resolved to. Useful in its own right while authoring — it is the
+			# difference between "this grass came with the tileset" and "I put
+			# it here" — and it is what makes an overridden cell legible rather
+			# than looking like an imported one.
+			if map_data != null and map_data.behavior_is_explicit(cell.x, cell.y):
+				draw_rect(box, override_color, false, 2.0)
 	draw_rect(box, grid_color, false, 1.0)
 
 

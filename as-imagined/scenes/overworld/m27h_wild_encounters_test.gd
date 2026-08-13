@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 76
+const EXPECTED_TOTAL := 77
 
 var _total := 0
 var _failed := 0
@@ -555,6 +555,26 @@ func _test_stamp_trigger() -> void:
 	# nothing spawns anywhere, which looks like a content bug rather than a
 	# missing build step. `probe` still carries the grass behaviour painted in
 	# G.07, with its explicit mark cleared in G.08.
+	# ⚠️ **THE EDITOR AND THE GAME MUST GIVE THE SAME ANSWER, AND THEY DID NOT.**
+	# The ENCOUNTERS overlay was written in piece 3 against the raw stamp; piece
+	# 4 added the hand-painted override and did not repoint it, so the view drew
+	# Xanadu Nursery's 91 painted grass cells as empty while the game encountered
+	# on them. Found by asking what a human would SEE before handing over test
+	# steps — the third caller-not-updated instance in this arc, after the
+	# `caught_pokemon()` accessor and BG.10. Both sides now call
+	# `resolve_encounter_type`; this pins that they cannot drift apart again.
+	var ov := MapOverlay.new()
+	ov.map_data = md
+	add_child(ov)
+	md.set_behavior_override(probe.x, probe.y, MetatileBehavior.MB_TALL_GRASS)
+	_chk("G.13 the overlay agrees with the runtime on a hand-painted cell",
+			ov.encounter_type_of({"cell": probe, "metatile": md.metatile_at(probe.x, probe.y)})
+			== WildEncounters.encounter_type_at(mm, probe + ORIGIN)
+			and ov.encounter_type_of({"cell": probe, "metatile": 0})
+			== MapManager.EncounterType.LAND)
+	md.set_attr_explicit(probe.x, probe.y, MapData.AttrFlag.BEHAVIOR_EXPLICIT, false)
+	ov.free()
+
 	md.atlas = "no_such_pair__anywhere"
 	_chk("G.12 a pair with no stamp table falls back to behaviour, not to NONE",
 			WildEncounters.encounter_type_at(mm, probe + ORIGIN)
