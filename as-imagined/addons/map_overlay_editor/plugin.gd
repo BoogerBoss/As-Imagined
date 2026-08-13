@@ -33,6 +33,7 @@ var _target: MapOverlay = null
 ## above: different trigger (selection, not viewport input), different target
 ## (any OverworldEntity, not a MapOverlay) and no write path at all.
 var _entity_inspector: EditorInspectorPlugin = null
+var _encounter_inspector: EditorInspectorPlugin = null
 
 ## [M27Q Q4] The name-collision checker. A project-level QUESTION, not a
 ## property of the selection, so it lives on the toolbar beside Save Map Data
@@ -119,6 +120,14 @@ func _enter_tree() -> void:
 	_entity_inspector = preload("res://addons/map_overlay_editor/entity_inspector.gd").new()
 	add_inspector_plugin(_entity_inspector)
 
+	# [M27T piece 6] A second inspector plugin rather than a branch inside the
+	# first: they handle disjoint objects (entities vs. encounter tables and map
+	# roots) and share nothing, so folding them together would only make
+	# `_can_handle` answer two unrelated questions.
+	_encounter_inspector = preload(
+			"res://addons/map_overlay_editor/encounter_inspector.gd").new()
+	add_inspector_plugin(_encounter_inspector)
+
 	_name_dialog = preload("res://addons/map_overlay_editor/name_usage_dialog.gd").new()
 	EditorInterface.get_base_control().add_child(_name_dialog)
 	_name_button = Button.new()
@@ -187,6 +196,9 @@ func _exit_tree() -> void:
 	if _entity_inspector != null:
 		remove_inspector_plugin(_entity_inspector)
 		_entity_inspector = null
+	if _encounter_inspector != null:
+		remove_inspector_plugin(_encounter_inspector)
+		_encounter_inspector = null
 	if _name_button != null:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _name_button)
 		_name_button.queue_free()

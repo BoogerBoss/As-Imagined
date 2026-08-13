@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 91
+const EXPECTED_TOTAL := 108
 
 var _total := 0
 var _failed := 0
@@ -43,6 +43,7 @@ func _ready() -> void:
 	_test_converter_rulings()
 	_test_stamp_trigger()
 	_test_authored_layer()
+	_test_encounter_preview()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -750,3 +751,126 @@ func _test_authored_layer() -> void:
 			% [count, bad_tables], count > 0 and bad_tables.is_empty())
 	_chk("H.12 and its filename matches the map and field inside it (%s)"
 			% [misnamed], misnamed.is_empty())
+
+
+## --- I. [M27T piece 6] what the Inspector panel decides ---
+##
+## ⚠️ **THIS SECTION IS THE WHOLE REASON `encounter_inspector.gd` CAN BE
+## TRUSTED.** This addon is the project's one surface with no automated
+## coverage and has already shipped three defects, so its own standing rule is
+## that the editor file holds no decisions — every one lives in
+## `EncounterPreview` and is driven from here. A panel bug is then a rendering
+## bug, which is visible, rather than a rule bug, which is not.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §4.
+func _test_encounter_preview() -> void:
+	# ⚠️ THE MAP NAME COMES FROM THE SCENE PATH, and the refusal matters as much
+	# as the resolve — an inspector that answered for any node would offer an
+	# encounter panel on a battle scene.
+	_chk("I.01 a map scene resolves to its own map name",
+			EncounterPreview.map_name_of("res://scenes/maps/Route2_Frlg.tscn")
+			== "Route2_Frlg"
+			and EncounterPreview.map_name_of("res://scenes/battle/x.tscn") == ""
+			and EncounterPreview.map_name_of("") == "")
+
+	if not FileAccess.file_exists(WildEncounters.TABLE_PATH):
+		_gated += 14
+		return
+
+	# ⚠️ THREE SOURCES, NOT A PRESENCE FLAG. "authored" is editable here,
+	# "generated" has to be taken ownership of first, and "none" is a map that
+	# simply does not spawn — the panel says something different for each, so
+	# collapsing them would make the button lie about what it is about to do.
+	var authored := EncounterPreview.digest_for("XanaduNursery")
+	_chk("I.02 an authored map reports itself as authored, with its real table",
+			str(authored["source"]) == "authored"
+			and int(authored["encounter_rate"]) == 21
+			and (authored["slots"] as Array).size() == 15)
+	var generated := EncounterPreview.digest_for("Route2_Frlg")
+	_chk("I.03 an imported map reports itself as generated",
+			str(generated["source"]) == "generated"
+			and int(generated["encounter_rate"]) == 21)
+	var none := EncounterPreview.digest_for("PalletTown_Frlg")
+	_chk("I.04 and a map with no land table reports none, with no slots",
+			str(none["source"]) == "none"
+			and (none["slots"] as Array).is_empty())
+
+	# ⚠️ THE PERCENT IS DERIVED FROM THE RATE CURVE, NEVER STORED. A derived
+	# number kept beside the data goes stale the first time the curve is retuned,
+	# and this one is Rob's own design call rather than source's.
+	var rows: Array = generated["slots"]
+	var first: Dictionary = rows[0]
+	var last: Dictionary = rows[14]
+	_chk("I.05 each slot carries its own share of the rate curve (%d%%..%d%%)"
+			% [int(first["percent"]), int(last["percent"])],
+			int(first["percent"]) == 15 and int(last["percent"]) == 1)
+	_chk("I.06 and a slot names its species rather than showing a bare number",
+			str(first["name"]) != "" and not str(first["name"]).begins_with("#"))
+
+	# ⚠️ AT FIRE RED'S DENOMINATOR THE RATE IS THE PERCENTAGE PER STEP. Only
+	# true since piece 1 — at Emerald's 2880 the same 21 meant 11.67%, so the
+	# number an author drags told them nothing without arithmetic.
+	_chk("I.07 rate 21 reads as 21%% a step, which is what makes it tunable",
+			abs(EncounterPreview.rate_percent_per_step(21) - 21.0) < 0.001
+			and abs(EncounterPreview.rate_percent_per_step(7) - 7.0) < 0.001)
+
+	# ⚠️ AN UNKNOWN DEX READS AS UNRESOLVED, NOT AS BLANK. A blank looks like a
+	# slot nobody filled in; an unresolved one is a slot pointing at a species
+	# this roster does not have, and only the second ships broken.
+	_chk("I.08 a species label carries dex and name",
+			EncounterPreview.species_label(25) == "025 Pikachu")
+	_chk("I.09 an unfilled slot reads (empty) and an unknown dex reads loudly",
+			EncounterPreview.species_label(0) == "(empty)"
+			and EncounterPreview.species_label(9999).contains("unresolved"))
+
+	# The picker matches on NAME and on NUMBER, because an author who knows a
+	# species by dex should not have to spell it to reach it.
+	var by_name := EncounterPreview.species_matches("pika")
+	_chk("I.10 the picker finds a species by name",
+			by_name.size() >= 1 and int((by_name[0] as Dictionary)["dex"]) == 25)
+	var by_dex := EncounterPreview.species_matches("25")
+	var found_25 := false
+	for r in by_dex:
+		if int((r as Dictionary)["dex"]) == 25:
+			found_25 = true
+	_chk("I.11 and by dex number, which is faster when you know it", found_25)
+	_chk("I.12 an empty query returns the whole roster, and the limit is honoured",
+			EncounterPreview.species_matches("").size() >= 386
+			and EncounterPreview.species_matches("", 5).size() == 5)
+
+	# ⚠️ SEEDING IS WHAT SEPARATES "TAKE OWNERSHIP" FROM "START OVER". Retyping
+	# 15 slots to change one would make the button pointless on imported maps.
+	var seeded := EncounterPreview.seed_table("Route2_Frlg")
+	_chk("I.13 taking ownership of an imported map copies its real table",
+			seeded.map_name == "Route2_Frlg" and seeded.encounter_rate == 21
+			and seeded.slots.size() == 15 and seeded.is_complete(15)
+			and seeded.slots[0].dex > 0)
+	var blank := EncounterPreview.seed_table("SomewhereNew")
+	_chk("I.14 while a map with no table gets a full-length blank, which is NOT"
+			+ " usable until it is filled",
+			blank.slots.size() == 15 and blank.encounter_rate == 0
+			and not blank.is_complete(15))
+
+	# ⚠️ BOTH DIRECTIONS, AND NEITHER IS AN ERROR — 38 real Kanto maps have
+	# encounter tiles and deliberately no table. This is a notice at the point
+	# of authoring, because the halfway state is otherwise invisible: a table
+	# with no tiles never fires, and painted grass with no table looks finished.
+	const CAVE := "res://scenes/maps/DiglettsCave_NorthEntrance_Frlg_data.tres"
+	if not ResourceLoader.exists(CAVE):
+		_gated += 3
+		return
+	var cave: MapData = load(CAVE) as MapData
+	_chk("I.15 tiles with no table are called out by count",
+			EncounterPreview.mismatch_for("DiglettsCave_NorthEntrance_Frlg", cave)
+			.contains("no table"))
+	var empty := MapData.new()
+	empty.width = 2
+	empty.height = 2
+	empty.atlas = "no_such_pair__anywhere"
+	empty.metatile = PackedInt32Array([0, 0, 0, 0])
+	empty.behavior = PackedInt32Array([0, 0, 0, 0])
+	_chk("I.16 and a table with no tiles is called out too — it can never fire",
+			EncounterPreview.mismatch_for("Route2_Frlg", empty).contains("never fire"))
+	_chk("I.17 while a map whose tiles and table agree says nothing at all",
+			EncounterPreview.mismatch_for("XanaduNursery",
+					load("res://scenes/maps/XanaduNursery_data.tres") as MapData) == "")

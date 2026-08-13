@@ -259,6 +259,19 @@ static func _load_authored() -> Dictionary:
 	return _authored
 
 
+## Drop the authored cache so the next read re-scans.
+##
+## ⚠️ **THE EDITOR NEEDS THIS AND THE GAME NEVER DOES.** At runtime the layer is
+## read once and never changes; in the editor a table can be CREATED while the
+## project is open, and without this the panel that just made one would keep
+## reporting the map as having none — which reads as the button having failed
+## rather than the cache being stale. Same shape as `ScriptPreview.reset_cache()`,
+## and for the same reason.
+static func reset_authored_cache() -> void:
+	_authored = {}
+	_authored_loaded = false
+
+
 ## The scan itself, against any directory.
 ##
 ## ⚠️ **SPLIT OUT SO THE COMPLETENESS GATE BELOW IS REACHABLE FROM A TEST.** That

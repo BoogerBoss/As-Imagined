@@ -126,6 +126,21 @@ static var _species_loaded := false
 
 
 static func species_name_for(dex: int) -> String:
+	return str(species_names().get(dex, ""))
+
+
+## The whole dex -> name table, for callers that need to LIST species rather
+## than resolve one.
+##
+## ⚠️ **A SECOND CONSUMER MAKES THIS FILE THE WRONG HOME, AND THAT IS FLAGGED
+## RATHER THAN FIXED.** `[M27T piece 6]`'s species picker needs the same table,
+## and the alternative — a second JSON read in the picker — is the two-hand-kept
+## copies shape this project has paid for repeatedly. So it is shared from here,
+## where the editor-safe read already exists and is already proven. But "every
+## species' name" is not trainer data, and with two unrelated consumers the
+## table wants its own home. Moving it means touching tested code for tidiness,
+## which belongs in its own pass.
+static func species_names() -> Dictionary:
 	if not _species_loaded:
 		_species_loaded = true
 		var f := FileAccess.open("res://data/pokemon.json", FileAccess.READ)
@@ -136,7 +151,7 @@ static func species_name_for(dex: int) -> String:
 				for row in (parsed as Array):
 					_species_names[int((row as Dictionary).get("dex", 0))] = \
 							str((row as Dictionary).get("name", ""))
-	return str(_species_names.get(dex, ""))
+	return _species_names
 
 
 func _describe_mon(m: TrainerPartyMon) -> String:

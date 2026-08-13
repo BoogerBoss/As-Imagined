@@ -316,7 +316,7 @@ those three slots replaced with real species in the Inspector.
 | 3 | ✅ **Import the stamp** — per-pair sidecar + ENCOUNTERS overlay mode | — | no |
 | 4 | ✅ **Switch the trigger** — stamp + `BEHAVIOR_EXPLICIT` override | 3 | no (one corridor map, no table) |
 | 5 | ✅ **Authored table layer** — `EncounterTable`/`EncounterSlot`, `data/encounters/`, migrate Xanadu | — | no |
-| 6 | **The editor** — Inspector plugin, species picker, map-root panel | 5 | no |
+| 6 | ✅ **The editor** — Inspector plugin, species picker, map-root panel | 5 | no |
 | 7 | **Validation** — suite section, both mismatch directions baselined | grows with 5/6 | no |
 
 **Piece 3 detail.** The stamp goes to
@@ -356,6 +356,66 @@ species resolution, rate in range, `min ≤ max`, slot-count agreement, map-name
 resolution.
 
 **Order:** 1 and 2 are independent. 3 → 4. 5 → 6. 7 grows alongside 5 and 6.
+
+### Piece 6 as built — the editor
+
+Select a map root and the Inspector shows what it spawns — species icons, level
+bands, each slot's share of the rate curve — plus one button whose text depends
+on what the map already has: **edit** an authored table, **take ownership** of
+an imported one, or **create** a blank one where there is no table at all.
+
+⚠️ **`encounter_inspector.gd` CONTAINS NO RULES, WHICH IS THIS ADDON'S OWN
+STANDING SPLIT.** Every decision — the digest, the mismatch check, the species
+filter, what a new table is seeded with — lives in `EncounterPreview` and is
+driven by suite section I. The editor surface is the project's one place with no
+automated coverage and has already shipped three defects; keeping the rules off
+it means a panel bug is a rendering bug, which is visible, rather than a rule
+bug, which is not.
+
+⚠️ **THE SPECIES PICKER IS A BUTTON PLUS A SEARCH POPUP, NOT AN `OptionButton`
+— and that retires a deferred item rather than inventing a widget.**
+`entity_inspector.gd` records the same call being made the other way for
+trainers and moves: Godot's enum control has no typeahead, a 386-entry scroll
+popup is worse than typing a number, so those fields stayed raw ints and *a
+filtered picker was named as the deferred item that would replace them*. This is
+that picker. It also **dissolves the wheel hazard the scoping flagged**
+(Porymap's `NoScrollComboBox`): a focused `OptionButton` eats the scroll wheel
+and silently changes VALUE while you scroll the Inspector, whereas a `Button`
+does not consume wheel at all — the guard is structural, not an input-handler
+workaround.
+
+⚠️ **THE SPECIES TABLE COMES FROM `TrainerData.species_names()`, NOT
+`PokemonRegistry` — a trap this project already paid for.** That autoload's
+script is not `@tool`, so it does not execute in the editor at all and every
+species would have rendered as a bare number; `trainer_data.gd`'s own comment
+records hitting exactly that on its first cut. Flagged and not fixed: with two
+unrelated consumers, that table's home is now arguably wrong.
+
+⚠️ **A CORRECTION TO THIS BLOCK'S OWN SCOPING.** The map name is resolved from
+the **scene filename**, not through `MapConstants`, reversing the recorded lean.
+That lean was right for a caller starting from a `MAP_*` constant, where the
+table separates "the importer emitted a destination source does not define" from
+"defined but not baked". This panel starts from an open scene, and
+`scenes/maps/<Map>.tscn` → `<Map>` *is* the key `land_encounters.json` is
+written with — so routing through a constant table could only introduce a
+mismatch, never detect one.
+
+**Section I, 17 assertions** (`EXPECTED_TOTAL` 91 → 108). Five injections, each
+failing exactly its own guard:
+
+| injection | fails |
+|---|---|
+| take-ownership starts blank instead of seeding | I.13 |
+| picker matches names only, not dex numbers | I.11 |
+| an unknown species reads as blank | I.09 |
+| only the tiles-without-table direction is reported | I.16 |
+| authored and generated collapse into one state | I.02 |
+
+**Verified by an editor boot, not just a parse** — the check that catches a bad
+`preload` path or a wrong container constant, which a headless suite cannot see.
+⚠️ **NOT CLICKED.** Every rule beneath the panel is covered; nobody has selected
+a map and pressed the button. That is the same standing caveat every dialog in
+this addon carries, and Rob's own pass is what closes it.
 
 ### Piece 5 as built — the authored layer
 
