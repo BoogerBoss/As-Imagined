@@ -12722,11 +12722,75 @@ static func _falling_coin(vm: AnimScriptVM, ctx: Dictionary) -> void:
 const _GBA_AFFINE_IDENTITY := 256.0
 
 
+# ── [M36 review] Foot anchoring for task-path battler deforms ─────────────
+#
+# `SetBattlerSpriteYOffsetFromYScale` (battle_anim_mons.c:1845):
+#
+#     var  = MON_PIC_HEIGHT - yPicOffset * 2          // 64 - 2*off
+#     var2 = (var << 8) / matrix.d,  capped at 128    // == var * yScale
+#     y2   = (var - var2) / 2                         // == (32 - off)(1 - s)
+#
+# ⚠️ **THE ANCHOR IS THE BOTTOM OF THE DRAWN ART, NOT THE BOTTOM OF THE BOX** —
+# which is exactly why the species term is there. `backPicYOffset` /
+# `frontPicYOffset` is "the number of pixels between the drawn pixel area and
+# the bottom edge" (include/pokemon.h:459), so subtracting it walks the anchor
+# up off the box edge onto the mon's actual feet. This project already pulled
+# both tables for `_apply_bottom_anchored_front_sprite`; this is their second
+# consumer.
+#
+# Derived independently for this port's geometry and it lands on the same
+# expression, which is the check that it is right: the node is `size.y` tall
+# for a 64px sprite, the art's bottom sits `off * pix` above the node's bottom
+# edge, `MonScale` pivots at the CENTRE, and holding a point `a` fixed under a
+# centre scale needs a shift of `(a - size.y/2)(1 - s)`. With
+# `a = size.y - off*pix` that is `(32 - off) * pix * (1 - s)` — source's own
+# formula times the stage scale.
+#
+# Returns source's own `var` — the anchored height in GBA pixels, `64 - 2*off`.
+# Deliberately NOT pre-collapsed into a single multiplier: `var` is the
+# dividend of source's clamp as well as its scale term, so folding the two
+# together loses the cap (the clamp is `var * s <= 128`, which depends on the
+# species and is NOT a flat `s <= 2` — I collapsed it that way on the first
+# pass and it was wrong).
+static func _y_anchor_height(vm: AnimScriptVM, anim_battler: int) -> float:
+	# Fallback is the BOX bottom (offset 0), not zero: a battler whose species
+	# cannot be resolved still wants its feet held, and "the art fills its box"
+	# is the right assumption when nothing better is known. Zero would silently
+	# restore the centre-collapse this exists to fix.
+	var off := 0.0
+	if anim_battler >= 0 and vm.stage != null and vm.stage.has_method("mon_for"):
+		var mon: Variant = vm.stage.mon_for(anim_battler)
+		if mon is BattlePokemon and (mon as BattlePokemon).species != null:
+			var dex: int = (mon as BattlePokemon).species.national_dex_num
+			off = float(SpriteRegistry.get_back_y_offset(dex)
+					if _battler_is_player_side(vm, anim_battler)
+					else SpriteRegistry.get_front_y_offset(dex))
+	return float(_MON_PIC_HEIGHT) - off * 2.0
+
+
+# `y2 = (var - min(var * s, 128)) / 2`, source line for line, scaled to stage
+# pixels. `s` is the VISUAL y scale (1.0 = rest), so a squash returns a
+# POSITIVE value = downward = the mon sinks onto its base.
+static func _y_anchor_shift(var_gba: float, s: float, pix: float) -> float:
+	var scaled := minf(var_gba * s, float(_MON_PIC_HEIGHT * 2))
+	return (var_gba - scaled) * 0.5 * pix
+
+
+const _MON_PIC_HEIGHT := 64
+
+
 static func _run_affine_cmds(vm: AnimScriptVM, node: Control, cmds: Array,
-		per_frame: Callable = Callable()) -> void:
+		per_frame: Callable = Callable(), anim_battler: int = -1) -> void:
 	if node == null:
 		return
 	var deform := MonScale.new(node)
+	# [M36 review] The foot anchor -- see `_y_anchor_arm`. -1 means the caller
+	# did not name a battler, in which case the box bottom stands in.
+	var anchor_h := _y_anchor_height(vm, anim_battler)
+	var anchor_pix := _scale(vm)
+	var base_pos := node.position
+	if node.has_meta(MonOffset.META_BASE):
+		base_pos = node.get_meta(MonOffset.META_BASE)
 	var st := {"i": 0, "n": 0, "t": 0, "x": _GBA_AFFINE_IDENTITY,
 			"y": _GBA_AFFINE_IDENTITY, "rot": 0.0}
 	vm.add_stepper(func() -> bool:
@@ -12744,6 +12808,7 @@ static func _run_affine_cmds(vm: AnimScriptVM, node: Control, cmds: Array,
 			# after it either way. The per-table sum assertions therefore
 			# guard transcription errors, not leaks.
 			deform.restore()
+			node.position = base_pos
 			return true
 		var cmd: Array = cmds[i]
 		st["x"] = float(st["x"]) + float(cmd[0])
@@ -12760,6 +12825,14 @@ static func _run_affine_cmds(vm: AnimScriptVM, node: Control, cmds: Array,
 		var sx := _GBA_AFFINE_IDENTITY / maxf(1.0, float(st["x"]))
 		var sy := _GBA_AFFINE_IDENTITY / maxf(1.0, float(st["y"]))
 		deform.apply(Vector2(sx, sy), _gba_rot_to_radians(int(st["rot"])))
+		# ⚠️ **THE FEET STAY PLANTED, AND THAT IS A SECOND WRITE PER FRAME, NOT
+		# A PIVOT CHOICE.** Source recomputes `sprite->y2` from the live matrix
+		# every frame (`SetBattlerSpriteYOffsetFromYScale`, called right after
+		# `SetSpriteRotScale` at `battle_anim_mons.c:1790`), so a squashing mon
+		# sinks rather than collapsing toward its own middle. Without it a
+		# Facade squish lifts the mon ~96 stage px off its base.
+		node.position = base_pos + Vector2(0.0,
+				_y_anchor_shift(anchor_h, sy, anchor_pix))
 		if per_frame.is_valid():
 			per_frame.call(int(st["t"]), node)
 		st["t"] = int(st["t"]) + 1
@@ -12781,7 +12854,8 @@ const _UPROAR_AFFINE := [[-12, 8, 0, 4], [20, -20, 0, 4], [-8, 12, 0, 4]]
 
 
 static func _uproar_distortion(vm: AnimScriptVM, _ctx: Dictionary) -> void:
-	_run_affine_cmds(vm, _battler_node(vm, vm.args[0]), _UPROAR_AFFINE)
+	_run_affine_cmds(vm, _battler_node(vm, vm.args[0]), _UPROAR_AFFINE,
+			Callable(), vm.args[0])
 
 
 # AnimTask_DeepInhale (battle_anim_effects_3.c:3635). args: 0 battler.
@@ -12819,7 +12893,7 @@ static func _deep_inhale(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	# shiver is already undone by frame 43 without a second stepper. The
 	# VM's `_restore_displaced_battlers` net covers an aborted run, which is
 	# the only way this could end mid-shake.
-	_run_affine_cmds(vm, node, _DEEP_INHALE_AFFINE, jitter)
+	_run_affine_cmds(vm, node, _DEEP_INHALE_AFFINE, jitter, vm.args[0])
 
 
 # gParticlesColorBlendTable (battle_anim_effects_1.c:2125). Four palettes a
@@ -13343,7 +13417,7 @@ const _GROW_SHRINK_AFFINE := [[-4, -5, 0, 12], [0, 0, 0, 24], [4, 5, 0, 12]]
 
 static func _grow_and_shrink(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER),
-			_GROW_SHRINK_AFFINE)
+			_GROW_SHRINK_AFFINE, Callable(), AnimStage.ANIM_ATTACKER)
 
 
 # AnimConversion (battle_anim_effects_1.c:6143). args: 0/1 offset.
@@ -13678,18 +13752,19 @@ const _FACADE_SQUISH_AFFINE := [[-16, 16, 0, 6], [16, -16, 0, 12],
 
 static func _shrink_and_grow(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER),
-			_SHRINK_GROW_AFFINE)
+			_SHRINK_GROW_AFFINE, Callable(), AnimStage.ANIM_ATTACKER)
 
 
 static func _meditate_stretch_attacker(vm: AnimScriptVM,
 		_ctx: Dictionary) -> void:
 	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER),
-			_MEDITATE_STRETCH_AFFINE)
+			_MEDITATE_STRETCH_AFFINE, Callable(), AnimStage.ANIM_ATTACKER)
 
 
 # args: 0 battler.
 static func _slack_off_squish(vm: AnimScriptVM, _ctx: Dictionary) -> void:
-	_run_affine_cmds(vm, _battler_node(vm, vm.args[0]), _SLACK_OFF_AFFINE)
+	_run_affine_cmds(vm, _battler_node(vm, vm.args[0]), _SLACK_OFF_AFFINE,
+			Callable(), vm.args[0])
 
 
 # The pair differ ONLY in their table -- half the compression over half the
@@ -13697,13 +13772,13 @@ static func _slack_off_squish(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 static func _compress_target_horizontally(vm: AnimScriptVM,
 		_ctx: Dictionary) -> void:
 	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_TARGET),
-			_COMPRESS_AFFINE)
+			_COMPRESS_AFFINE, Callable(), AnimStage.ANIM_TARGET)
 
 
 static func _compress_target_horizontally_fast(vm: AnimScriptVM,
 		_ctx: Dictionary) -> void:
 	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_TARGET),
-			_COMPRESS_FAST_AFFINE)
+			_COMPRESS_FAST_AFFINE, Callable(), AnimStage.ANIM_TARGET)
 
 
 # AnimTask_SquishAndSweatDroplets (battle_anim_effects_3.c). args: 0 battler,
@@ -13721,7 +13796,7 @@ static func _squish_and_sweat_droplets(vm: AnimScriptVM,
 	for i in range(count):
 		for cmd in _FACADE_SQUISH_AFFINE:
 			tables.append(cmd)
-	_run_affine_cmds(vm, node, tables)
+	_run_affine_cmds(vm, node, tables, Callable(), vm.args[0])
 
 
 # AnimTask_GrowAndGrayscale (battle_anim_effects_2.c) and AnimTask_GrowTarget
@@ -15670,7 +15745,8 @@ static func _thrash_move_mon_horizontal(vm: AnimScriptVM,
 	for i in range(_THRASH_LOOPS):
 		for c in _THRASH_AFFINE:
 			cmds.append(c)
-	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER), cmds)
+	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER), cmds,
+			Callable(), AnimStage.ANIM_ATTACKER)
 
 
 # AnimTask_ThrashMoveMonVertical (battle_anim_effects_2.c). No args.
@@ -15974,7 +16050,8 @@ static func _torment_attacker(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			cmds.append(c)
 		if i < _TORMENT_SLOW_BUBBLES:
 			cmds.append([0, 0, 0, _TORMENT_HOLD])
-	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER), cmds)
+	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER), cmds,
+			Callable(), AnimStage.ANIM_ATTACKER)
 	var st := {"t": 0, "i": 0}
 	vm.add_stepper(func() -> bool:
 		var t: int = int(st["t"])

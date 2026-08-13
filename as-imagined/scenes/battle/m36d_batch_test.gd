@@ -288,6 +288,7 @@ func _ready() -> void:
 	_test_b39_eruption_gravity_is_quadratic_and_subpixel()
 	_test_b39_coverage()
 	_test_rev_electric_bolt_segments_vary()
+	_test_rev_task_affine_keeps_the_feet_planted()
 	_test_rev_electric_mirrors_key_on_the_anchor_battler()
 
 	var total := _pass + _fail
@@ -7724,7 +7725,23 @@ func _test_b33_thrash_pair_are_different_effects() -> void:
 	_step(vh, 6)
 	_chk("b33 the horizontal thrash DEFORMS the mon",
 			not nh.scale.is_equal_approx(hs))
-	_chk("b33 ...without displacing it", nh.position.is_equal_approx(hp))
+	# ⚠️ **THIS USED TO ASSERT "without displacing it" AND THAT ENCODED THE
+	# PORT, NOT SOURCE.** `AnimTask_ThrashMoveMonHorizontal_Step` calls
+	# `RunAffineAnimFromTaskData` (battle_anim_effects_2.c), which calls
+	# `SetBattlerSpriteYOffsetFromYScale` on every frame it updates the matrix
+	# (battle_anim_mons.c:1790) -- and `gThrashMoveMonAffineAnimCmds` has a
+	# LIVE yScale column (+9/-20/+20/-9), so hardware moves this mon
+	# vertically as it squashes. The old assertion passed only because the
+	# port had no foot anchoring at all.
+	#
+	# The DISCRIMINATOR the test exists for survives intact, and is what is
+	# asserted now: the horizontal is an affine deform whose only movement is
+	# derived vertically from its own y-scale, while the vertical below is a
+	# plain HORIZONTAL displacement with no deform. Sharing one implementation
+	# would still be caught.
+	_chk("b33 ...moving it only vertically, derived from its own y-scale",
+			is_equal_approx(nh.position.x, hp.x)
+			and not is_equal_approx(nh.position.y, hp.y))
 
 	var v := FakeStage.new()
 	var vv := _vm(v)
@@ -7735,6 +7752,8 @@ func _test_b33_thrash_pair_are_different_effects() -> void:
 	_step(vv, 6)
 	_chk("b33 the vertical thrash DISPLACES the mon",
 			not nv.position.is_equal_approx(vp))
+	_chk("b33 ...HORIZONTALLY, which is the half the other one never moves",
+			not is_equal_approx(nv.position.x, vp.x))
 	_chk("b33 ...without deforming it", nv.scale.is_equal_approx(vs))
 	_step(vv, 20)
 	_chk("b33 ...and returns it", nv.position.is_equal_approx(vp))
@@ -9259,3 +9278,68 @@ func _test_rev_electric_mirrors_key_on_the_anchor_battler() -> void:
 		var dx3: float = orb3.centre.x - s3.center_of(AnimStage.ANIM_TARGET).x
 		_chk("rev thunderbolt orb NEGATES x when the target IS player-side "
 				+ "(dx=%.1f)" % dx3, dx3 < 0.0)
+
+
+# ─── [M36 review] Foot anchoring on the task-path affine runner ────────────
+#
+# `RunAffineAnimFromTaskData` calls `SetBattlerSpriteYOffsetFromYScale` every
+# frame it touches the matrix (battle_anim_mons.c:1790), so a squashing mon
+# SINKS onto its base instead of collapsing toward its own middle. The port
+# had no equivalent, so all eleven task-path behaviours scaled about the M36P
+# centre pivot and lifted the mon off the ground -- ~96 stage px at Facade's
+# 1.6x, ~38 at Slack Off's 0.76x.
+#
+# ⚠️ **DERIVED FROM THE NEGATION, per standing rule (7).** The wrong version
+# is not "no movement" -- it is "movement in the wrong DIRECTION", because a
+# centre-pivot squash and a foot-anchored squash both move the drawn pixels.
+# So the assertions pin the SIGN against the scale, which is the one thing the
+# two implementations disagree about, and a fixture with a symmetric table
+# would hide it.
+func _test_rev_task_affine_keeps_the_feet_planted() -> void:
+	# A pure squash (positive yScale delta on the task path = smaller sprite)
+	# and a pure stretch, so the sign is unambiguous in both directions.
+	var squash := [[0, 32, 0, 4]]
+	var stretch := [[0, -32, 0, 4]]
+
+	var a := FakeStage.new()
+	var va := _vm(a)
+	var na: Control = a.sprite_for(AnimStage.ANIM_ATTACKER)
+	var rest: Vector2 = na.position
+	AnimBehaviors._run_affine_cmds(va, na, squash, Callable(),
+			AnimStage.ANIM_ATTACKER)
+	_step(va, 3)
+	_chk("rev a squash sinks the mon DOWN onto its base (dy=%.1f)"
+			% (na.position.y - rest.y), na.position.y > rest.y)
+	_chk("rev ...and does not slide it sideways",
+			is_equal_approx(na.position.x, rest.x))
+
+	var b := FakeStage.new()
+	var vb := _vm(b)
+	var nb: Control = b.sprite_for(AnimStage.ANIM_ATTACKER)
+	var rest_b: Vector2 = nb.position
+	AnimBehaviors._run_affine_cmds(vb, nb, stretch, Callable(),
+			AnimStage.ANIM_ATTACKER)
+	_step(vb, 3)
+	_chk("rev a stretch lifts it UP by the same rule (dy=%.1f)"
+			% (nb.position.y - rest_b.y), nb.position.y < rest_b.y)
+
+	# It must come back, or the anchoring becomes a displacement leak of
+	# exactly the kind rule (3) exists for.
+	_step(va, 8)
+	_chk("rev the anchor is released when the table ends",
+			na.position.is_equal_approx(rest))
+
+	# The formula itself, against source: y2 = (var - min(var*s, 128)) / 2,
+	# var = 64 - 2*off, off = 0 when the species cannot be resolved.
+	var pix := a.pixel_scale()
+	_chk("rev the shift is source's own expression at s=0.5 (%.2f)"
+			% AnimBehaviors._y_anchor_shift(64.0, 0.5, pix),
+			is_equal_approx(AnimBehaviors._y_anchor_shift(64.0, 0.5, pix),
+					16.0 * pix))
+	_chk("rev ...zero at rest, so an unscaled behaviour is untouched",
+			is_equal_approx(AnimBehaviors._y_anchor_shift(64.0, 1.0, pix), 0.0))
+	# The clamp is var*s <= 128, which depends on var -- NOT a flat s <= 2.
+	# At var=32 it bites at s=4, where a flat rule would still be scaling.
+	_chk("rev ...and the cap is source's var-dependent one, not a flat 2x",
+			is_equal_approx(AnimBehaviors._y_anchor_shift(32.0, 8.0, pix),
+					AnimBehaviors._y_anchor_shift(32.0, 4.0, pix)))
