@@ -1,0 +1,143 @@
+[gd_scene format=4 uid="uid://ct3rvce0mog3e"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/building_frlg__bike_shop_frlg.tres" id="1_m7maf"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/npc.gd" id="2_wkh6a"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="3_pak8f"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="4_s44nx"]
+
+[node name="CeruleanCity_BikeShop_Frlg" type="Node2D" unique_id=752103716]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=468552473]
+tile_map_data = PackedByteArray("AAABAAEAAwAAAAEAAAACAAEAAwABAAEAAAADAAEAAwAAAAEAAAAEAAEAAwABAAEAAAAGAAEAAwAbAAAAAAAHAAEAAwAEAAEAAAABAAIAAwAIAAEAAAACAAIAAwAJAAEAAAADAAIAAwAIAAEAAAAEAAIAAwAJAAEAAAAIAAIAAwAQAAAAAAABAAMAAwADAAAAAAACAAMAAwAEAAAAAAADAAMAAwADAAAAAAAEAAMAAwAEAAAAAAAFAAMAAwAcAAAAAAAIAAMAAwAYAAAAAAAAAAQAAwABAAAAAAABAAQAAwACAAAAAAACAAQAAwAMAAAAAAADAAQAAwACAAEAAAAEAAQAAwACAAAAAAAJAAQAAwAZAAAAAAAKAAQAAwAaAAAAAAABAAUAAwACAAEAAAACAAUAAwACAAAAAAADAAUAAwACAAEAAAAEAAUAAwACAAAAAAAIAAYAAwALAAAAAAAJAAYAAwAMAAAAAAABAAcAAwACAAEAAAACAAcAAwACAAAAAAABAAgAAwACAAEAAAACAAgAAwACAAAAAAAEAAgAAwAFAAEAAAAFAAgAAwAGAAEAAAAGAAgAAwAHAAEAAAAJAAgAAwALAAAAAAAEAAkAAAAaAAAAAAAFAAkAAAAbAAAAAAAGAAkAAAAcAAAAAAA=")
+tile_set = ExtResource("1_m7maf")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=322583662]
+tile_map_data = PackedByteArray("AAAAAAAABAAFAAAAAAABAAAABAAGAAAAAAACAAAABAAGAAAAAAADAAAABAAGAAAAAAAEAAAABAAGAAAAAAAFAAAABAAGAAAAAAAGAAAABAAGAAAAAAAHAAAABAAGAAAAAAAIAAAABAAGAAAAAAAJAAAABAAGAAAAAAAKAAAABAAHAAAAAAAAAAEABAANAAAAAAABAAEABAAAAAEAAAACAAEABAABAAEAAAADAAEABAAAAAEAAAAEAAEABAABAAEAAAAFAAEABAAOAAAAAAAGAAEABAAbAAAAAAAHAAEABAAEAAEAAAAIAAEABAAOAAAAAAAJAAEABAAOAAAAAAAKAAEABAAPAAAAAAAAAAIABAAVAAAAAAABAAIABAAIAAEAAAACAAIABAAJAAEAAAADAAIABAAIAAEAAAAEAAIABAAJAAEAAAAFAAIABAAUAAAAAAAGAAIABAAWAAAAAAAHAAIABAAWAAAAAAAIAAIABAAQAAAAAAAJAAIABAAWAAAAAAAKAAIABAAXAAAAAAAAAAMABAAdAAAAAAABAAMABAADAAAAAAACAAMABAAEAAAAAAADAAMABAADAAAAAAAEAAMABAAEAAAAAAAFAAMABAAcAAAAAAAGAAMABAAeAAAAAAAHAAMABAAeAAAAAAAIAAMABAAYAAAAAAAJAAMABAARAAAAAAAKAAMABAASAAAAAAAAAAQABAABAAAAAAABAAQABAACAAAAAAACAAQABAAMAAAAAAADAAQABAACAAEAAAAEAAQABAACAAAAAAAFAAQABAAeAAAAAAAGAAQABAAeAAAAAAAHAAQABAAeAAAAAAAIAAQABAATAAAAAAAJAAQABAAZAAAAAAAKAAQABAAaAAAAAAAAAAUABAADAAEAAAABAAUABAACAAEAAAACAAUABAACAAAAAAADAAUABAACAAEAAAAEAAUABAACAAAAAAAFAAUABAAeAAAAAAAGAAUABAAeAAAAAAAHAAUABAAeAAAAAAAIAAUABAAeAAAAAAAJAAUABAAeAAAAAAAKAAUABAAIAAAAAAAAAAYABAADAAEAAAABAAYABAAeAAAAAAACAAYABAAeAAAAAAADAAYABAAeAAAAAAAEAAYABAAeAAAAAAAFAAYABAAeAAAAAAAGAAYABAAeAAAAAAAHAAYABAAeAAAAAAAIAAYABAALAAAAAAAJAAYABAAMAAAAAAAKAAYABAAeAAAAAAAAAAcABAADAAEAAAABAAcABAACAAEAAAACAAcABAACAAAAAAADAAcABAAeAAAAAAAEAAcABAAeAAAAAAAFAAcABAAeAAAAAAAGAAcABAAeAAAAAAAHAAcABAAeAAAAAAAIAAcABAAeAAAAAAAJAAcABAAeAAAAAAAKAAcABAAeAAAAAAAAAAgABAADAAEAAAABAAgABAACAAEAAAACAAgABAACAAAAAAADAAgABAAeAAAAAAAEAAgABAAFAAEAAAAFAAgABAAGAAEAAAAGAAgABAAHAAEAAAAHAAgABAAeAAAAAAAIAAgABAAeAAAAAAAJAAgABAALAAAAAAAKAAgABAAeAAAAAAAAAAkAAQAIAAAAAAABAAkAAQAIAAAAAAACAAkAAQAIAAAAAAADAAkAAQAIAAAAAAAEAAkAAQAaAAAAAAAFAAkAAQAbAAAAAAAGAAkAAQAcAAAAAAAHAAkAAQAIAAAAAAAIAAkAAQAIAAAAAAAJAAkAAQAIAAAAAAAKAAkAAQAIAAAAAAA=")
+tile_set = ExtResource("1_m7maf")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=369420207]
+y_sort_enabled = true
+
+[node name="Npc_9_3" type="Node2D" parent="Entities_P2" unique_id=169970941]
+position = Vector2(144, 48)
+script = ExtResource("2_wkh6a")
+graphics_id = "OBJ_EVENT_GFX_MAN"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 3)
+script_label = "CeruleanCity_BikeShop_EventScript_Clerk"
+
+[node name="Npc_9_7" type="Node2D" parent="Entities_P2" unique_id=855466109]
+position = Vector2(144, 112)
+script = ExtResource("2_wkh6a")
+graphics_id = "OBJ_EVENT_GFX_YOUNGSTER_FRLG"
+movement_type = "MOVEMENT_TYPE_WANDER_AROUND"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 7)
+script_label = "CeruleanCity_BikeShop_EventScript_Youngster"
+
+[node name="Npc_5_5" type="Node2D" parent="Entities_P2" unique_id=1247400567]
+position = Vector2(80, 80)
+script = ExtResource("2_wkh6a")
+graphics_id = "OBJ_EVENT_GFX_WOMAN_2_FRLG"
+movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+range_x = 1
+range_y = 1
+cell = Vector2i(5, 5)
+script_label = "CeruleanCity_BikeShop_EventScript_Woman"
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=1873356480]
+tile_map_data = PackedByteArray("AAAAAAAABQAFAAAAAAABAAAABQAGAAAAAAACAAAABQAGAAAAAAADAAAABQAGAAAAAAAEAAAABQAGAAAAAAAFAAAABQAGAAAAAAAGAAAABQAGAAAAAAAHAAAABQAGAAAAAAAIAAAABQAGAAAAAAAJAAAABQAGAAAAAAAKAAAABQAHAAAAAAAAAAEABQANAAAAAAAFAAEABQAOAAAAAAAIAAEABQAOAAAAAAAJAAEABQAOAAAAAAAKAAEABQAPAAAAAAAAAAIABQAVAAAAAAAFAAIABQAUAAAAAAAGAAIABQAWAAAAAAAHAAIABQAWAAAAAAAJAAIABQAWAAAAAAAKAAIABQAXAAAAAAAAAAMABQAdAAAAAAAGAAMABQAeAAAAAAAHAAMABQAeAAAAAAAJAAMABQARAAAAAAAKAAMABQASAAAAAAAFAAQABQAeAAAAAAAGAAQABQAeAAAAAAAHAAQABQAeAAAAAAAIAAQABQATAAAAAAAAAAUABQADAAEAAAAFAAUABQAeAAAAAAAGAAUABQAeAAAAAAAHAAUABQAeAAAAAAAIAAUABQAeAAAAAAAJAAUABQAeAAAAAAAKAAUABQAIAAAAAAAAAAYABQADAAEAAAABAAYABQAeAAAAAAACAAYABQAeAAAAAAADAAYABQAeAAAAAAAEAAYABQAeAAAAAAAFAAYABQAeAAAAAAAGAAYABQAeAAAAAAAHAAYABQAeAAAAAAAKAAYABQAeAAAAAAAAAAcABQADAAEAAAADAAcABQAeAAAAAAAEAAcABQAeAAAAAAAFAAcABQAeAAAAAAAGAAcABQAeAAAAAAAHAAcABQAeAAAAAAAIAAcABQAeAAAAAAAJAAcABQAeAAAAAAAKAAcABQAeAAAAAAAAAAgABQADAAEAAAADAAgABQAeAAAAAAAHAAgABQAeAAAAAAAIAAgABQAeAAAAAAAKAAgABQAeAAAAAAAAAAkAAgAIAAAAAAABAAkAAgAIAAAAAAACAAkAAgAIAAAAAAADAAkAAgAIAAAAAAAHAAkAAgAIAAAAAAAIAAkAAgAIAAAAAAAJAAkAAgAIAAAAAAAKAAkAAgAIAAAAAAA=")
+tile_set = ExtResource("1_m7maf")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=1170457258]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=318460319]
+
+[node name="Warp_4_9" type="Node2D" parent="Triggers" unique_id=1917978454]
+position = Vector2(64, 144)
+script = ExtResource("3_pak8f")
+warp_id = 0
+dest_map = "MAP_CERULEAN_CITY"
+dest_warp_id = 5
+triggers = false
+cell = Vector2i(4, 9)
+elevation = 0
+
+[node name="Warp_5_8" type="Node2D" parent="Triggers" unique_id=906076108]
+position = Vector2(80, 128)
+script = ExtResource("3_pak8f")
+warp_id = 1
+dest_map = "MAP_CERULEAN_CITY"
+dest_warp_id = 5
+arrow_dir = 0
+cell = Vector2i(5, 8)
+
+[node name="Warp_6_9" type="Node2D" parent="Triggers" unique_id=837862059]
+position = Vector2(96, 144)
+script = ExtResource("3_pak8f")
+warp_id = 2
+dest_map = "MAP_CERULEAN_CITY"
+dest_warp_id = 5
+triggers = false
+cell = Vector2i(6, 9)
+elevation = 0
+
+[node name="Sign_4_3" type="Node2D" parent="Triggers" unique_id=2109574076]
+position = Vector2(64, 48)
+script = ExtResource("4_s44nx")
+cell = Vector2i(4, 3)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_4_4" type="Node2D" parent="Triggers" unique_id=1237421504]
+position = Vector2(64, 64)
+script = ExtResource("4_s44nx")
+cell = Vector2i(4, 4)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_4_5" type="Node2D" parent="Triggers" unique_id=259932918]
+position = Vector2(64, 80)
+script = ExtResource("4_s44nx")
+cell = Vector2i(4, 5)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_2_3" type="Node2D" parent="Triggers" unique_id=27818748]
+position = Vector2(32, 48)
+script = ExtResource("4_s44nx")
+cell = Vector2i(2, 3)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_1_4" type="Node2D" parent="Triggers" unique_id=1257772836]
+position = Vector2(16, 64)
+script = ExtResource("4_s44nx")
+cell = Vector2i(1, 4)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_2_5" type="Node2D" parent="Triggers" unique_id=244282332]
+position = Vector2(32, 80)
+script = ExtResource("4_s44nx")
+cell = Vector2i(2, 5)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_2_7" type="Node2D" parent="Triggers" unique_id=847075431]
+position = Vector2(32, 112)
+script = ExtResource("4_s44nx")
+cell = Vector2i(2, 7)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"
+
+[node name="Sign_2_8" type="Node2D" parent="Triggers" unique_id=827608186]
+position = Vector2(32, 128)
+script = ExtResource("4_s44nx")
+cell = Vector2i(2, 8)
+elevation = 0
+script_label = "CeruleanCity_BikeShop_EventScript_Bicycle"

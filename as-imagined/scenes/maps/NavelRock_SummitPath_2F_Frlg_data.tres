@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MapData" format=3 uid="uid://brpdt84qqn5vo"]
+
+[ext_resource type="Script" path="res://scripts/overworld/map_data.gd" id="1_m3f0p"]
+
+[resource]
+script = ExtResource("1_m3f0p")
+map_name = "NavelRock_SummitPath_2F_Frlg"
+layout = "LAYOUT_NAVEL_ROCK_SUMMIT_PATH_2F"
+atlas = "general_frlg__navel_rock_frlg"
+width = 7
+height = 7
+metatile = PackedInt32Array(667, 708, 708, 708, 708, 708, 668, 711, 667, 655, 665, 665, 668, 710, 711, 658, 663, 729, 729, 656, 710, 711, 658, 729, 729, 729, 656, 710, 711, 658, 729, 729, 687, 656, 710, 711, 649, 649, 649, 649, 649, 710, 649, 649, 649, 649, 649, 649, 649)
+collision = PackedInt32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+elevation = PackedInt32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+behavior = PackedInt32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 8, 8, 0, 0, 0, 0, 8, 8, 8, 0, 0, 0, 0, 8, 8, 97, 0, 0, 0, 50, 50, 50, 50, 50, 0, 50, 50, 50, 50, 50, 50, 50)
+layer_type = PackedInt32Array(0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+provenance = PackedByteArray(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+attr_explicit = PackedByteArray(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3)
+border = PackedInt32Array(657, 657, 657, 657)
+border_layer_type = PackedInt32Array(1, 1, 1, 1)

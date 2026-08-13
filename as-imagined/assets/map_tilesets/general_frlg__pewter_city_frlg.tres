@@ -1,11 +1,11 @@
-[gd_resource type="TileSet" format=3]
+[gd_resource type="TileSet" format=3 uid="uid://bqlwqh7yl7lnw"]
 
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_ground.png" id="1_gga0b"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_objects.png" id="2_ox7lu"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_overhangs.png" id="3_hfr4p"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_ground.png" id="4_mg2ao"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_objects.png" id="5_fbgsi"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_overhangs.png" id="6_8304h"]
+[ext_resource type="Texture2D" uid="uid://bjbnd7cnk06w4" path="res://assets/map_atlases/general_frlg_primary_ground.png" id="1_gga0b"]
+[ext_resource type="Texture2D" uid="uid://m2x87tk880i8" path="res://assets/map_atlases/general_frlg_primary_objects.png" id="2_ox7lu"]
+[ext_resource type="Texture2D" uid="uid://bg8w1ho3q8crl" path="res://assets/map_atlases/general_frlg_primary_overhangs.png" id="3_hfr4p"]
+[ext_resource type="Texture2D" uid="uid://n4ii0c566qa" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_ground.png" id="4_mg2ao"]
+[ext_resource type="Texture2D" uid="uid://uqilyncc7fac" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_objects.png" id="5_fbgsi"]
+[ext_resource type="Texture2D" uid="uid://csr0tm83lk6es" path="res://assets/map_atlases/general_frlg__pewter_city_frlg_secondary_overhangs.png" id="6_8304h"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_046n8"]
 texture = ExtResource("1_gga0b")

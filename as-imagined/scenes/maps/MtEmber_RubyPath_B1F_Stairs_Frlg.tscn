@@ -1,0 +1,55 @@
+[gd_scene format=4 uid="uid://flb8t0ys6pkb"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/general_frlg__mt_ember_frlg.tres" id="1_jv0jf"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/npc.gd" id="2_k43tf"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="3_otyxs"]
+
+[node name="MtEmber_RubyPath_B1F_Stairs_Frlg" type="Node2D" unique_id=807188281]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=551912222]
+tile_map_data = PackedByteArray("AAAAAAAAAwARAAAAAAADAAAAAwAZAAAAAAAEAAAAAwAZAAAAAAAAAAEAAwARAAAAAAACAAEAAwASAAAAAAAFAAEAAwAQAAAAAAAAAAIAAwARAAAAAAABAAIAAwARAAAAAAACAAIAAwASAAAAAAAFAAIAAwAQAAAAAAABAAMAAwARAAAAAAACAAMAAwASAAAAAAAEAAMAAwAIAAAAAAAFAAMAAwAJAAAAAAABAAQAAwAPAAAAAAACAAQAAwAaAAAAAAAEAAQAAwAQAAAAAAAAAAUAAwASAAAAAAABAAUAAwAWAAAAAAAEAAUAAwAQAAAAAAAAAAYAAwAJAAAAAAABAAYAAwAJAAAAAAADAAYAAwAJAAAAAAAEAAYAAwAJAAAAAAAFAAYAAwARAAAAAAA=")
+tile_set = ExtResource("1_jv0jf")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=1069359226]
+tile_map_data = PackedByteArray("AAAAAAAABAARAAAAAAABAAAABAAJAAUAAAACAAAABAAbAAAAAAADAAAABAAZAAAAAAAEAAAABAAZAAAAAAAFAAAABAAcAAAAAAAAAAEABAARAAAAAAABAAEABAAPAAIAAAACAAEABAASAAAAAAADAAEABAABAAAAAAAEAAEABAAPAAEAAAAFAAEABAAQAAAAAAAAAAIABAARAAAAAAABAAIABAARAAAAAAACAAIABAASAAAAAAADAAIABAABAAAAAAAEAAIABAABAAAAAAAFAAIABAAQAAAAAAAAAAMABAALAAUAAAABAAMABAARAAAAAAACAAMABAASAAAAAAADAAMABAABAAAAAAAEAAMABAAIAAAAAAAFAAMABAAJAAAAAAAAAAQABAAbAAAAAAABAAQABAAPAAAAAAACAAQABAAaAAAAAAADAAQABAABAAAAAAAEAAQABAAQAAAAAAAFAAQABAALAAUAAAAAAAUABAASAAAAAAABAAUABAAWAAAAAAACAAUABAABAAAAAAADAAUABAABAAAAAAAEAAUABAAQAAAAAAAFAAUABAAPAAIAAAAAAAYABAAJAAAAAAABAAYABAAJAAAAAAACAAYABAAIAAUAAAADAAYABAAJAAAAAAAEAAYABAAJAAAAAAAFAAYABAARAAAAAAA=")
+tile_set = ExtResource("1_jv0jf")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=263531014]
+y_sort_enabled = true
+
+[node name="Npc_4_2" type="Node2D" parent="Entities_P2" unique_id=565084811]
+position = Vector2(64, 32)
+script = ExtResource("2_k43tf")
+graphics_id = "OBJ_EVENT_GFX_BREAKABLE_ROCK_FRLG"
+movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+range_x = 1
+range_y = 1
+cell = Vector2i(4, 2)
+visibility_flag = "FLAG_TEMP_12"
+script_label = "EventScript_RockSmash"
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=591087216]
+tile_map_data = PackedByteArray("AAABAAAABQAJAAUAAAACAAAABQAbAAAAAAAFAAAABQAcAAAAAAABAAEABQAPAAIAAAADAAEABQABAAAAAAAEAAEABQAPAAEAAAADAAIABQABAAAAAAAEAAIABQABAAAAAAAAAAMABQALAAUAAAADAAMABQABAAAAAAAAAAQABQAbAAAAAAADAAQABQABAAAAAAAFAAQABQALAAUAAAACAAUABQABAAAAAAADAAUABQABAAAAAAAFAAUABQAPAAIAAAACAAYABQAIAAUAAAA=")
+tile_set = ExtResource("1_jv0jf")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=2078624036]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=2091770903]
+
+[node name="Warp_4_1" type="Node2D" parent="Triggers" unique_id=1559938678]
+position = Vector2(64, 16)
+script = ExtResource("3_otyxs")
+warp_id = 0
+dest_map = "MAP_MT_EMBER_RUBY_PATH_B3F"
+dest_warp_id = 1
+cell = Vector2i(4, 1)
+elevation = 0
+
+[node name="Warp_1_5" type="Node2D" parent="Triggers" unique_id=738212264]
+position = Vector2(16, 80)
+script = ExtResource("3_otyxs")
+warp_id = 1
+dest_map = "MAP_MT_EMBER_RUBY_PATH_B2F_STAIRS"
+cell = Vector2i(1, 5)
+elevation = 0

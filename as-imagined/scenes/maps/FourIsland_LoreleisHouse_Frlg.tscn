@@ -1,0 +1,200 @@
+[gd_scene format=4 uid="uid://dbde811bhg3h8"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/building_frlg__safari_zone_building_frlg.tres" id="1_akao7"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/npc.gd" id="2_qhx1i"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="3_lc2jf"]
+
+[node name="FourIsland_LoreleisHouse_Frlg" type="Node2D" unique_id=33857366]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=1509270189]
+tile_map_data = PackedByteArray("AAADAAAAAAAMAAgAAAAEAAAAAAANAAgAAAAFAAAAAAAYAAgAAAAGAAAAAAAAAAsAAAAJAAAAAwAaAAMAAAAKAAAAAwAbAAMAAAADAAEAAAAUAAgAAAAEAAEAAAAVAAgAAAAFAAEAAAAAAAkAAAAGAAEAAAAIAAsAAAAIAAEAAAATAAgAAAAJAAEAAwAcAAMAAAAKAAEAAwAdAAMAAAAAAAIAAwAIAAMAAAADAAIAAwARAAIAAAAEAAIAAwASAAIAAAAIAAIAAwAQAAIAAAAJAAIAAwAeAAMAAAAKAAIAAwAfAAMAAAAAAAMAAwAQAAMAAAABAAMAAwARAAMAAAACAAMAAwASAAMAAAADAAMAAwAcAAIAAAAEAAMAAwAdAAIAAAAFAAMAAwAdAAIAAAAGAAMAAwAdAAIAAAAHAAMAAwAdAAIAAAAIAAMAAwAeAAIAAAAJAAMAAwANAAMAAAAKAAMAAwAOAAMAAAADAAQAAwAEAAMAAAAEAAQAAwAfAAIAAAAFAAQAAwALAAMAAAAGAAQAAwAMAAMAAAAHAAQAAwADAAMAAAAIAAQAAwAGAAMAAAAJAAQAAwAVAAMAAAAKAAQAAwAWAAMAAAADAAUAAwAEAAMAAAAEAAUAAwAFAAMAAAAFAAUAAwATAAMAAAAGAAUAAwAUAAMAAAAHAAUAAwAFAAMAAAAIAAUAAwAGAAMAAAAJAAUAAwAPAAMAAAAKAAUAAwAXAAMAAAADAAYAAwAAAAMAAAAEAAYAAwABAAMAAAAFAAYAAwABAAMAAAAGAAYAAwABAAMAAAAHAAYAAwABAAMAAAAIAAYAAwACAAMAAAADAAcAAwAVAAIAAAAEAAcAAwAWAAIAAAAFAAcAAwAXAAIAAAADAAgAAAAaAAAAAAAEAAgAAAAbAAAAAAAFAAgAAAAcAAAAAAA=")
+tile_set = ExtResource("1_akao7")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=2125152808]
+tile_map_data = PackedByteArray("AAAAAAAAAQAIAAgAAAABAAAAAQAIAAgAAAACAAAAAQAIAAgAAAADAAAAAQAMAAgAAAAEAAAAAQANAAgAAAAFAAAAAQAYAAgAAAAGAAAAAQAAAAsAAAAHAAAAAQAIAAgAAAAIAAAAAQALAAgAAAAJAAAABAAaAAMAAAAKAAAABAAbAAMAAAAAAAEAAQAQAAgAAAABAAEAAQAQAAgAAAACAAEAAQAQAAgAAAADAAEAAQAUAAgAAAAEAAEAAQAVAAgAAAAFAAEAAQAAAAkAAAAGAAEAAQAIAAsAAAAHAAEAAQAQAAgAAAAIAAEAAQATAAgAAAAJAAEABAAcAAMAAAAKAAEABAAdAAMAAAAAAAIABAAIAAMAAAABAAIABAAJAAMAAAACAAIABAAKAAMAAAADAAIABAARAAIAAAAEAAIABAASAAIAAAAFAAIABAAHAAAAAAAGAAIABAAHAAAAAAAHAAIABAAHAAAAAAAIAAIABAAQAAIAAAAJAAIABAAeAAMAAAAKAAIABAAfAAMAAAAAAAMABAAQAAMAAAABAAMABAARAAMAAAACAAMABAASAAMAAAADAAMABAAcAAIAAAAEAAMABAAdAAIAAAAFAAMABAAdAAIAAAAGAAMABAAdAAIAAAAHAAMABAAdAAIAAAAIAAMABAAeAAIAAAAJAAMABAANAAMAAAAKAAMABAAOAAMAAAAAAAQABAAYAAIAAAABAAQABAAGAAAAAAACAAQABAAGAAAAAAADAAQABAAEAAMAAAAEAAQABAAfAAIAAAAFAAQABAALAAMAAAAGAAQABAAMAAMAAAAHAAQABAADAAMAAAAIAAQABAAGAAMAAAAJAAQABAAVAAMAAAAKAAQABAAWAAMAAAAAAAUABAAYAAIAAAABAAUABAAGAAAAAAACAAUABAAGAAAAAAADAAUABAAEAAMAAAAEAAUABAAFAAMAAAAFAAUABAATAAMAAAAGAAUABAAUAAMAAAAHAAUABAAFAAMAAAAIAAUABAAGAAMAAAAJAAUABAAPAAMAAAAKAAUABAAXAAMAAAAAAAYABAAYAAIAAAABAAYABAAGAAAAAAACAAYABAAGAAAAAAADAAYABAAAAAMAAAAEAAYABAABAAMAAAAFAAYABAABAAMAAAAGAAYABAABAAMAAAAHAAYABAABAAMAAAAIAAYABAACAAMAAAAJAAYABAAGAAAAAAAKAAYABAAGAAAAAAAAAAcABAAYAAIAAAABAAcABAAGAAAAAAACAAcABAAGAAAAAAADAAcABAAVAAIAAAAEAAcABAAWAAIAAAAFAAcABAAXAAIAAAAGAAcABAAGAAAAAAAHAAcABAAGAAAAAAAIAAcABAAGAAAAAAAJAAcABAAGAAAAAAAKAAcABAAGAAAAAAAAAAgAAQAIAAAAAAABAAgAAQAIAAAAAAACAAgAAQAIAAAAAAADAAgAAQAaAAAAAAAEAAgAAQAbAAAAAAAFAAgAAQAcAAAAAAAGAAgAAQAIAAAAAAAHAAgAAQAIAAAAAAAIAAgAAQAIAAAAAAAJAAgAAQAIAAAAAAAKAAgAAQAIAAAAAAA=")
+tile_set = ExtResource("1_akao7")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=1015498504]
+y_sort_enabled = true
+
+[node name="Npc_7_4" type="Node2D" parent="Entities_P2" unique_id=993920802]
+position = Vector2(112, 64)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_LORELEI"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(7, 4)
+visibility_flag = "FLAG_HIDE_LORELEI_IN_HER_HOUSE"
+script_label = "FourIsland_LoreleisHouse_EventScript_Lorelei"
+
+[node name="Npc_0_2" type="Node2D" parent="Entities_P2" unique_id=1432855592]
+position = Vector2(0, 32)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_WIGGLYTUFF"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(0, 2)
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_10_3" type="Node2D" parent="Entities_P2" unique_id=213558909]
+position = Vector2(160, 48)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_SEEL"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(10, 3)
+elevation = 0
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_9_3" type="Node2D" parent="Entities_P2" unique_id=1498682614]
+position = Vector2(144, 48)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_PIKACHU_FRLG"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 3)
+elevation = 0
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_7_2" type="Node2D" parent="Entities_P2" unique_id=1063788843]
+position = Vector2(112, 32)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_SLOWPOKE"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(7, 2)
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_6_2" type="Node2D" parent="Entities_P2" unique_id=1054464339]
+position = Vector2(96, 32)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_SLOWBRO"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(6, 2)
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_6_4" type="Node2D" parent="Entities_P2" unique_id=105197893]
+position = Vector2(96, 64)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_PSYDUCK"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(6, 4)
+elevation = 0
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_9_4" type="Node2D" parent="Entities_P2" unique_id=914577698]
+position = Vector2(144, 64)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_MEOWTH"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 4)
+elevation = 0
+visibility_flag = "FLAG_HIDE_LORELEI_HOUSE_MEOWTH_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_10_4" type="Node2D" parent="Entities_P2" unique_id=257843838]
+position = Vector2(160, 64)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_CHANSEY"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(10, 4)
+elevation = 0
+visibility_flag = "FLAG_HIDE_LORELEI_HOUSE_CHANSEY_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_0_3" type="Node2D" parent="Entities_P2" unique_id=2015951923]
+position = Vector2(0, 48)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_JIGGLYPUFF"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(0, 3)
+visibility_flag = "FLAG_HIDE_LORELEI_HOUSE_JIGGLYPUFF_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_0_5" type="Node2D" parent="Entities_P2" unique_id=727667713]
+position = Vector2(0, 80)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_NIDORAN_F"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(0, 5)
+visibility_flag = "FLAG_HIDE_LORELEIS_HOUSE_NIDORAN_F_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_1_5" type="Node2D" parent="Entities_P2" unique_id=1390152750]
+position = Vector2(16, 80)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_NIDORAN_M"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(1, 5)
+visibility_flag = "FLAG_HIDE_LORELEIS_HOUSE_NIDORAN_M_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_9_0" type="Node2D" parent="Entities_P2" unique_id=1122317855]
+position = Vector2(144, 0)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_PIDGEOT"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 0)
+visibility_flag = "FLAG_HIDE_LORELEIS_HOUSE_PIDGEOT_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_10_0" type="Node2D" parent="Entities_P2" unique_id=118515917]
+position = Vector2(160, 0)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_FEAROW"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(10, 0)
+visibility_flag = "FLAG_HIDE_LORELEIS_HOUSE_FEAROW_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Npc_9_6" type="Node2D" parent="Entities_P2" unique_id=1475720944]
+position = Vector2(144, 96)
+script = ExtResource("2_qhx1i")
+graphics_id = "OBJ_EVENT_GFX_LAPRAS_DOLL"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(9, 6)
+visibility_flag = "FLAG_HIDE_LORELEIS_HOUSE_LAPRAS_DOLL"
+script_label = "FourIsland_LoreleisHouse_EventScript_Doll"
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=1505088404]
+tile_map_data = PackedByteArray("AAAAAAAAAgAIAAgAAAABAAAAAgAIAAgAAAACAAAAAgAIAAgAAAAHAAAAAgAIAAgAAAAIAAAAAgALAAgAAAAAAAEAAgAQAAgAAAABAAEAAgAQAAgAAAACAAEAAgAQAAgAAAAHAAEAAgAQAAgAAAABAAIABQAJAAMAAAACAAIABQAKAAMAAAAFAAIABQAHAAAAAAAGAAIABQAHAAAAAAAHAAIABQAHAAAAAAAAAAQABQAYAAIAAAABAAQABQAGAAAAAAACAAQABQAGAAAAAAAAAAUABQAYAAIAAAABAAUABQAGAAAAAAACAAUABQAGAAAAAAAAAAYABQAYAAIAAAABAAYABQAGAAAAAAACAAYABQAGAAAAAAAJAAYABQAGAAAAAAAKAAYABQAGAAAAAAAAAAcABQAYAAIAAAABAAcABQAGAAAAAAACAAcABQAGAAAAAAAGAAcABQAGAAAAAAAHAAcABQAGAAAAAAAIAAcABQAGAAAAAAAJAAcABQAGAAAAAAAKAAcABQAGAAAAAAAAAAgAAgAIAAAAAAABAAgAAgAIAAAAAAACAAgAAgAIAAAAAAAGAAgAAgAIAAAAAAAHAAgAAgAIAAAAAAAIAAgAAgAIAAAAAAAJAAgAAgAIAAAAAAAKAAgAAgAIAAAAAAA=")
+tile_set = ExtResource("1_akao7")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=124347821]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=1128603232]
+
+[node name="Warp_4_7" type="Node2D" parent="Triggers" unique_id=373609057]
+position = Vector2(64, 112)
+script = ExtResource("3_lc2jf")
+warp_id = 0
+dest_map = "MAP_FOUR_ISLAND"
+dest_warp_id = 4
+arrow_dir = 0
+cell = Vector2i(4, 7)

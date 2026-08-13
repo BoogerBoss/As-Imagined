@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MapData" format=4 uid="uid://c8au6cxl0w1s1"]
+
+[ext_resource type="Script" path="res://scripts/overworld/map_data.gd" id="1_sl3po"]
+
+[resource]
+script = ExtResource("1_sl3po")
+map_name = "CeruleanCity_House5_Frlg"
+layout = "LAYOUT_CERULEAN_CITY_HOUSE5"
+atlas = "building_frlg__generic_building_2_frlg"
+width = 11
+height = 9
+metatile = PackedInt32Array(194, 194, 194, 206, 353, 353, 171, 221, 222, 221, 222, 202, 202, 202, 214, 361, 361, 179, 229, 230, 229, 230, 306, 306, 306, 273, 273, 273, 283, 333, 334, 333, 334, 273, 265, 265, 265, 265, 265, 265, 265, 357, 358, 265, 258, 302, 265, 265, 265, 265, 265, 367, 365, 366, 265, 259, 310, 265, 265, 265, 265, 265, 265, 357, 358, 265, 258, 302, 265, 265, 265, 265, 265, 265, 365, 366, 359, 259, 310, 265, 319, 327, 335, 265, 265, 265, 265, 265, 8, 8, 8, 26, 27, 28, 8, 8, 8, 8, 8)
+collision = PackedInt32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+elevation = PackedInt32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 3, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+behavior = PackedInt32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 170, 170, 91, 225, 225, 225, 225, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+layer_type = PackedInt32Array(0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0)
+provenance = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+attr_explicit = PackedByteArray("AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD")
+border = PackedInt32Array(8, 8, 8, 8)
+border_layer_type = PackedInt32Array(0, 0, 0, 0)

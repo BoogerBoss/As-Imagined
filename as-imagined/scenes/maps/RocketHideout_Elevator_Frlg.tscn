@@ -1,0 +1,50 @@
+[gd_scene format=4 uid="uid://c1brj1pyc6r8b"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/building_frlg__silph_co_frlg.tres" id="1_uud17"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="2_epsga"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="3_5nfkc"]
+
+[node name="RocketHideout_Elevator_Frlg" type="Node2D" unique_id=836035187]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=485997539]
+tile_map_data = PackedByteArray("AAAAAAAAAwALAAMAAAABAAAAAwAIAAMAAAACAAAAAwAIAAMAAAADAAAAAwAIAAMAAAAEAAAAAwAMAAMAAAAAAAEAAwATAAMAAAABAAEAAwAQAAMAAAACAAEAAwAQAAMAAAADAAEAAwAQAAMAAAAEAAEAAwAUAAMAAAAAAAIAAwAbAAMAAAABAAIAAwAYAAMAAAACAAIAAwAYAAMAAAADAAIAAwAYAAMAAAAEAAIAAwAcAAMAAAABAAUAAwAdAAMAAAACAAUAAwAeAAMAAAADAAUAAwAXAAMAAAABAAYAAAAaAAAAAAACAAYAAAAbAAAAAAADAAYAAAAcAAAAAAA=")
+tile_set = ExtResource("1_uud17")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=1415233340]
+tile_map_data = PackedByteArray("AAAAAAAABAALAAMAAAABAAAABAAIAAMAAAACAAAABAAIAAMAAAADAAAABAAIAAMAAAAEAAAABAAMAAMAAAAAAAEABAATAAMAAAABAAEABAAQAAMAAAACAAEABAAQAAMAAAADAAEABAAQAAMAAAAEAAEABAAUAAMAAAAAAAIABAAbAAMAAAABAAIABAAYAAMAAAACAAIABAAYAAMAAAADAAIABAAYAAMAAAAEAAIABAAcAAMAAAAAAAMABAANAAMAAAABAAMABAAOAAMAAAACAAMABAAOAAMAAAADAAMABAAOAAMAAAAEAAMABAAOAAMAAAAAAAQABAAVAAMAAAABAAQABAAWAAMAAAACAAQABAAWAAMAAAADAAQABAAWAAMAAAAEAAQABAAPAAMAAAAAAAUABAAVAAMAAAABAAUABAAdAAMAAAACAAUABAAeAAMAAAADAAUABAAXAAMAAAAEAAUABAAPAAMAAAAAAAYAAQAIAAAAAAABAAYAAQAaAAAAAAACAAYAAQAbAAAAAAADAAYAAQAcAAAAAAAEAAYAAQAIAAAAAAA=")
+tile_set = ExtResource("1_uud17")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=217369266]
+y_sort_enabled = true
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=349025637]
+tile_map_data = PackedByteArray("AAAAAAMABQANAAMAAAABAAMABQAOAAMAAAACAAMABQAOAAMAAAADAAMABQAOAAMAAAAEAAMABQAOAAMAAAAAAAQABQAVAAMAAAABAAQABQAWAAMAAAACAAQABQAWAAMAAAADAAQABQAWAAMAAAAEAAQABQAPAAMAAAAAAAUABQAVAAMAAAAEAAUABQAPAAMAAAAAAAYAAgAIAAAAAAAEAAYAAgAIAAAAAAA=")
+tile_set = ExtResource("1_uud17")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=2118965152]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=706105714]
+
+[node name="Warp_1_5" type="Node2D" parent="Triggers" unique_id=141891766]
+position = Vector2(16, 80)
+script = ExtResource("2_epsga")
+warp_id = 0
+dest_map = "MAP_DYNAMIC"
+triggers = false
+cell = Vector2i(1, 5)
+
+[node name="Warp_2_5" type="Node2D" parent="Triggers" unique_id=1120193347]
+position = Vector2(32, 80)
+script = ExtResource("2_epsga")
+warp_id = 1
+dest_map = "MAP_DYNAMIC"
+arrow_dir = 0
+cell = Vector2i(2, 5)
+
+[node name="Sign_0_2" type="Node2D" parent="Triggers" unique_id=844424083]
+position = Vector2(0, 32)
+script = ExtResource("3_5nfkc")
+cell = Vector2i(0, 2)
+elevation = 0
+script_label = "RocketHideout_Elevator_EventScript_FloorSelect"

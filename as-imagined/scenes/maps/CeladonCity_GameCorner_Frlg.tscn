@@ -1,0 +1,476 @@
+[gd_scene format=4 uid="uid://cx6qa8ko4li8n"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/building_frlg__game_corner_frlg.tres" id="1_xp2m1"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/npc.gd" id="2_n2o5h"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/trainer_npc.gd" id="3_f0dwx"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="4_qtnp3"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="5_w7s05"]
+
+[node name="CeladonCity_GameCorner_Frlg" type="Node2D" unique_id=304179762]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=696099243]
+tile_map_data = PackedByteArray("AAACAAAAAwAFAAAAAAADAAAAAwAGAAAAAAAEAAAAAwACAAAAAAAFAAAAAwADAAAAAAAGAAAAAwAEAAAAAAAHAAAAAwAFAAAAAAAIAAAAAwAGAAAAAAALAAAAAwAXAAEAAAABAAEAAwAHAAAAAAACAAEAAwANAAAAAAADAAEAAwAOAAAAAAAEAAEAAwAKAAAAAAAFAAEAAwALAAAAAAAGAAEAAwAMAAAAAAAHAAEAAwANAAAAAAAIAAEAAwAOAAAAAAAJAAEAAwAHAAAAAAALAAEAAwAfAAEAAAAAAAIAAwAWAAIAAAABAAIAAwAXAAAAAAAJAAIAAwAPAAAAAAABAAMAAwAbAAAAAAAEAAMAAwAcAAEAAAAFAAMAAwAdAAEAAAAGAAMAAwAeAAEAAAAJAAMAAwADAAEAAAAOAAQAAwANAAEAAAAPAAQAAwAXAAIAAAAQAAQAAwAOAAEAAAARAAQAAwAPAAEAAAAAAAYAAwAZAAEAAAABAAYAAwALAAEAAAAEAAYAAwAKAAEAAAAFAAYAAwAYAAEAAAAGAAYAAwAZAAEAAAAHAAYAAwALAAEAAAAKAAYAAwAKAAEAAAALAAYAAwAYAAEAAAAMAAYAAwAZAAEAAAANAAYAAwALAAEAAAAQAAYAAwAKAAEAAAARAAYAAwAYAAEAAAAAAAcAAwAZAAEAAAABAAcAAwATAAEAAAAEAAcAAwASAAEAAAAFAAcAAwAYAAEAAAAGAAcAAwAZAAEAAAAHAAcAAwATAAEAAAAKAAcAAwASAAEAAAALAAcAAwAYAAEAAAAMAAcAAwAZAAEAAAANAAcAAwATAAEAAAAQAAcAAwASAAEAAAARAAcAAwAYAAEAAAAAAAgAAwAZAAEAAAABAAgAAwAbAAEAAAAEAAgAAwAaAAEAAAAFAAgAAwAYAAEAAAAGAAgAAwAZAAEAAAAHAAgAAwAbAAEAAAAKAAgAAwAaAAEAAAALAAgAAwAYAAEAAAAMAAgAAwAZAAEAAAANAAgAAwAbAAEAAAAQAAgAAwAaAAEAAAARAAgAAwAYAAEAAAAAAAkAAwAZAAEAAAABAAkAAwATAAEAAAAEAAkAAwASAAEAAAAFAAkAAwAYAAEAAAAGAAkAAwAZAAEAAAAHAAkAAwATAAEAAAAKAAkAAwASAAEAAAALAAkAAwAYAAEAAAAMAAkAAwAZAAEAAAANAAkAAwATAAEAAAAQAAkAAwASAAEAAAARAAkAAwAYAAEAAAAAAAoAAwABAAIAAAABAAoAAwAbAAEAAAAEAAoAAwAaAAEAAAAFAAoAAwAAAAIAAAAGAAoAAwABAAIAAAAHAAoAAwAbAAEAAAAKAAoAAwAaAAEAAAALAAoAAwAAAAIAAAAMAAoAAwABAAIAAAANAAoAAwAbAAEAAAAQAAoAAwAaAAEAAAARAAoAAwAAAAIAAAAAAA0AAwAWAAIAAAAIAA0AAwAQAAIAAAAJAA0AAwARAAIAAAAKAA0AAwASAAIAAAARAA0AAwAfAAIAAAAIAA4AAAAaAAAAAAAJAA4AAAAbAAAAAAAKAA4AAAAcAAAAAAA=")
+tile_set = ExtResource("1_xp2m1")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=1900818884]
+tile_map_data = PackedByteArray("AAAAAAAABAABAAAAAAABAAAABAABAAAAAAACAAAABAAFAAAAAAADAAAABAAGAAAAAAAEAAAABAACAAAAAAAFAAAABAADAAAAAAAGAAAABAAEAAAAAAAHAAAABAAFAAAAAAAIAAAABAAGAAAAAAAJAAAABAABAAAAAAAKAAAABAABAAAAAAALAAAABAAXAAEAAAAMAAAABAABAAAAAAANAAAABAABAAAAAAAOAAAABAABAAAAAAAPAAAABAABAAAAAAAQAAAABAABAAAAAAARAAAABAABAAAAAAAAAAEABAAOAAIAAAABAAEABAAHAAAAAAACAAEABAANAAAAAAADAAEABAAOAAAAAAAEAAEABAAKAAAAAAAFAAEABAALAAAAAAAGAAEABAAMAAAAAAAHAAEABAANAAAAAAAIAAEABAAOAAAAAAAJAAEABAAHAAAAAAAKAAEABAAJAAAAAAALAAEABAAfAAEAAAAMAAEABAAJAAAAAAANAAEABAAJAAAAAAAOAAEABAAJAAAAAAAPAAEABAAJAAAAAAAQAAEABAAJAAAAAAARAAEABAAJAAAAAAAAAAIABAAWAAIAAAABAAIABAAXAAAAAAACAAIABAAEAAIAAAADAAIABAAHAAIAAAAEAAIABAAUAAEAAAAFAAIABAAVAAEAAAAGAAIABAAWAAEAAAAHAAIABAAGAAIAAAAIAAIABAAUAAQAAAAJAAIABAAPAAAAAAAKAAIABAASAAAAAAALAAIABAASAAAAAAAMAAIABAASAAAAAAANAAIABAASAAAAAAAOAAIABAASAAAAAAAPAAIABAAdAAAAAAAQAAIABAAeAAAAAAARAAIABAAfAAAAAAAAAAMABAASAAAAAAABAAMABAAbAAAAAAACAAMABAABAAEAAAADAAMABAACAAEAAAAEAAMABAAcAAEAAAAFAAMABAAdAAEAAAAGAAMABAAeAAEAAAAHAAMABAAAAAEAAAAIAAMABAABAAEAAAAJAAMABAADAAEAAAAKAAMABAATAAAAAAALAAMABAARAAAAAAAMAAMABAARAAAAAAANAAMABAARAAAAAAAOAAMABAAFAAEAAAAPAAMABAAPAAIAAAAQAAMABAAGAAEAAAARAAMABAAHAAEAAAAAAAQABAASAAAAAAABAAQABAAMAAEAAAACAAQABAAQAAAAAAADAAQABAAQAAAAAAAEAAQABAAQAAAAAAAFAAQABAAQAAAAAAAGAAQABAAQAAAAAAAHAAQABAAQAAAAAAAIAAQABAAQAAAAAAAJAAQABAAQAAAAAAAKAAQABAAIAAAAAAALAAQABAARAAAAAAAMAAQABAARAAAAAAANAAQABAARAAAAAAAOAAQABAANAAEAAAAPAAQABAAXAAIAAAAQAAQABAAOAAEAAAARAAQABAAPAAEAAAAAAAUABAAZAAIAAAABAAUABAARAAAAAAACAAUABAARAAAAAAADAAUABAARAAAAAAAEAAUABAARAAAAAAAFAAUABAAIAAEAAAAGAAUABAAJAAEAAAAHAAUABAARAAAAAAAIAAUABAARAAAAAAAJAAUABAARAAAAAAAKAAUABAARAAAAAAALAAUABAAIAAEAAAAMAAUABAAJAAEAAAANAAUABAARAAAAAAAOAAUABAAMAAEAAAAPAAUABAAQAAAAAAAQAAUABAAQAAAAAAARAAUABAAYAAIAAAAAAAYABAAZAAEAAAABAAYABAALAAEAAAACAAYABAARAAAAAAADAAYABAARAAAAAAAEAAYABAAKAAEAAAAFAAYABAAYAAEAAAAGAAYABAAZAAEAAAAHAAYABAALAAEAAAAIAAYABAARAAAAAAAJAAYABAARAAAAAAAKAAYABAAKAAEAAAALAAYABAAYAAEAAAAMAAYABAAZAAEAAAANAAYABAALAAEAAAAOAAYABAARAAAAAAAPAAYABAARAAAAAAAQAAYABAAKAAEAAAARAAYABAAYAAEAAAAAAAcABAAZAAEAAAABAAcABAATAAEAAAACAAcABAARAAAAAAADAAcABAARAAAAAAAEAAcABAASAAEAAAAFAAcABAAYAAEAAAAGAAcABAAZAAEAAAAHAAcABAATAAEAAAAIAAcABAARAAAAAAAJAAcABAARAAAAAAAKAAcABAASAAEAAAALAAcABAAYAAEAAAAMAAcABAAZAAEAAAANAAcABAATAAEAAAAOAAcABAARAAAAAAAPAAcABAARAAAAAAAQAAcABAASAAEAAAARAAcABAAYAAEAAAAAAAgABAAZAAEAAAABAAgABAAbAAEAAAACAAgABAARAAAAAAADAAgABAARAAAAAAAEAAgABAAaAAEAAAAFAAgABAAYAAEAAAAGAAgABAAZAAEAAAAHAAgABAAbAAEAAAAIAAgABAARAAAAAAAJAAgABAARAAAAAAAKAAgABAAaAAEAAAALAAgABAAYAAEAAAAMAAgABAAZAAEAAAANAAgABAAbAAEAAAAOAAgABAARAAAAAAAPAAgABAARAAAAAAAQAAgABAAaAAEAAAARAAgABAAYAAEAAAAAAAkABAAZAAEAAAABAAkABAATAAEAAAACAAkABAARAAAAAAADAAkABAARAAAAAAAEAAkABAASAAEAAAAFAAkABAAYAAEAAAAGAAkABAAZAAEAAAAHAAkABAATAAEAAAAIAAkABAARAAAAAAAJAAkABAARAAAAAAAKAAkABAASAAEAAAALAAkABAAYAAEAAAAMAAkABAAZAAEAAAANAAkABAATAAEAAAAOAAkABAARAAAAAAAPAAkABAARAAAAAAAQAAkABAASAAEAAAARAAkABAAYAAEAAAAAAAoABAABAAIAAAABAAoABAAbAAEAAAACAAoABAARAAAAAAADAAoABAARAAAAAAAEAAoABAAaAAEAAAAFAAoABAAAAAIAAAAGAAoABAABAAIAAAAHAAoABAAbAAEAAAAIAAoABAARAAAAAAAJAAoABAARAAAAAAAKAAoABAAaAAEAAAALAAoABAAAAAIAAAAMAAoABAABAAIAAAANAAoABAAbAAEAAAAOAAoABAARAAAAAAAPAAoABAARAAAAAAAQAAoABAAaAAEAAAARAAoABAAAAAIAAAAAAAsABAASAAAAAAABAAsABAAIAAAAAAACAAsABAARAAAAAAADAAsABAARAAAAAAAEAAsABAARAAAAAAAFAAsABAAIAAIAAAAGAAsABAAJAAIAAAAHAAsABAAIAAAAAAAIAAsABAARAAAAAAAJAAsABAARAAAAAAAKAAsABAARAAAAAAALAAsABAAIAAIAAAAMAAsABAAJAAIAAAANAAsABAAIAAAAAAAOAAsABAARAAAAAAAPAAsABAARAAAAAAAQAAsABAARAAAAAAARAAsABAAIAAIAAAAAAAwABAAVAAIAAAABAAwABAARAAAAAAACAAwABAARAAAAAAADAAwABAARAAAAAAAEAAwABAARAAAAAAAFAAwABAARAAAAAAAGAAwABAARAAAAAAAHAAwABAARAAAAAAAIAAwABAARAAAAAAAJAAwABAARAAAAAAAKAAwABAARAAAAAAALAAwABAARAAAAAAAMAAwABAARAAAAAAANAAwABAARAAAAAAAOAAwABAARAAAAAAAPAAwABAARAAAAAAAQAAwABAARAAAAAAARAAwABAAeAAIAAAAAAA0ABAAWAAIAAAABAA0ABAARAAAAAAACAA0ABAARAAAAAAADAA0ABAARAAAAAAAEAA0ABAARAAAAAAAFAA0ABAARAAAAAAAGAA0ABAARAAAAAAAHAA0ABAARAAAAAAAIAA0ABAAQAAIAAAAJAA0ABAARAAIAAAAKAA0ABAASAAIAAAALAA0ABAARAAAAAAAMAA0ABAARAAAAAAANAA0ABAARAAAAAAAOAA0ABAARAAAAAAAPAA0ABAARAAAAAAAQAA0ABAARAAAAAAARAA0ABAAfAAIAAAAAAA4AAQAIAAAAAAABAA4AAQAIAAAAAAACAA4AAQAIAAAAAAADAA4AAQAIAAAAAAAEAA4AAQAIAAAAAAAFAA4AAQAIAAAAAAAGAA4AAQAIAAAAAAAHAA4AAQAIAAAAAAAIAA4AAQAaAAAAAAAJAA4AAQAbAAAAAAAKAA4AAQAcAAAAAAALAA4AAQAIAAAAAAAMAA4AAQAIAAAAAAANAA4AAQAIAAAAAAAOAA4AAQAIAAAAAAAPAA4AAQAIAAAAAAAQAA4AAQAIAAAAAAARAA4AAQAIAAAAAAA=")
+tile_set = ExtResource("1_xp2m1")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=672957143]
+y_sort_enabled = true
+
+[node name="Npc_4_2" type="Node2D" parent="Entities_P2" unique_id=1401985398]
+position = Vector2(64, 32)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_WORKER_F"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(4, 2)
+script_label = "CeladonCity_GameCorner_EventScript_InfoClerk"
+
+[node name="Npc_6_2" type="Node2D" parent="Entities_P2" unique_id=1236912858]
+position = Vector2(96, 32)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_WORKER_M"
+movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+range_x = 1
+range_y = 1
+cell = Vector2i(6, 2)
+script_label = "CeladonCity_GameCorner_EventScript_CoinsClerk"
+
+[node name="Npc_1_6" type="Node2D" parent="Entities_P2" unique_id=1878863960]
+position = Vector2(16, 96)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_BALDING_MAN"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(1, 6)
+script_label = "CeladonCity_GameCorner_EventScript_BaldingMan"
+
+[node name="Npc_1_8" type="Node2D" parent="Entities_P2" unique_id=365285290]
+position = Vector2(16, 128)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_WOMAN_2_FRLG"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(1, 8)
+script_label = "CeladonCity_GameCorner_EventScript_Woman1"
+
+[node name="Npc_4_7" type="Node2D" parent="Entities_P2" unique_id=1014601348]
+position = Vector2(64, 112)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_FISHER"
+movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+range_x = 1
+range_y = 1
+cell = Vector2i(4, 7)
+script_label = "CeladonCity_GameCorner_EventScript_Fisher"
+
+[node name="Npc_7_10" type="Node2D" parent="Entities_P2" unique_id=905857083]
+position = Vector2(112, 160)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_GYM_GUY"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(7, 10)
+script_label = "CeladonCity_GameCorner_EventScript_GymGuy"
+
+[node name="Npc_7_8" type="Node2D" parent="Entities_P2" unique_id=29016824]
+position = Vector2(112, 128)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_WOMAN_1_FRLG"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(7, 8)
+script_label = "CeladonCity_GameCorner_EventScript_Woman2"
+
+[node name="Npc_10_9" type="Node2D" parent="Entities_P2" unique_id=1277909578]
+position = Vector2(160, 144)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_OLD_MAN_2"
+movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+range_x = 1
+range_y = 1
+cell = Vector2i(10, 9)
+script_label = "CeladonCity_GameCorner_EventScript_OldMan"
+
+[node name="Npc_13_7" type="Node2D" parent="Entities_P2" unique_id=1577976348]
+position = Vector2(208, 112)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_SCIENTIST"
+movement_type = "MOVEMENT_TYPE_FACE_LEFT"
+range_x = 1
+range_y = 1
+cell = Vector2i(13, 7)
+script_label = "CeladonCity_GameCorner_EventScript_Scientist"
+
+[node name="Npc_16_10" type="Node2D" parent="Entities_P2" unique_id=884170825]
+position = Vector2(256, 160)
+script = ExtResource("2_n2o5h")
+graphics_id = "OBJ_EVENT_GFX_GENTLEMAN_FRLG"
+movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+range_x = 1
+range_y = 1
+cell = Vector2i(16, 10)
+script_label = "CeladonCity_GameCorner_EventScript_Gentleman"
+
+[node name="TeamRocketGrunt7Frlg_11_2" type="Node2D" parent="Entities_P2" unique_id=1049922880]
+position = Vector2(176, 32)
+script = ExtResource("3_f0dwx")
+trainer_key = "TRAINER_TEAM_ROCKET_GRUNT_7_FRLG"
+graphics_id = "OBJ_EVENT_GFX_ROCKET_M"
+movement_type = "MOVEMENT_TYPE_FACE_UP"
+local_id = "LOCALID_GAME_CORNER_GRUNT"
+range_x = 1
+range_y = 1
+cell = Vector2i(11, 2)
+visibility_flag = "FLAG_HIDE_GAME_CORNER_ROCKET"
+script_label = "CeladonCity_GameCorner_EventScript_RocketGrunt"
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=1845957547]
+tile_map_data = PackedByteArray("AAAAAAAABQABAAAAAAABAAAABQABAAAAAAAJAAAABQABAAAAAAAKAAAABQABAAAAAAAMAAAABQABAAAAAAANAAAABQABAAAAAAAOAAAABQABAAAAAAAPAAAABQABAAAAAAAQAAAABQABAAAAAAARAAAABQABAAAAAAAAAAEABQAOAAIAAAAKAAEABQAJAAAAAAAMAAEABQAJAAAAAAANAAEABQAJAAAAAAAOAAEABQAJAAAAAAAPAAEABQAJAAAAAAAQAAEABQAJAAAAAAARAAEABQAJAAAAAAACAAIABQAEAAIAAAADAAIABQAHAAIAAAAEAAIABQAUAAEAAAAFAAIABQAVAAEAAAAGAAIABQAWAAEAAAAHAAIABQAGAAIAAAAIAAIABQAUAAQAAAAKAAIABQASAAAAAAALAAIABQASAAAAAAAMAAIABQASAAAAAAANAAIABQASAAAAAAAOAAIABQASAAAAAAAPAAIABQAdAAAAAAAQAAIABQAeAAAAAAARAAIABQAfAAAAAAAAAAMABQASAAAAAAACAAMABQABAAEAAAADAAMABQACAAEAAAAHAAMABQAAAAEAAAAIAAMABQABAAEAAAAKAAMABQATAAAAAAALAAMABQARAAAAAAAMAAMABQARAAAAAAANAAMABQARAAAAAAAOAAMABQAFAAEAAAAPAAMABQAPAAIAAAAQAAMABQAGAAEAAAARAAMABQAHAAEAAAAAAAQABQASAAAAAAABAAQABQAMAAEAAAACAAQABQAQAAAAAAADAAQABQAQAAAAAAAEAAQABQAQAAAAAAAFAAQABQAQAAAAAAAGAAQABQAQAAAAAAAHAAQABQAQAAAAAAAIAAQABQAQAAAAAAAJAAQABQAQAAAAAAAKAAQABQAIAAAAAAALAAQABQARAAAAAAAMAAQABQARAAAAAAANAAQABQARAAAAAAAAAAUABQAZAAIAAAABAAUABQARAAAAAAACAAUABQARAAAAAAADAAUABQARAAAAAAAEAAUABQARAAAAAAAFAAUABQAIAAEAAAAGAAUABQAJAAEAAAAHAAUABQARAAAAAAAIAAUABQARAAAAAAAJAAUABQARAAAAAAAKAAUABQARAAAAAAALAAUABQAIAAEAAAAMAAUABQAJAAEAAAANAAUABQARAAAAAAAOAAUABQAMAAEAAAAPAAUABQAQAAAAAAAQAAUABQAQAAAAAAARAAUABQAYAAIAAAACAAYABQARAAAAAAADAAYABQARAAAAAAAIAAYABQARAAAAAAAJAAYABQARAAAAAAAOAAYABQARAAAAAAAPAAYABQARAAAAAAACAAcABQARAAAAAAADAAcABQARAAAAAAAIAAcABQARAAAAAAAJAAcABQARAAAAAAAOAAcABQARAAAAAAAPAAcABQARAAAAAAACAAgABQARAAAAAAADAAgABQARAAAAAAAIAAgABQARAAAAAAAJAAgABQARAAAAAAAOAAgABQARAAAAAAAPAAgABQARAAAAAAACAAkABQARAAAAAAADAAkABQARAAAAAAAIAAkABQARAAAAAAAJAAkABQARAAAAAAAOAAkABQARAAAAAAAPAAkABQARAAAAAAACAAoABQARAAAAAAADAAoABQARAAAAAAAIAAoABQARAAAAAAAJAAoABQARAAAAAAAOAAoABQARAAAAAAAPAAoABQARAAAAAAAAAAsABQASAAAAAAABAAsABQAIAAAAAAACAAsABQARAAAAAAADAAsABQARAAAAAAAEAAsABQARAAAAAAAFAAsABQAIAAIAAAAGAAsABQAJAAIAAAAHAAsABQAIAAAAAAAIAAsABQARAAAAAAAJAAsABQARAAAAAAAKAAsABQARAAAAAAALAAsABQAIAAIAAAAMAAsABQAJAAIAAAANAAsABQAIAAAAAAAOAAsABQARAAAAAAAPAAsABQARAAAAAAAQAAsABQARAAAAAAARAAsABQAIAAIAAAAAAAwABQAVAAIAAAABAAwABQARAAAAAAACAAwABQARAAAAAAADAAwABQARAAAAAAAEAAwABQARAAAAAAAFAAwABQARAAAAAAAGAAwABQARAAAAAAAHAAwABQARAAAAAAAIAAwABQARAAAAAAAJAAwABQARAAAAAAAKAAwABQARAAAAAAALAAwABQARAAAAAAAMAAwABQARAAAAAAANAAwABQARAAAAAAAOAAwABQARAAAAAAAPAAwABQARAAAAAAAQAAwABQARAAAAAAARAAwABQAeAAIAAAABAA0ABQARAAAAAAACAA0ABQARAAAAAAADAA0ABQARAAAAAAAEAA0ABQARAAAAAAAFAA0ABQARAAAAAAAGAA0ABQARAAAAAAAHAA0ABQARAAAAAAALAA0ABQARAAAAAAAMAA0ABQARAAAAAAANAA0ABQARAAAAAAAOAA0ABQARAAAAAAAPAA0ABQARAAAAAAAQAA0ABQARAAAAAAAAAA4AAgAIAAAAAAABAA4AAgAIAAAAAAACAA4AAgAIAAAAAAADAA4AAgAIAAAAAAAEAA4AAgAIAAAAAAAFAA4AAgAIAAAAAAAGAA4AAgAIAAAAAAAHAA4AAgAIAAAAAAALAA4AAgAIAAAAAAAMAA4AAgAIAAAAAAANAA4AAgAIAAAAAAAOAA4AAgAIAAAAAAAPAA4AAgAIAAAAAAAQAA4AAgAIAAAAAAARAA4AAgAIAAAAAAA=")
+tile_set = ExtResource("1_xp2m1")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=1365983298]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=277106718]
+
+[node name="Warp_9_13" type="Node2D" parent="Triggers" unique_id=551685156]
+position = Vector2(144, 208)
+script = ExtResource("4_qtnp3")
+warp_id = 0
+dest_map = "MAP_CELADON_CITY"
+arrow_dir = 0
+cell = Vector2i(9, 13)
+elevation = 0
+
+[node name="Warp_10_13" type="Node2D" parent="Triggers" unique_id=1389041497]
+position = Vector2(160, 208)
+script = ExtResource("4_qtnp3")
+warp_id = 1
+dest_map = "MAP_CELADON_CITY"
+triggers = false
+cell = Vector2i(10, 13)
+elevation = 0
+
+[node name="Warp_11_13" type="Node2D" parent="Triggers" unique_id=1837204823]
+position = Vector2(176, 208)
+script = ExtResource("4_qtnp3")
+warp_id = 2
+dest_map = "MAP_CELADON_CITY"
+triggers = false
+cell = Vector2i(11, 13)
+elevation = 0
+
+[node name="Warp_15_2" type="Node2D" parent="Triggers" unique_id=150907679]
+position = Vector2(240, 32)
+script = ExtResource("4_qtnp3")
+warp_id = 3
+dest_map = "MAP_ROCKET_HIDEOUT_B1F"
+arrow_dir = 3
+cell = Vector2i(15, 2)
+
+[node name="Sign_2_4" type="Node2D" parent="Triggers" unique_id=1661684469]
+position = Vector2(32, 64)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(2, 4)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS"
+
+[node name="Sign_3_8" type="Node2D" parent="Triggers" unique_id=1418750815]
+position = Vector2(48, 128)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(3, 8)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_2"
+
+[node name="Sign_2_11" type="Node2D" parent="Triggers" unique_id=17840841]
+position = Vector2(32, 176)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(2, 11)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_3"
+
+[node name="Sign_6_12" type="Node2D" parent="Triggers" unique_id=1441613280]
+position = Vector2(96, 192)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(6, 12)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_4"
+
+[node name="Sign_9_9" type="Node2D" parent="Triggers" unique_id=378516698]
+position = Vector2(144, 144)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(9, 9)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_5"
+
+[node name="Sign_8_5" type="Node2D" parent="Triggers" unique_id=2092566273]
+position = Vector2(128, 80)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(8, 5)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_6"
+
+[node name="Sign_10_4" type="Node2D" parent="Triggers" unique_id=1320005753]
+position = Vector2(160, 64)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(10, 4)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_7"
+
+[node name="Sign_13_3" type="Node2D" parent="Triggers" unique_id=1017467534]
+position = Vector2(208, 48)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(13, 3)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_8"
+
+[node name="Sign_15_5" type="Node2D" parent="Triggers" unique_id=796454077]
+position = Vector2(240, 80)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(15, 5)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_9"
+
+[node name="Sign_17_5" type="Node2D" parent="Triggers" unique_id=265119338]
+position = Vector2(272, 80)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(17, 5)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_10"
+
+[node name="Sign_15_13" type="Node2D" parent="Triggers" unique_id=2015623992]
+position = Vector2(240, 208)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(15, 13)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_11"
+
+[node name="Sign_12_12" type="Node2D" parent="Triggers" unique_id=500366815]
+position = Vector2(192, 192)
+script = ExtResource("5_w7s05")
+bg_type = "hidden_item"
+facing = ""
+item = "ITEM_NONE"
+cell = Vector2i(12, 12)
+visibility_flag = "FLAG_HIDDEN_ITEM_CELADON_CITY_GAME_CORNER_COINS_12"
+
+[node name="Sign_0_7" type="Node2D" parent="Triggers" unique_id=106977248]
+position = Vector2(0, 112)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(0, 7)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine0"
+
+[node name="Sign_0_9" type="Node2D" parent="Triggers" unique_id=1815370476]
+position = Vector2(0, 144)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(0, 9)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine1"
+
+[node name="Sign_0_10" type="Node2D" parent="Triggers" unique_id=973458179]
+position = Vector2(0, 160)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(0, 10)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine2"
+
+[node name="Sign_5_6" type="Node2D" parent="Triggers" unique_id=833795384]
+position = Vector2(80, 96)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(5, 6)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine3"
+
+[node name="Sign_5_8" type="Node2D" parent="Triggers" unique_id=1508786038]
+position = Vector2(80, 128)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(5, 8)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_UnusableSlotMachine1"
+
+[node name="Sign_5_9" type="Node2D" parent="Triggers" unique_id=692954282]
+position = Vector2(80, 144)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(5, 9)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine5"
+
+[node name="Sign_5_10" type="Node2D" parent="Triggers" unique_id=1547881243]
+position = Vector2(80, 160)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(5, 10)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine6"
+
+[node name="Sign_6_6" type="Node2D" parent="Triggers" unique_id=19783214]
+position = Vector2(96, 96)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(6, 6)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine7"
+
+[node name="Sign_6_7" type="Node2D" parent="Triggers" unique_id=17589206]
+position = Vector2(96, 112)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(6, 7)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine8"
+
+[node name="Sign_6_9" type="Node2D" parent="Triggers" unique_id=917050022]
+position = Vector2(96, 144)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(6, 9)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine9"
+
+[node name="Sign_11_6" type="Node2D" parent="Triggers" unique_id=1612097249]
+position = Vector2(176, 96)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(11, 6)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine10"
+
+[node name="Sign_11_7" type="Node2D" parent="Triggers" unique_id=1600721891]
+position = Vector2(176, 112)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(11, 7)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine11"
+
+[node name="Sign_11_8" type="Node2D" parent="Triggers" unique_id=1281372889]
+position = Vector2(176, 128)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(11, 8)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine12"
+
+[node name="Sign_11_10" type="Node2D" parent="Triggers" unique_id=587837181]
+position = Vector2(176, 160)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(11, 10)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine13"
+
+[node name="Sign_12_6" type="Node2D" parent="Triggers" unique_id=1634435156]
+position = Vector2(192, 96)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(12, 6)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine14"
+
+[node name="Sign_12_8" type="Node2D" parent="Triggers" unique_id=2022991774]
+position = Vector2(192, 128)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(12, 8)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_UnusableSlotMachine2"
+
+[node name="Sign_12_9" type="Node2D" parent="Triggers" unique_id=36608897]
+position = Vector2(192, 144)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(12, 9)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine16"
+
+[node name="Sign_12_10" type="Node2D" parent="Triggers" unique_id=1789962736]
+position = Vector2(192, 160)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_WEST"
+cell = Vector2i(12, 10)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine17"
+
+[node name="Sign_17_6" type="Node2D" parent="Triggers" unique_id=1544865004]
+position = Vector2(272, 96)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(17, 6)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_UnusableSlotMachine3"
+
+[node name="Sign_17_7" type="Node2D" parent="Triggers" unique_id=677157317]
+position = Vector2(272, 112)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(17, 7)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine19"
+
+[node name="Sign_17_8" type="Node2D" parent="Triggers" unique_id=583720314]
+position = Vector2(272, 128)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(17, 8)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine20"
+
+[node name="Sign_17_9" type="Node2D" parent="Triggers" unique_id=2102532745]
+position = Vector2(272, 144)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(17, 9)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_SlotMachine21"
+
+[node name="Sign_11_1" type="Node2D" parent="Triggers" unique_id=27088072]
+position = Vector2(176, 16)
+script = ExtResource("5_w7s05")
+cell = Vector2i(11, 1)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_Poster"
+
+[node name="Sign_17_13" type="Node2D" parent="Triggers" unique_id=866632477]
+position = Vector2(272, 208)
+script = ExtResource("5_w7s05")
+facing = "BG_EVENT_PLAYER_FACING_EAST"
+cell = Vector2i(17, 13)
+elevation = 0
+script_label = "CeladonCity_GameCorner_EventScript_PhotoPrinter"

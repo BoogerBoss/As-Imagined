@@ -1,0 +1,58 @@
+[gd_scene format=4 uid="uid://c5sgcvrddoejq"]
+
+[ext_resource type="TileSet" path="res://assets/map_tilesets/building_frlg__silph_co_frlg.tres" id="1_l3od2"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="2_axb0e"]
+[ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="3_army5"]
+
+[node name="CeladonCity_DepartmentStore_Elevator_Frlg" type="Node2D" unique_id=1064021702]
+
+[node name="Ground" type="TileMapLayer" parent="." unique_id=2083248488]
+tile_map_data = PackedByteArray("AAAAAAAAAwALAAMAAAABAAAAAwAIAAMAAAACAAAAAwAIAAMAAAADAAAAAwAIAAMAAAAEAAAAAwAMAAMAAAAAAAEAAwATAAMAAAABAAEAAwAQAAMAAAACAAEAAwAQAAMAAAADAAEAAwAQAAMAAAAEAAEAAwAUAAMAAAAAAAIAAwAbAAMAAAABAAIAAwAYAAMAAAACAAIAAwAYAAMAAAADAAIAAwAYAAMAAAAEAAIAAwAcAAMAAAABAAUAAwAdAAMAAAACAAUAAwAeAAMAAAADAAUAAwAXAAMAAAABAAYAAAAaAAAAAAACAAYAAAAbAAAAAAADAAYAAAAcAAAAAAA=")
+tile_set = ExtResource("1_l3od2")
+
+[node name="Objects" type="TileMapLayer" parent="." unique_id=1160949371]
+tile_map_data = PackedByteArray("AAAAAAAABAALAAMAAAABAAAABAAIAAMAAAACAAAABAAIAAMAAAADAAAABAAIAAMAAAAEAAAABAAMAAMAAAAAAAEABAATAAMAAAABAAEABAAQAAMAAAACAAEABAAQAAMAAAADAAEABAAQAAMAAAAEAAEABAAUAAMAAAAAAAIABAAbAAMAAAABAAIABAAYAAMAAAACAAIABAAYAAMAAAADAAIABAAYAAMAAAAEAAIABAAcAAMAAAAAAAMABAANAAMAAAABAAMABAAOAAMAAAACAAMABAAOAAMAAAADAAMABAAOAAMAAAAEAAMABAAOAAMAAAAAAAQABAAVAAMAAAABAAQABAAWAAMAAAACAAQABAAWAAMAAAADAAQABAAWAAMAAAAEAAQABAAPAAMAAAAAAAUABAAVAAMAAAABAAUABAAdAAMAAAACAAUABAAeAAMAAAADAAUABAAXAAMAAAAEAAUABAAPAAMAAAAAAAYAAQAIAAAAAAABAAYAAQAaAAAAAAACAAYAAQAbAAAAAAADAAYAAQAcAAAAAAAEAAYAAQAIAAAAAAA=")
+tile_set = ExtResource("1_l3od2")
+
+[node name="Entities_P2" type="Node2D" parent="." unique_id=1883742110]
+y_sort_enabled = true
+
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=141343459]
+tile_map_data = PackedByteArray("AAAAAAMABQANAAMAAAABAAMABQAOAAMAAAACAAMABQAOAAMAAAADAAMABQAOAAMAAAAEAAMABQAOAAMAAAAAAAQABQAVAAMAAAABAAQABQAWAAMAAAACAAQABQAWAAMAAAADAAQABQAWAAMAAAAEAAQABQAPAAMAAAAAAAUABQAVAAMAAAAEAAUABQAPAAMAAAAAAAYAAgAIAAAAAAAEAAYAAgAIAAAAAAA=")
+tile_set = ExtResource("1_l3od2")
+
+[node name="Entities_P1" type="Node2D" parent="." unique_id=1704597426]
+y_sort_enabled = true
+
+[node name="Triggers" type="Node2D" parent="." unique_id=674749727]
+
+[node name="Warp_2_5" type="Node2D" parent="Triggers" unique_id=1661737853]
+position = Vector2(32, 80)
+script = ExtResource("2_axb0e")
+warp_id = 0
+dest_map = "MAP_DYNAMIC"
+arrow_dir = 0
+cell = Vector2i(2, 5)
+
+[node name="Warp_2_6" type="Node2D" parent="Triggers" unique_id=2092648775]
+position = Vector2(32, 96)
+script = ExtResource("2_axb0e")
+warp_id = 1
+dest_map = "MAP_DYNAMIC"
+triggers = false
+cell = Vector2i(2, 6)
+elevation = 0
+
+[node name="Sign_0_2" type="Node2D" parent="Triggers" unique_id=1052209527]
+position = Vector2(0, 32)
+script = ExtResource("3_army5")
+cell = Vector2i(0, 2)
+elevation = 0
+script_label = "CeladonCity_DepartmentStore_Elevator_EventScript_FloorSelect"
+
+[node name="Sign_4_1" type="Node2D" parent="Triggers" unique_id=1717956651]
+position = Vector2(64, 16)
+script = ExtResource("3_army5")
+cell = Vector2i(4, 1)
+elevation = 0
+script_label = "CeladonCity_DepartmentStore_Elevator_EventScript_FloorSelect"
