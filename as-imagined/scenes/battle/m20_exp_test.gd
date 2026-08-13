@@ -39,6 +39,7 @@ func _ready() -> void:
 	_test_difficulty_setting_end_to_end()
 	_test_player_side_faint_negative_control()
 	_test_real_species_data_integration()
+	_test_factory_seeds_current_exp_from_level()
 
 	var total := _pass + _fail
 	print("m20_exp_test: %d/%d passed" % [_pass, total])
@@ -437,3 +438,52 @@ func _test_real_species_data_integration() -> void:
 	_chk("I.3 Charizard (real exp_yield=267, the CHARIZARD_EXP_YIELD named macro): B=534, +1=535",
 			charizard.species.exp_yield == 267
 			and bm._compute_exp_award(charizard, recipient10, 1) == 535)
+
+
+# ── J. PokemonFactory seeds current_exp from the level ─────────────────────
+#
+# ⚠️ **THE MOST CONSEQUENTIAL FIX IN THIS AREA HAD NO COVERAGE AT ALL, AND A
+# SCREENSHOT CANNOT PROVIDE IT** [Bugfix, live-reported as "no exp fill"].
+# BattlePokemon.current_exp defaults to 0 (asserted at A.11, which is about
+# the raw class and stays correct) and NOTHING set it from `level` -- the only
+# other writers in the project are the save loader and
+# _award_exp_for_fainted_opponent. So every Pokemon PokemonFactory built was a
+# level-1-worth-of-Exp mon wearing a level-N label.
+#
+# It broke two things, only one of them cosmetic: the EXP bar read
+# (0 - exp_for_level(N)) / needed, clamped to 0.0 and permanently empty; and
+# _check_level_up re-derives level from the CUMULATIVE total, so a level-5 mon
+# starting at 0 had to earn the entire cumulative Exp for level 6 before
+# gaining a single level.
+#
+# ⚠️ A WINDOWED SCREENSHOT IS BLIND TO THIS. A freshly-created mon sits
+# EXACTLY at its own level's floor, so the bar renders empty whether the value
+# is correctly seeded or still 0 -- the two states are visually identical
+# until Exp is actually awarded. That is precisely why it needs an assertion
+# rather than an eye.
+func _test_factory_seeds_current_exp_from_level() -> void:
+	var lv50: BattlePokemon = PokemonFactory.create_battle_pokemon(6, 50)
+	var growth: String = PokemonRegistry.get_species(6).get("growth_rate", "")
+	var floor50: int = PokemonRegistry.get_exp_for_level(growth, 50)
+	_chk("J.1 the species has real growth-curve data to seed from",
+			growth != "" and floor50 > 0)
+	_chk("J.2 a factory-built Lv50 starts at its own level's Exp floor, not 0",
+			lv50 != null and lv50.current_exp == floor50)
+
+	# ⚠️ The discriminator: a constant, a zero, or the level-1 floor would all
+	# satisfy J.2 for a single sample. Two different levels of the SAME species
+	# must differ, and must differ in the right direction.
+	var lv5: BattlePokemon = PokemonFactory.create_battle_pokemon(6, 5)
+	var floor5: int = PokemonRegistry.get_exp_for_level(growth, 5)
+	_chk("J.3 a Lv5 of the same species starts lower, at ITS own floor",
+			lv5 != null and lv5.current_exp == floor5 and floor5 < floor50)
+
+	# The consequence that actually reaches the player: one level's worth of
+	# Exp from the floor must cross exactly one level, not sit stuck.
+	var bm := BattleManager.new()
+	var floor51: int = PokemonRegistry.get_exp_for_level(growth, 51)
+	lv50.current_exp += (floor51 - floor50)
+	bm._check_level_up(lv50)
+	_chk("J.4 one level's worth of Exp from the floor levels it exactly once",
+			lv50.level == 51)
+	bm.free()

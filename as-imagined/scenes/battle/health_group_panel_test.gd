@@ -18,6 +18,8 @@ func _ready() -> void:
 	_test_ready_wires_default_databox_and_status()
 	_test_ready_configures_solid_fill_bar()
 	_test_hp_fill_rect_matches_the_databox_groove()
+	_test_set_hp_number()
+	_test_set_hp_number_is_a_no_op_without_a_label()
 	_test_status_icon_row_mapping()
 	_test_refresh_sets_name_and_level()
 	_test_refresh_gender_glyph_positions_after_name()
@@ -150,7 +152,18 @@ const _EMPTY_FILL_RGB8 := Color8(74, 66, 90)
 
 
 func _test_hp_fill_rect_matches_the_databox_groove() -> void:
-	for variant in [["opponent", _make_panel()], ["player", _make_player_panel()]]:
+	# ⚠️ ALL FOUR SHAPES, because all four carried the identical defect -- the
+	# doubles pair draw the same art at 0.5x (a 130x31 rect over a 260x62
+	# texture) rather than the singles' 2x, so a rect derived by eye for one
+	# scale is wrong for the other. Deriving from the art covers both without
+	# a per-variant constant. Cross-check that the numbers are real: each
+	# doubles groove sits at the SAME art coordinates as its singles
+	# counterpart (player x136-231, opponent x118-213, both y40-43).
+	for variant in [
+			["opponent", _make_panel()],
+			["player", _make_player_panel()],
+			["doubles_opponent", _make_doubles_opponent_panel()],
+			["doubles_player", _make_doubles_player_panel()]]:
 		var label: String = variant[0]
 		var panel: HealthGroupPanel = variant[1]
 		var bg: TextureRect = panel.get_node("Background")
@@ -208,6 +221,51 @@ func _test_hp_fill_rect_matches_the_databox_groove() -> void:
 				% [label, want_t, hp_fill.offset_top], is_equal_approx(hp_fill.offset_top, want_t))
 		_chk("%s: HpFill bottom edge sits on the groove, not over its border (want %.1f, got %.1f)"
 				% [label, want_b, hp_fill.offset_bottom], is_equal_approx(hp_fill.offset_bottom, want_b))
+		panel.queue_free()
+
+
+# ── set_hp_number ──────────────────────────────────────────────────────────
+#
+# The accessor the "hp_drain" beat drives so the printed number follows the
+# bar instead of waiting for the end-of-turn _refresh_ui(). Covered here
+# rather than only through the battle screen because the seam that shipped
+# the original bug was exactly this shape: a guard on one side of a call and
+# nothing on the other.
+func _test_set_hp_number() -> void:
+	var panel := _make_player_panel()
+	var label: Label = panel.get_node("HpNumberLabel")
+
+	panel.set_hp_number(37, 120)
+	_chk("set_hp_number writes the label", label.text == "37/120")
+
+	# It must be independent of refresh() -- the whole point is updating the
+	# number WITHOUT a full panel refresh, so a second call has to land too.
+	panel.set_hp_number(0, 120)
+	_chk("set_hp_number updates again on a later call", label.text == "0/120")
+
+	# refresh() still owns the number when it runs, so the two paths agree
+	# rather than fighting over the label.
+	panel.refresh("Bulbasaur", "", "Lv5", BattlePokemon.STATUS_NONE, 88, 120, Color(1, 1, 1))
+	_chk("refresh() still writes the number itself", label.text == "88/120")
+	panel.queue_free()
+
+
+# ⚠️ Null-tolerant on every shape with NO HpNumberLabel -- real doubles never
+# prints HP numbers and the opponent databox has no room for them, so the
+# drain beat hands this a panel that genuinely has no label on three of the
+# four shapes. It must be a silent no-op rather than a crash, matching
+# get_hp_fill_bar/get_exp_fill_bar's own established null contract.
+func _test_set_hp_number_is_a_no_op_without_a_label() -> void:
+	for variant in [
+			["opponent", _make_panel()],
+			["doubles_opponent", _make_doubles_opponent_panel()],
+			["doubles_player", _make_doubles_player_panel()]]:
+		var name: String = variant[0]
+		var panel: HealthGroupPanel = variant[1]
+		_chk("%s: genuinely has no HpNumberLabel" % name,
+				panel.get_node_or_null("HpNumberLabel") == null)
+		panel.set_hp_number(5, 10)
+		_chk("%s: set_hp_number survives having no label" % name, true)
 		panel.queue_free()
 
 

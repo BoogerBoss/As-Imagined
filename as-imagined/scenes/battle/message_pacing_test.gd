@@ -32,6 +32,9 @@ func _ready() -> void:
 	_test_move_announced_beat_has_zero_hold()
 	_test_mon_label_uses_nickname_when_set()
 	_test_flush_pending_effect_lines_pushes_beats()
+	_test_leech_seed_line_is_buffered_not_logged()
+	_test_yawn_line_is_buffered_not_logged()
+	_test_buffered_effect_lines_drain_after_the_anim_beat()
 	_test_move_executed_pushes_hp_drain_beat_on_damage()
 	_test_move_executed_no_hp_drain_beat_when_no_damage()
 	_test_hp_drain_beat_from_frac_clamped_at_one()
@@ -280,6 +283,98 @@ func _test_flush_pending_effect_lines_pushes_beats() -> void:
 	_chk("flushed beat gets the default LONG hold",
 			is_equal_approx(beat.get("hold"), BattleScreenShared._WAIT_TIME_LONG))
 	_chk("flushed beat text mentions the stat rise", "rose" in beat.get("text"))
+
+
+# ── Bespoke status-move effect lines must not outrun their own animation ──
+#
+# [Bugfix, live-reported: "move effects like leech seed and yawn text trigger
+# before animation"] Both signals are emitted by BattleManager BEFORE
+# move_executed (leech_seeded at battle_manager.gd:4703-4704, yawn_set at
+# :2785-2786), and move_executed is what _on_hit_effect_move_executed hangs
+# the "anim" beat off. So a handler calling _log() directly appended its text
+# beat to _pending_beats AHEAD of the animation and drained first.
+#
+# ⚠️ THE DISCRIMINATOR IS "NO BEAT YET", NOT "A BEAT EXISTS". A test that only
+# checked the line eventually appears passes against the BROKEN version too --
+# it appeared there as well, just too early. What separates the two is whether
+# anything is pushed at emit time.
+func _test_leech_seed_line_is_buffered_not_logged() -> void:
+	var bs := BattleScreenShared.new()
+	var bm := BattleManager.new()
+	bs._bm = bm
+	var target := _make_typed_mon("Target", TypeChart.TYPE_NORMAL)
+	var source := _make_typed_mon("Source", TypeChart.TYPE_GRASS)
+	bs._opp_party = _singles_party(target)
+	bs._player_party = _singles_party(source)
+	bs._wire_log_signals()
+
+	bm.leech_seeded.emit(target, source)
+	_chk("leech_seeded pushes NO beat at emit time (it buffers)", bs._pending_beats.is_empty())
+	_chk("leech_seeded buffered its line instead",
+			bs._pending_effect_lines.size() == 1
+			and "was seeded!" in bs._pending_effect_lines[0])
+	bm.free()
+
+
+func _test_yawn_line_is_buffered_not_logged() -> void:
+	var bs := BattleScreenShared.new()
+	var bm := BattleManager.new()
+	bs._bm = bm
+	var target := _make_typed_mon("Target", TypeChart.TYPE_NORMAL)
+	bs._opp_party = _singles_party(target)
+	bs._player_party = _singles_party(_make_typed_mon("Source", TypeChart.TYPE_NORMAL))
+	bs._wire_log_signals()
+
+	bm.yawn_set.emit(target)
+	_chk("yawn_set pushes NO beat at emit time (it buffers)", bs._pending_beats.is_empty())
+	_chk("yawn_set buffered its line instead",
+			bs._pending_effect_lines.size() == 1
+			and "grew drowsy!" in bs._pending_effect_lines[0])
+	bm.free()
+
+
+# The ordering itself, end to end through the real signal -> beat path: the
+# "anim" beat is pushed by move_executed's own earlier listener, and the
+# buffered line is flushed by _on_log_move_executed AFTER it, so the text can
+# only ever land behind the animation.
+func _test_buffered_effect_lines_drain_after_the_anim_beat() -> void:
+	for case in [["leech_seeded", "was seeded!"], ["yawn_set", "grew drowsy!"]]:
+		var signal_name: String = case[0]
+		var expected: String = case[1]
+		var bs := BattleScreenShared.new()
+		var bm := BattleManager.new()
+		bs._bm = bm
+		var target := _make_typed_mon("Target", TypeChart.TYPE_NORMAL)
+		var source := _make_typed_mon("Source", TypeChart.TYPE_GRASS)
+		bs._opp_party = _singles_party(target)
+		bs._player_party = _singles_party(source)
+		bs._wire_log_signals()
+
+		if signal_name == "leech_seeded":
+			bm.leech_seeded.emit(target, source)
+		else:
+			bm.yawn_set.emit(target)
+		# Stand in for _on_hit_effect_move_executed, which is connected to
+		# move_executed AHEAD of _on_log_move_executed (see _ready()'s own
+		# ordering comment) and is what really queues this beat.
+		bs._pending_beats.append({"kind": "anim"})
+		# Leech Seed and Yawn both deal no damage, so this is the real shape.
+		bs._on_log_move_executed(source, target, null, 0)
+
+		var kinds: Array = []
+		for b: Dictionary in bs._pending_beats:
+			kinds.append(b.get("kind"))
+		var anim_idx: int = kinds.find("anim")
+		var text_idx := -1
+		for i in range(bs._pending_beats.size()):
+			if bs._pending_beats[i].get("kind") == "text" \
+					and expected in str(bs._pending_beats[i].get("text", "")):
+				text_idx = i
+				break
+		_chk("%s: its line does reach a real text beat" % signal_name, text_idx != -1)
+		_chk("%s: that line drains strictly AFTER the anim beat" % signal_name,
+				anim_idx != -1 and text_idx != -1 and anim_idx < text_idx)
+		bm.free()
 
 
 # ── 7-9. hp_drain beat from _on_log_move_executed ────────────────────────
