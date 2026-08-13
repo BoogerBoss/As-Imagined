@@ -75,7 +75,7 @@ const MAP_DATA_ASSERTIONS := 8
 ## BC (the connections view, offset editor + legend toggle, 6) and
 ## BD (Part B behaviour override + hiding the metatile brush, 7) and
 ## BE (I6a mart stock through the compiler, 6).
-const EXPECTED_TOTAL := 634
+const EXPECTED_TOTAL := 645
 
 ## [M27S] Distinct unresolved symbolic constants reachable from a baked map.
 ## ⚠️ A BASELINE TO SHRINK, not a target to meet — see `_test_m27s_corpus_audit`.
@@ -277,6 +277,7 @@ func _ready() -> void:
 	_test_m27m5_authored_map()
 	_test_m27m5_creator()
 	_test_m27m5_connection_view()
+	_test_m27t_encounter_stamp()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -4927,3 +4928,130 @@ func _test_m27s_corpus_audit() -> void:
 	_chk("BF.08 the corridor baseline has not grown (%d, expected %d)"
 			% [corridor.size(), CORRIDOR_UNRESOLVED_BASELINE],
 			corridor.size() <= CORRIDOR_UNRESOLVED_BASELINE)
+
+
+## --- BG. [M27T piece 3] the per-tile wild-encounter stamp ---
+##
+## Fire Red sets a stamp per metatile — NONE / LAND / WATER — that is entirely
+## SEPARATE from the tile's behaviour, and branches its encounter roll on that
+## rather than on the tile kind. `gen_map_import.py` read the same 32-bit
+## attribute word for years and threw these three bits away.
+##
+## ⚠️ **BG.06 IS THE ONE THAT MATTERS.** Everything else here would still pass if
+## the sidecar were merely a copy of the behaviour table; only a metatile that
+## is `MB_NORMAL` AND stamped LAND proves the two are independent — and that is
+## exactly the Pokemon Mansion case the switch exists for.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §3.
+func _test_m27t_encounter_stamp() -> void:
+	var dir := DirAccess.open(MapManager.ATLAS_JSON_DIR)
+	if dir == null:
+		_gated += 9
+		return
+
+	var pairs: Array = []
+	for f in dir.get_files():
+		if f.ends_with("_behaviors.json"):
+			pairs.append(f.trim_suffix("_behaviors.json"))
+	pairs.sort()
+
+	# ⚠️ THE J.20-SHAPED GUARD, and it is not hypothetical here. This file's own
+	# note records `layer_types.json` shipping for 14 of 60 pairs because its
+	# write sat inside `if render:` — the symptom appearing two steps later, at
+	# bake time. A per-pair sidecar that exists for SOME pairs is the same trap.
+	var missing: Array = []
+	var mismatched: Array = []
+	var bad_values := {}
+	for pair in pairs:
+		var enc := _read_int_table(MapManager.ATLAS_JSON_DIR + pair + "_encounter_types.json")
+		if enc.is_empty():
+			missing.append(pair)
+			continue
+		var beh := _read_int_table(MapManager.ATLAS_JSON_DIR + pair + "_behaviors.json")
+		if enc.size() != beh.size():
+			mismatched.append(pair)
+		for v in enc:
+			if v < 0 or v > 2:
+				bad_values[v] = true
+
+	_chk("BG.01 every one of the %d tileset pairs has an encounter-stamp table (%d missing)"
+			% [pairs.size(), missing.size()],
+			pairs.size() > 0 and missing.is_empty())
+	# They describe the same metatile space, so a length disagreement means one
+	# of the two was generated against a different tileset.
+	_chk("BG.02 each one covers exactly its pair's metatiles (%d disagree)"
+			% mismatched.size(), mismatched.is_empty())
+	# The importer's own unexpected-value idiom: an unmeasured value means a
+	# reference change, and must fail loudly rather than bucket silently.
+	_chk("BG.03 and only NONE/LAND/WATER ever appear (stray %s)"
+			% [bad_values.keys()], bad_values.is_empty())
+
+	# The pair Xanadu Nursery is built on, so these two are the live authoring
+	# case rather than an arbitrary fixture: metatile 13 is the real grass tile
+	# and 8 is the plain floor fill the painted grass currently sits on.
+	const XANADU_PAIR := "general_frlg__viridian_city_frlg"
+	_chk("BG.04 the grass metatile is stamped LAND",
+			MapManager.encounter_type_for(XANADU_PAIR, 13) == 1)
+	_chk("BG.05 while the plain floor fill is stamped NONE",
+			MapManager.encounter_type_for(XANADU_PAIR, 8) == 0)
+
+	# ⚠️ THE DISCRIMINATOR. Pokemon Mansion's ordinary floor tile carries
+	# `MB_NORMAL` and is stamped LAND anyway — the developers stamped it by
+	# hand. Measured region-wide: 9,711 cells are stamped LAND that the shipped
+	# behaviour rule cannot see, 7,275 of them `MB_NORMAL`. If this ever reads
+	# equal, the sidecar has become a copy of the behaviour table and the whole
+	# reason for piece 3 has evaporated.
+	const MANSION_PAIR := "building_frlg__pokemon_mansion_frlg"
+	_chk("BG.06 a plain-floor metatile can still be stamped LAND — the stamp is"
+			+ " NOT derivable from behaviour",
+			MapManager.behavior_for(MANSION_PAIR, 672) == MetatileBehavior.MB_NORMAL
+			and MapManager.encounter_type_for(MANSION_PAIR, 672) == 1)
+
+	# ⚠️ -1 IS "NO TABLE", NEVER "NONE". NONE is 0 and is 64.7% of the region,
+	# so collapsing the two would make an unregenerated checkout indistinguishable
+	# from a world where nothing spawns.
+	_chk("BG.07 an unknown pair answers -1, not NONE",
+			MapManager.encounter_type_for("no_such_pair__at_all", 0) == -1)
+	_chk("BG.08 and so does an id past the end of a real table",
+			MapManager.encounter_type_for(XANADU_PAIR, 999999) == -1)
+
+	# `mode` is a serialised @export int, so appending is what keeps every
+	# already-open scene pointing at the view it was left on.
+	_chk("BG.09 the ENCOUNTERS overlay mode is APPENDED, after CONNECTIONS",
+			int(MapOverlay.Mode.ENCOUNTERS) == int(MapOverlay.Mode.CONNECTIONS) + 1)
+
+	# ⚠️ THE SEAM, AND EVERYTHING ABOVE IS BLIND TO IT. BG.04-BG.08 drive
+	# `MapManager` directly; the overlay is what a human actually looks at, and
+	# it reaches the stamp through its OWN accessor off `map_data.atlas`. A
+	# guard on the callee cannot see a caller that reads the wrong pair, passes
+	# the wrong id, or is never wired at all — which is exactly how
+	# `[M27H H4]`'s caught-Pokemon fix shipped tested and unreachable.
+	const PALLET_DATA := "res://scenes/maps/PalletTown_Frlg_data.tres"
+	if not ResourceLoader.exists(PALLET_DATA):
+		_gated += 2
+		return
+	var md: MapData = load(PALLET_DATA) as MapData
+	var ov := MapOverlay.new()
+	ov.map_data = md
+	add_child(ov)
+	var stamps := {}
+	for i in range(md.metatile.size()):
+		stamps[ov.encounter_type_of({"metatile": md.metatile[i]})] = true
+	_chk("BG.10 the overlay resolves real stamps off its own map_data (%s)"
+			% [stamps.keys()], not stamps.has(-1) and stamps.size() > 0)
+	ov.map_data = null
+	_chk("BG.11 and answers -1 rather than NONE with no map assigned",
+			ov.encounter_type_of({"metatile": 13}) == -1)
+	ov.free()
+
+
+func _read_int_table(path: String) -> Array:
+	if not FileAccess.file_exists(path):
+		return []
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not (parsed is Array):
+		return []
+	var out: Array = []
+	for v in parsed:
+		out.append(int(v))
+	return out

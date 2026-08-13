@@ -72,6 +72,21 @@ const DEFAULT_LAYER_TYPE_COLORS := {
 }
 const LAYER_TYPE_NAMES := {0: "NORMAL", 1: "COVERED", 2: "SPLIT"}
 
+## [M27T piece 3] Fire Red's own per-tile wild-encounter stamp.
+##
+## ⚠️ **NONE IS DELIBERATELY NOT DRAWN.** It is 64.7% of the region, so filling
+## it would paint two thirds of every map and bury the thing the mode exists to
+## show. An unpainted cell means "no encounters here", and the legend says so.
+##
+## ⚠️ **-1 IS "THIS PAIR HAS NO TABLE", NOT "NONE"** — an unregenerated checkout
+## must be visibly different from a world with no encounters, which is exactly
+## the collapse `MapManager.encounter_type_for` refuses to make.
+const DEFAULT_ENCOUNTER_COLORS := {
+	1: Color(0.35, 0.85, 0.35, 0.45),   # LAND
+	2: Color(0.30, 0.55, 1.00, 0.45),   # WATER
+}
+const ENCOUNTER_TYPE_NAMES := {0: "no encounters", 1: "LAND", 2: "WATER"}
+
 ## [Events mode] The baked entities made visible.
 ##
 ## Every other mode draws PER-CELL data derived from `StepResolver.cell_info()`.
@@ -170,7 +185,8 @@ const CELL := 16
 ## Appending also joins it to `next_mode()`'s cycle for free.
 ## ⚠️ APPENDED, never reordered — `mode` is a serialised @export, so renumbering
 ## the existing six would silently change what an already-open scene is set to.
-enum Mode { OFF, BEHAVIOR, MOVEMENT, PROVENANCE, LAYER_TYPE, EVENTS, CONNECTIONS }
+enum Mode { OFF, BEHAVIOR, MOVEMENT, PROVENANCE, LAYER_TYPE, EVENTS, CONNECTIONS,
+		ENCOUNTERS }
 
 
 # ------------------------------------------------------- appearance (live)
@@ -256,6 +272,20 @@ func behavior_color(beh: int) -> Color:
 
 func layer_type_color(lt: int) -> Color:
 	return DEFAULT_LAYER_TYPE_COLORS.get(lt, other_color)
+
+
+## [M27T piece 3] The encounter stamp for a drawn cell, straight off the pair's
+## own sidecar. `-1` when the pair has no table.
+##
+## Read from `MapManager` rather than from `cell_info()` because the stamp is
+## per-METATILE, not per-cell — it lives in the tileset beside behaviour and
+## layer type, and putting it in `MapData` would have meant a new per-cell array,
+## a full re-import of 421 maps, and joining `snapshot_cells`'s six-array undo
+## set. Same reasoning that keeps behaviour's own table out there.
+func encounter_type_of(info: Dictionary) -> int:
+	if map_data == null:
+		return -1
+	return MapManager.encounter_type_for(map_data.atlas, int(info["metatile"]))
 
 
 # ------------------------------------------------------ events mode (read)
@@ -1001,6 +1031,18 @@ func _note_legend(legend: Dictionary, info: Dictionary) -> void:
 		Mode.LAYER_TYPE:
 			var lt: int = info["layer_type"]
 			legend[str(LAYER_TYPE_NAMES.get(lt, "layer %d" % lt))] = layer_type_color(lt)
+		Mode.ENCOUNTERS:
+			# ⚠️ Built from the cells actually drawn, like every other mode — so
+			# a map with no water tile never claims a WATER key, and a map whose
+			# pair has no table says THAT rather than saying nothing.
+			var et := encounter_type_of(info)
+			if et == -1:
+				legend["? no table for this tileset pair"] = review_color
+			elif DEFAULT_ENCOUNTER_COLORS.has(et):
+				legend[str(ENCOUNTER_TYPE_NAMES.get(et, "stamp %d" % et))] = \
+						DEFAULT_ENCOUNTER_COLORS[et]
+			else:
+				legend[str(ENCOUNTER_TYPE_NAMES.get(et, "stamp %d" % et))] = text_color
 
 
 ## [M27M5] Hide the legend without leaving the mode.
@@ -1207,6 +1249,15 @@ func _draw_cell(info: Dictionary) -> void:
 					_draw_letter(at, marks, review_color)
 		Mode.LAYER_TYPE:
 			draw_rect(box, _fill(layer_type_color(info["layer_type"])))
+		Mode.ENCOUNTERS:
+			var et := encounter_type_of(info)
+			if DEFAULT_ENCOUNTER_COLORS.has(et):
+				draw_rect(box, _fill(DEFAULT_ENCOUNTER_COLORS[et]))
+			elif et == -1:
+				# The pair has no sidecar. Loud, because the alternative reading
+				# — a map where nothing spawns — looks completely normal.
+				draw_rect(box, review_color, false, 2.0)
+				_draw_letter(at, "?", review_color)
 	draw_rect(box, grid_color, false, 1.0)
 
 

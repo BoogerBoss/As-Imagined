@@ -53,6 +53,26 @@ METATILE_ATTR_BEHAVIOR_MASK_FRLG = 0x000001FF
 METATILE_ATTR_LAYER_MASK_FRLG = 0x60000000
 METATILE_ATTR_LAYER_SHIFT_FRLG = 29
 
+# [M27T piece 3] Bits 24-26 — `METATILE_ATTRIBUTE_ENCOUNTER_TYPE`
+# (`fieldmap.c:71`), values `TILE_ENCOUNTER_NONE/LAND/WATER`
+# (`global.fieldmap.h:76-81`).
+#
+# ⚠️ **THIS IS A SEPARATE, HAND-SET STAMP — NOT DERIVABLE FROM BEHAVIOUR.** Fire
+# Red's own `wild_encounter.c` branches on it rather than on the tile kind, and
+# the two genuinely disagree: measured across all 421 Kanto maps, **9,711 cells
+# are stamped LAND that the behaviour rule cannot see** (7,275 plain
+# `MB_NORMAL`, concentrated in Pokemon Mansion, whose ordinary floor tiles the
+# developers stamped by hand). Water disagrees in BOTH directions.
+#
+# ⚠️ **IT EXISTS ONLY ON FRLG-FORMAT TILESETS.** Emerald's 16-bit attribute
+# layout has no encounter-type field at all — its mask slot is the `0xFFFFFFFF`
+# invalid sentinel (`fieldmap.c:106-118`) — which is why this is read here,
+# where the FRLG 32-bit layout is already the assumption.
+#
+# See `docs/m27t_encounter_authoring_scope.md` §3.
+METATILE_ATTR_ENCOUNTER_MASK_FRLG = 0x07000000
+METATILE_ATTR_ENCOUNTER_SHIFT_FRLG = 24
+
 LAYER_NORMAL, LAYER_COVERED, LAYER_SPLIT = 0, 1, 2
 
 # §1.6 — GBA draws Bg3, Bg2, [sprites], Bg1. Three planes, entities between
@@ -887,6 +907,11 @@ class Tileset:
         return (self.attrs[mid] & METATILE_ATTR_LAYER_MASK_FRLG) >> \
             METATILE_ATTR_LAYER_SHIFT_FRLG
 
+    def encounter_type(self, mid):
+        """0 NONE / 1 LAND / 2 WATER — see the mask's own note above."""
+        return (self.attrs[mid] & METATILE_ATTR_ENCOUNTER_MASK_FRLG) >> \
+            METATILE_ATTR_ENCOUNTER_SHIFT_FRLG
+
     def _blit_half(self, mid, half, img, ox, oy):
         """Draw one 2x2 tile half (0=bottom, 1=top) into img at (ox,oy)."""
         base = mid * NUM_TILES_PER_METATILE + half * 4
@@ -1260,9 +1285,16 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
     # records that `render` should gate "only PNG generation" — a rule
     # `layer_types.json` was quietly breaking, so `gen_map_import.py all` left
     # 46 of the 60 pairs without one. Same trap, same file, second occurrence.
+    # ⚠️ **ALL THREE WRITE UNCONDITIONALLY — [M27T piece 3] removed an
+    # `if not os.path.exists(...)` guard that two of them carried.** That guard
+    # meant a re-run never REFRESHED a sidecar, so a corrected extraction rule
+    # would silently leave every existing pair on the old values — a stale-data
+    # hazard with no symptom, in the same file whose own note above records this
+    # bug class hitting twice already. The output is deterministic, so rewriting
+    # costs nothing and produces no git churn; what it buys is that fixing a
+    # mask actually propagates. Kill the class, not the instance.
     ltp = os.path.join(ATLAS_OUT, "%s_layer_types.json" % aslug)
-    if not os.path.exists(ltp):
-        json.dump([ts.layer_type(mid) for mid in range(ts.count)], open(ltp, "w"))
+    json.dump([ts.layer_type(mid) for mid in range(ts.count)], open(ltp, "w"))
 
     # [M27M1] The same treatment for BEHAVIOUR, and for the same reason one
     # step further on: authoring needs to know what a metatile MEANS, for
@@ -1284,8 +1316,22 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
     # per-cell array are already built from -- one source of truth, not a
     # second hand-kept copy.
     bhp = os.path.join(ATLAS_OUT, "%s_behaviors.json" % aslug)
-    if not os.path.exists(bhp):
-        json.dump([ts.behavior(mid) for mid in range(ts.count)], open(bhp, "w"))
+    json.dump([ts.behavior(mid) for mid in range(ts.count)], open(bhp, "w"))
+
+    # [M27T piece 3] And the encounter stamp, for the same reason and by the
+    # same rule: it is a pure function of the metatile id within a pair
+    # (verified across all 421 maps — 11,031 distinct (pair, metatile)
+    # combinations, ZERO conflicting stamps), and an authoring surface needs it
+    # for EVERY metatile in the pair rather than only the ones already placed.
+    #
+    # ⚠️ Per-PAIR, never a global id table: 299 of 959 bare metatile ids carry
+    # DIFFERENT stamps on different pairs, so a table keyed on the id alone
+    # would be wrong for roughly a third of the corpus.
+    #
+    # This is the whole of piece 3's data half — the trigger switch that
+    # consumes it is piece 4, and until then nothing reads this file.
+    enp = os.path.join(ATLAS_OUT, "%s_encounter_types.json" % aslug)
+    json.dump([ts.encounter_type(mid) for mid in range(ts.count)], open(enp, "w"))
 
     if render:
         # [Rider 2] One writer only. Two json.dump sites that could disagree

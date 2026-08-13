@@ -922,6 +922,9 @@ static var _layer_types: Dictionary = {}
 ## neither should pay for the other's file.
 static var _behaviors: Dictionary = {}
 
+## [M27T piece 3] The same again, for `<pair>_encounter_types.json`.
+static var _encounter_types: Dictionary = {}
+
 
 ## The layer_type (0 NORMAL / 1 COVERED / 2 SPLIT) of `metatile_id` within
 ## `pair`'s own atlas, or -1 if the pair's table hasn't been generated (an
@@ -952,6 +955,30 @@ static func _layer_type_for(pair: String, metatile_id: int) -> int:
 ## for. A caller that cannot get an answer must be able to tell.
 static func behavior_for(pair: String, metatile_id: int) -> int:
 	return _table_lookup(_behaviors, "_behaviors.json", pair, metatile_id)
+
+
+## [M27T piece 3] Fire Red's own per-tile WILD-ENCOUNTER STAMP for `metatile_id`
+## within `pair` — `ENCOUNTER_NONE` / `_LAND` / `_WATER` — or **-1** when the
+## table has not been generated or the id is out of range.
+##
+## ⚠️ **THIS IS NOT DERIVABLE FROM BEHAVIOUR, WHICH IS THE ENTIRE POINT.** The
+## shipped trigger asks what KIND of tile this is (grass, cave floor…) because
+## that is what Emerald does; Fire Red asks whether the developers stamped this
+## particular tile. Measured across all 421 maps, the two disagree on 15,677
+## cells — and every one of the 9,711 land disagreements is a tile Fire Red
+## rolls encounters on and we do not, Pokemon Mansion's plain floors above all.
+##
+## ⚠️ **-1 IS "NO TABLE", NEVER "NONE".** `ENCOUNTER_NONE` is 0 and is 64.7% of
+## the region, so collapsing the two would make an unregenerated checkout look
+## like a world with no encounters anywhere — the same silent-failure shape
+## `behavior_for` above spells out for `MB_NORMAL`.
+##
+## ⚠️ **NOTHING READS THIS YET, DELIBERATELY.** Piece 3 imports the stamp and
+## draws it; piece 4 is the trigger switch that consumes it. Importing first is
+## what makes that switch a one-line change against data already on disk and
+## already looked at, rather than a change and a measurement at once.
+static func encounter_type_for(pair: String, metatile_id: int) -> int:
+	return _table_lookup(_encounter_types, "_encounter_types.json", pair, metatile_id)
 
 
 ## Shared body for both per-pair sidecar tables. Extracted rather than copied:
