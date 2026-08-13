@@ -314,7 +314,7 @@ those three slots replaced with real species in the Inspector.
 | 1 | ✅ **Encounter density** — `MAX_ENCOUNTER_RATE` → 1600 | — | ⚠️ yes, immediately |
 | 2 | ✅ **Converter rebuild** — LeafGreen, first-per-map, Kanto guard, `ref_path`, all four fields | — | yes (fixes Altering Cave, drops Hoenn) |
 | 3 | ✅ **Import the stamp** — per-pair sidecar + ENCOUNTERS overlay mode | — | no |
-| 4 | **Switch the trigger** — stamp + `BEHAVIOR_EXPLICIT` override | 3 | no (one corridor map, no table) |
+| 4 | ✅ **Switch the trigger** — stamp + `BEHAVIOR_EXPLICIT` override | 3 | no (one corridor map, no table) |
 | 5 | **Authored table layer** — `EncounterTable`/`EncounterSlot`, `data/encounters/`, migrate Xanadu | — | no |
 | 6 | **The editor** — Inspector plugin, species picker, map-root panel | 5 | no |
 | 7 | **Validation** — suite section, both mismatch directions baselined | grows with 5/6 | no |
@@ -439,6 +439,58 @@ BG.04-BG.08 drive `MapManager` directly, while the overlay reaches the stamp
 through its own accessor off `map_data.atlas` — a guard on the callee cannot see
 a caller wired to the wrong pair or not wired at all, which is exactly how
 `[M27H H4]`'s caught-Pokémon fix shipped tested and unreachable.
+
+### Piece 4 as built — the switch
+
+`WildEncounters.encounter_type_at(manager, gcell)` is the whole rule:
+**`BEHAVIOR_EXPLICIT` → derive from the painted behaviour; otherwise read the
+stamp; `-1` → fall back to behaviour.** `should_encounter` now gates on the
+resolved TYPE and still takes the behaviour, because the 40% new-metatile gate
+keys on the behaviour *changing* — which is true of Fire Red too
+(`pokefirered/src/wild_encounter.c:566`), so the same tile is asked two
+different questions for two different reasons.
+
+⚠️ **THE `-1` FALLBACK IS A DELIBERATE DEGRADE, NOT AN OVERSIGHT.** A pair with
+no sidecar means an unregenerated checkout; treating that as NONE would make a
+fresh clone play as a world where nothing spawns anywhere, which reads as a
+content bug rather than a missing build step. It degrades to the pre-piece-4
+rule instead, and the loudness lives where it can be acted on: the overlay draws
+a `?` and BG.01 asserts all 60 tables exist.
+
+**`WATER_BEHAVIORS` was added even though water encounters are M27E**, so the
+behaviour-derived fallback is symmetric — otherwise a hand-painted ocean cell
+would report NONE while an imported one reported WATER. Extracted from
+`sTileBitAttributes`, not reasoned from names, which matters: **12 behaviours
+are surfable and carry no encounter flag** (`MB_FAST_WATER`, all four currents,
+`MB_WATERFALL`, `MB_CYCLING_ROAD_WATER`…) and a name-based reading sweeps them
+in.
+
+**Section G, 12 assertions** (`EXPECTED_TOTAL` 64 → 76). Four injections, each
+failing exactly its own guard:
+
+| injection | fails |
+|---|---|
+| revert the trigger to the behaviour rule | **G.10, G.11** |
+| ignore the hand-painted override | **G.07** |
+| a missing stamp table degrades to NONE | G.12 |
+| water set guessed from names (fast water counts) | G.04 |
+
+⚠️ **G.10 WAS DECORATION ON ITS FIRST WRITING AND ONLY THE INJECTION SHOWED IT.**
+As a single roll it passed ~86% of the time *with the trigger reverted* — the
+roll simply missed — so it was measuring RNG, not the gate. Rewritten as zero
+encounters across 400 trials, which is a claim only the type gate can satisfy.
+Rule (7)'s preventive form: derive the assertion from what the WRONG version
+would do.
+
+⚠️ **G.05 IS THE PROOF THE SWITCH DID ANYTHING**, and it runs on a baked
+corridor map: `DiglettsCave_NorthEntrance_Frlg` has cells the stamp marks LAND
+whose behaviour is not a land-encounter tile at all — the same shape as Pokémon
+Mansion's 577, on a map that already exists. Registered at a **nonzero origin**
+deliberately, because at (0,0) global and local cells are equal and a missing
+conversion inside `encounter_type_at` would pass anyway.
+
+**Nothing a player can currently reach changed**: the one corridor map that
+differs carries no encounter table.
 
 ---
 

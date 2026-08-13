@@ -925,6 +925,15 @@ static var _behaviors: Dictionary = {}
 ## [M27T piece 3] The same again, for `<pair>_encounter_types.json`.
 static var _encounter_types: Dictionary = {}
 
+## [M27T] Fire Red's own `TILE_ENCOUNTER_*` (`global.fieldmap.h:76-81`).
+##
+## Defined here because this is where the values ORIGINATE — `encounter_type_for`
+## reads them straight out of the tileset — and one definition beats two that
+## have to agree. ⚠️ **-1 IS NOT A MEMBER**: "this pair has no table" is a
+## different kind of answer from "this tile hosts nothing", and collapsing them
+## is the failure `encounter_type_for` spells out at length.
+enum EncounterType { NONE = 0, LAND = 1, WATER = 2 }
+
 
 ## The layer_type (0 NORMAL / 1 COVERED / 2 SPLIT) of `metatile_id` within
 ## `pair`'s own atlas, or -1 if the pair's table hasn't been generated (an

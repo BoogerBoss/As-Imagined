@@ -75,6 +75,26 @@ const LAND_BEHAVIORS := [
 	MetatileBehavior.MB_CYCLING_ROAD_PULL_DOWN_GRASS,
 ]
 
+## The water half of the same split: `TILE_FLAG_HAS_ENCOUNTERS` **and**
+## `TILE_FLAG_SURFABLE`, extracted from `sTileBitAttributes` rather than reasoned
+## from the names — which matters, because 12 further behaviours are surfable and
+## carry NO encounters (`MB_WATERFALL`, `MB_FAST_WATER`, all four currents,
+## `MB_CYCLING_ROAD_WATER`…) and a name-based reading would sweep them in.
+##
+## ⚠️ **UNREACHABLE FROM PLAY TODAY — water encounters are M27E.** It exists so
+## the behaviour-derived fallback below is SYMMETRIC: without it a hand-painted
+## ocean cell would report NONE while an imported one reported WATER, which is
+## the kind of asymmetry that surfaces months later as "surfing doesn't work on
+## the map I made".
+const WATER_BEHAVIORS := [
+	MetatileBehavior.MB_POND_WATER,
+	MetatileBehavior.MB_INTERIOR_DEEP_WATER,
+	MetatileBehavior.MB_DEEP_WATER,
+	MetatileBehavior.MB_OCEAN_WATER,
+	MetatileBehavior.MB_SEAWEED,
+	MetatileBehavior.MB_SEAWEED_NO_SURFACING,
+]
+
 ## ⚠️ **STENCH IS THE ONE ABILITY M17 NEVER CLOSED**, and this is the first thing
 ## that would consume it. `docs/m17_final_ledger.md` records the whole 318-ability
 ## sweep as 226 implemented / 91 excluded / **1 open — Stench**, awaiting Rob's
@@ -106,6 +126,73 @@ static func _load() -> Dictionary:
 
 static func is_land_encounter_tile(behavior: int) -> bool:
 	return behavior in LAND_BEHAVIORS
+
+
+static func is_water_encounter_tile(behavior: int) -> bool:
+	return behavior in WATER_BEHAVIORS
+
+
+## [M27T piece 4] The Emerald rule, kept as the FALLBACK it now is.
+##
+## This is what the trigger used to ask outright. It survives for the two cases
+## where Fire Red's stamp cannot answer: a hand-painted cell (which Fire Red
+## never saw, so it has no stamp) and a tileset pair whose sidecar has not been
+## generated.
+static func type_from_behavior(behavior: int) -> int:
+	if is_land_encounter_tile(behavior):
+		return MapManager.EncounterType.LAND
+	if is_water_encounter_tile(behavior):
+		return MapManager.EncounterType.WATER
+	return MapManager.EncounterType.NONE
+
+
+## [M27T piece 4] What kind of wild encounter, if any, this cell hosts.
+##
+## ⚠️ **THIS IS THE DELIBERATE DIVERGENCE FROM THIS PROJECT'S DEFAULT REFERENCE
+## — Rob's call, 2026-08-12.** pokeemerald-expansion asks what KIND of tile this
+## is (`MetatileBehavior_IsLandWildEncounter`, i.e. the behaviour sets above) and
+## `[M27H H2]` ported that correctly. **Fire Red asks a different question**: it
+## reads a per-tile stamp the developers set by hand
+## (`ExtractMetatileAttribute(..., METATILE_ATTRIBUTE_ENCOUNTER_TYPE)`,
+## `pokefirered/src/wild_encounter.c:704-707`). Neither is a bug; each is right
+## for its own game, and this project's maps, tilesets and art are all Fire Red's.
+##
+## Measured across all 421 Kanto maps, the two disagree on **15,677 cells**, and
+## the land half is one-directional: **9,711 cells are stamped LAND that the
+## behaviour rule cannot see**, 7,275 of them plain `MB_NORMAL`. Pokemon Mansion
+## is the case that makes it concrete — its ordinary floor tiles are stamped, so
+## real Fire Red has you meeting Grimer and Koffing in the corridors while the
+## behaviour rule leaves the whole building silent.
+##
+## ⚠️ **A HAND-PAINTED CELL KEEPS USING WHAT YOU PAINTED, AND THAT IS LOAD-BEARING
+## RATHER THAN A COURTESY.** A tile placed in the editor has no stamp, because
+## Fire Red never saw it. Xanadu Nursery is the live proof: its 91 grass cells
+## are painted on top of the plain-floor metatile, whose stamp is NONE — so a
+## pure-stamp read would have silently killed every encounter on the project's
+## first authored map. `BEHAVIOR_EXPLICIT` is already set on exactly those 91
+## cells and nowhere else, by the paint itself, so this override needed no new
+## data. On IMPORTED land data it is provably a no-op: behaviour-land is a strict
+## subset of stamp-land, measured, so the override can only ever agree.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §3.
+static func encounter_type_at(manager: MapManager, gcell: Vector2i) -> int:
+	if manager == null:
+		return MapManager.EncounterType.NONE
+	var d := manager.data_at(gcell)
+	if d == null:
+		return MapManager.EncounterType.NONE
+	var l := manager.local_of(gcell)
+	if d.behavior_is_explicit(l.x, l.y):
+		return type_from_behavior(d.behavior_at(l.x, l.y))
+	var stamped := MapManager.encounter_type_for(d.atlas, d.metatile_at(l.x, l.y))
+	# ⚠️ -1 is "this pair has no sidecar", NOT "nothing here". Degrading to the
+	# behaviour rule keeps an unregenerated checkout playing exactly as it did
+	# before piece 4, where treating it as NONE would silently empty every map
+	# on that pair. The loudness lives where it can be acted on instead: the
+	# overlay draws a `?` and the suite asserts all 60 tables exist.
+	if stamped < 0:
+		return type_from_behavior(d.behavior_at(l.x, l.y))
+	return stamped
 
 
 ## Does this map have a land table at all? Most do not — 192 of 421 region-wide,
@@ -198,9 +285,16 @@ static func slot_rates() -> Array:
 ## ⚠️ TWO ROLLS, IN THIS ORDER, and only the second one uses the table's rate.
 ## Collapsing them into one would make a path-to-grass step as likely as a
 ## grass-to-grass one, which is the opposite of how the reference feels.
-static func should_encounter(map_name: String, behavior: int, prev_behavior: int,
-		rng: RandomNumberGenerator, lead_ability_id: int = -1) -> bool:
-	if not is_land_encounter_tile(behavior):
+static func should_encounter(map_name: String, encounter_type: int, behavior: int,
+		prev_behavior: int, rng: RandomNumberGenerator,
+		lead_ability_id: int = -1) -> bool:
+	# [M27T piece 4] The trigger is the STAMP now, not the tile kind — see
+	# `encounter_type_at`. `behavior` is still a parameter because the 40% gate
+	# below is keyed on the behaviour CHANGING, which is true of Fire Red too
+	# (`previousMetatileBehavior != ExtractMetatileAttribute(..., BEHAVIOR)`,
+	# `pokefirered/src/wild_encounter.c:566`) — the two questions are asked of
+	# the same tile for different reasons.
+	if encounter_type != MapManager.EncounterType.LAND:
 		return false
 	if not has_table(map_name):
 		return false

@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 64
+const EXPECTED_TOTAL := 76
 
 var _total := 0
 var _failed := 0
@@ -41,6 +41,7 @@ func _ready() -> void:
 	_test_slot_and_level()
 	_test_party_and_mount()
 	_test_converter_rulings()
+	_test_stamp_trigger()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -138,14 +139,20 @@ func _test_tiles_and_gates() -> void:
 	if not FileAccess.file_exists(WildEncounters.TABLE_PATH):
 		_gated += 4
 		return
+	# [M27T piece 4] `should_encounter` now takes the resolved encounter TYPE —
+	# the stamp — alongside the behaviour, which it still needs for the gate
+	# below. These cases care about the gates rather than about where the type
+	# came from, so they derive it the way an unstamped cell would.
+	const LAND := MapManager.EncounterType.LAND
+	const NONE := MapManager.EncounterType.NONE
 	# A map with no table never encounters, whatever it is standing on.
 	_chk("C.05 a map with no land table never encounters",
-			not WildEncounters.should_encounter("PalletTown_Frlg",
+			not WildEncounters.should_encounter("PalletTown_Frlg", LAND,
 					MetatileBehavior.MB_TALL_GRASS, MetatileBehavior.MB_TALL_GRASS,
 					_rng(1), -1))
 	# Off-grass never encounters even on a map that has a table.
 	_chk("C.06 and neither does a non-encounter tile",
-			not WildEncounters.should_encounter("ViridianForest_Frlg",
+			not WildEncounters.should_encounter("ViridianForest_Frlg", NONE,
 					MetatileBehavior.MB_NORMAL, MetatileBehavior.MB_NORMAL,
 					_rng(1), -1))
 
@@ -156,11 +163,11 @@ func _test_tiles_and_gates() -> void:
 	var same := 0
 	var changed := 0
 	for i in range(400):
-		if WildEncounters.should_encounter("ViridianForest_Frlg",
+		if WildEncounters.should_encounter("ViridianForest_Frlg", LAND,
 				MetatileBehavior.MB_TALL_GRASS, MetatileBehavior.MB_TALL_GRASS,
 				_rng(i), -1):
 			same += 1
-		if WildEncounters.should_encounter("ViridianForest_Frlg",
+		if WildEncounters.should_encounter("ViridianForest_Frlg", LAND,
 				MetatileBehavior.MB_TALL_GRASS, MetatileBehavior.MB_NORMAL,
 				_rng(i), -1):
 			changed += 1
@@ -407,3 +414,149 @@ func _read_json(path: String) -> Dictionary:
 		return {}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	return parsed if parsed is Dictionary else {}
+
+
+## --- G. [M27T piece 4] the trigger reads Fire Red's stamp ---
+##
+## The switch from "what KIND of tile is this" (Emerald, and what `[M27H H2]`
+## ported) to "did the developers stamp this tile" (Fire Red). Both references
+## are internally correct; this project's maps are Fire Red's.
+##
+## ⚠️ **G.05 IS THE ONE THAT PROVES THE SWITCH DID ANYTHING**, and G.08 is the
+## one that proves the hand-painted override is what saves authored maps from it.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §3.
+func _test_stamp_trigger() -> void:
+	# The behaviour-derived fallback, in isolation. Used for hand-painted cells
+	# and for a pair with no sidecar; it is the OLD rule, kept where the stamp
+	# cannot answer.
+	_chk("G.01 grass derives LAND",
+			WildEncounters.type_from_behavior(MetatileBehavior.MB_TALL_GRASS)
+			== MapManager.EncounterType.LAND)
+	_chk("G.02 open ocean derives WATER",
+			WildEncounters.type_from_behavior(MetatileBehavior.MB_OCEAN_WATER)
+			== MapManager.EncounterType.WATER)
+	_chk("G.03 an ordinary floor derives NONE",
+			WildEncounters.type_from_behavior(MetatileBehavior.MB_NORMAL)
+			== MapManager.EncounterType.NONE)
+	# ⚠️ THE DISCRIMINATOR FOR THE WATER SET. 12 behaviours are surfable and
+	# carry NO encounter flag — fast water, all four currents, waterfalls. A set
+	# guessed from the names would sweep them in; this one was extracted from
+	# `sTileBitAttributes`.
+	_chk("G.04 but fast water does NOT — surfable is not the same as spawning",
+			WildEncounters.type_from_behavior(MetatileBehavior.MB_FAST_WATER)
+			== MapManager.EncounterType.NONE)
+
+	const CAVE_DATA := "res://scenes/maps/DiglettsCave_NorthEntrance_Frlg_data.tres"
+	if not ResourceLoader.exists(CAVE_DATA):
+		_gated += 5
+		return
+	var md: MapData = (load(CAVE_DATA) as MapData).duplicate(true)
+	var mm := MapManager.new()
+	add_child(mm)
+	# A nonzero origin, deliberately: at (0,0) global and local cells are equal
+	# and a missing conversion inside `encounter_type_at` would pass anyway.
+	const ORIGIN := Vector2i(7, 3)
+	mm.register_chunk("cave", md, null, ORIGIN)
+
+	# ⚠️ THE MEASURED DISAGREEMENT, ON A BAKED CORRIDOR MAP. This map has 15
+	# cells the stamp marks LAND while their behaviour is not a land-encounter
+	# tile at all — the same shape as Pokemon Mansion's 577, which is where it
+	# actually matters. If the trigger were still behaviour-keyed, none of these
+	# would resolve LAND.
+	var stamp_only := 0
+	var agree := 0
+	for y in range(md.height):
+		for x in range(md.width):
+			var g := Vector2i(x, y) + ORIGIN
+			var t := WildEncounters.encounter_type_at(mm, g)
+			var b := md.behavior_at(x, y)
+			if t == MapManager.EncounterType.LAND:
+				if WildEncounters.is_land_encounter_tile(b):
+					agree += 1
+				else:
+					stamp_only += 1
+	_chk("G.05 cells the stamp marks LAND that the behaviour rule cannot see (%d)"
+			% stamp_only, stamp_only > 0)
+	_chk("G.06 while the cells both rules agree on still resolve LAND (%d)"
+			% agree, agree > 0)
+
+	# The override. A hand-painted cell has no stamp — Fire Red never saw the
+	# tile — so it resolves through the behaviour that was painted onto it.
+	# Xanadu Nursery is the live case: 91 grass cells on a NONE-stamped
+	# plain-floor metatile. Reproduced synthetically rather than against Xanadu
+	# itself, which is a test map Rob is actively editing.
+	var probe := Vector2i(0, 0)
+	while probe.y < md.height:
+		if WildEncounters.encounter_type_at(mm, probe + ORIGIN) \
+				== MapManager.EncounterType.NONE:
+			break
+		probe.x += 1
+		if probe.x >= md.width:
+			probe.x = 0
+			probe.y += 1
+	md.set_behavior_override(probe.x, probe.y, MetatileBehavior.MB_TALL_GRASS)
+	_chk("G.07 a hand-painted cell resolves from the behaviour you painted,"
+			+ " not from the stamp under it",
+			WildEncounters.encounter_type_at(mm, probe + ORIGIN)
+			== MapManager.EncounterType.LAND)
+	# ⚠️ THE DISCRIMINATOR. Without clearing the flag this cannot tell "the
+	# override fired" from "that metatile happened to be stamped LAND anyway".
+	md.set_attr_explicit(probe.x, probe.y, MapData.AttrFlag.BEHAVIOR_EXPLICIT, false)
+	_chk("G.08 and with the human's mark cleared it falls back to the stamp",
+			WildEncounters.encounter_type_at(mm, probe + ORIGIN)
+			== MapManager.EncounterType.NONE)
+
+	# A cell no chunk owns must answer NONE rather than crash — the step path
+	# calls this before it has established anything about where the player is.
+	_chk("G.09 an unowned cell is NONE, and a null manager does not crash",
+			WildEncounters.encounter_type_at(mm, Vector2i(-999, -999))
+			== MapManager.EncounterType.NONE
+			and WildEncounters.encounter_type_at(null, Vector2i.ZERO)
+			== MapManager.EncounterType.NONE)
+
+	# ⚠️ WITHOUT THESE TWO, REVERTING THE TRIGGER TO THE BEHAVIOUR RULE FAILS
+	# NOTHING. Section C hands `should_encounter` its type explicitly, and G.05
+	# exercises `encounter_type_at` without ever reaching the roll — so the SEAM
+	# between them was untested, which is the `[M27H H4]` shape again. G.10 is
+	# the direct inversion: grass behaviour, no stamp.
+	if FileAccess.file_exists(WildEncounters.TABLE_PATH):
+		# ⚠️ MEASURED OVER TRIALS, NOT ONCE, AND THE DIFFERENCE IS THE WHOLE
+		# GUARD. A single roll passes ~86% of the time even with the trigger
+		# reverted to the behaviour rule — the roll simply misses — so the
+		# one-shot version of this assertion was decoration. Zero out of 400 is
+		# a claim only the type gate can satisfy.
+		var unstamped_hits := 0
+		for i in range(400):
+			if WildEncounters.should_encounter("ViridianForest_Frlg",
+					MapManager.EncounterType.NONE,
+					MetatileBehavior.MB_TALL_GRASS, MetatileBehavior.MB_TALL_GRASS,
+					_rng(i), -1):
+				unstamped_hits += 1
+		_chk("G.10 an unstamped cell never encounters even standing on grass (%d/400)"
+				% unstamped_hits, unstamped_hits == 0)
+		# And the converse — a stamped floor tile DOES, which is the whole of
+		# Pokemon Mansion. Probabilistic, so measured over trials.
+		var floor_hits := 0
+		for i in range(400):
+			if WildEncounters.should_encounter("ViridianForest_Frlg",
+					MapManager.EncounterType.LAND,
+					MetatileBehavior.MB_NORMAL, MetatileBehavior.MB_NORMAL,
+					_rng(i), -1):
+				floor_hits += 1
+		_chk("G.11 while a stamped plain floor does (%d/400) — the Mansion case"
+				% floor_hits, floor_hits > 0)
+	else:
+		_gated += 2
+
+	# ⚠️ THE UNREGENERATED-CHECKOUT PATH. A pair with no sidecar answers -1, and
+	# -1 must degrade to the OLD behaviour rule rather than to NONE — otherwise
+	# a fresh clone that has not run the importer would play as a world where
+	# nothing spawns anywhere, which looks like a content bug rather than a
+	# missing build step. `probe` still carries the grass behaviour painted in
+	# G.07, with its explicit mark cleared in G.08.
+	md.atlas = "no_such_pair__anywhere"
+	_chk("G.12 a pair with no stamp table falls back to behaviour, not to NONE",
+			WildEncounters.encounter_type_at(mm, probe + ORIGIN)
+			== MapManager.EncounterType.LAND)
+	mm.free()

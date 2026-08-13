@@ -1716,8 +1716,14 @@ func _wild_step(prev_behavior: int) -> void:
 	if not _party_can_battle():
 		return
 	var behavior := manager.behavior_at(_cell)
+	# [M27T piece 4] Fire Red's per-tile stamp decides whether anything spawns
+	# here; the behaviour is still read because the new-metatile gate keys on it
+	# changing. Hand-painted cells resolve through their painted behaviour —
+	# see `WildEncounters.encounter_type_at`.
+	var etype := WildEncounters.encounter_type_at(manager, _cell)
 	var lead := _lead_ability_id()
-	if not WildEncounters.should_encounter(map_name, behavior, prev_behavior, _rng, lead):
+	if not WildEncounters.should_encounter(map_name, etype, behavior, prev_behavior,
+			_rng, lead):
 		return
 	var party := WildEncounters.build_wild_party(map_name, _rng)
 	if party == null:
