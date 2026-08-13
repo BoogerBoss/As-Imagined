@@ -1557,20 +1557,198 @@ Any change to the node's rect or to the texture-to-node mapping has to move
 with them, or the scroll speed and the scanline band silently go wrong — and
 both are the kind of wrong nothing currently asserts.
 
+### ⚠️ The horizontal half is NOT cosmetic — Psychic/Confusion prove it (2026-08-11)
+
+Reported from play the same day: *"the psychic and confusion animation
+background — everything looks great but the right side last 5% is not animated
+well."* Confirmed, and it upgrades what this section says about the 240-vs-256
+mismatch below, which called it a slight scale difference.
+
+`psychic.png` is **256×160** — its HEIGHT is already correct, which is exactly
+why only the right edge reads wrong. Its script (`SetPsychicBackground` →
+`fadetobg 3`) contains no `AnimTask_StartSlidingBg`, so `BG_X` never leaves 0
+and **columns 240-255 are never displayed on hardware**. The port stretches all
+256 across the stage, putting them in the rightmost **16/256 = 6.25%** of the
+screen.
+
+**The artwork itself proves those columns are margin.** Black-pixel fraction
+per 16px band is **0.100 for every one of the fifteen bands from x=0 to x=239**
+and **0.172** for x=240-255 — the only outlier in the image. The structure
+differs too: longest vertical black run is **4px** throughout 0-239 and **2px**
+in the right band, i.e. the pattern is cut off mid-period rather than
+continuing. Rendering it puts a strip of out-of-phase pattern down the right
+edge which then palette-cycles out of step with everything beside it.
+
+**31 moves share this background**, not two — Psychic, Confusion, Psybeam,
+Extrasensory, Dream Eater, Hypnosis, Teleport, Future Sight, Stored Power,
+Tera Blast and 21 more.
+
+So open decision 2 below is answered in practice: the horizontal fix belongs in
+this pass. Same mechanism (map the stage to a 240×160 viewport and clip), both
+axes at once.
+
+### ⚠️ A SEPARATE latent defect found in the same background: duplicate palette colours
+
+Not what Rob is seeing, and recorded so it is not later misattributed to the
+viewport fix.
+
+`SetPsychicBackground_Step` (`battle_anim_effects_3.c:1452-1466`) rotates
+palette **slots 1-11**. In this background's palette **slot 0 and slot 4 are
+both `(0,0,0)`**, and slot 4 is inside the rotated range while slot 0 is not.
+
+The port's cycle is a per-pixel colour SUBSTITUTION
+(`AnimStage._BG_SHADER_CODE`), so it cannot tell a slot-0 black from a slot-4
+black — and the composite carries **zero transparent pixels**, so the index
+information was destroyed at flatten time. All 4,265 black pixels are therefore
+remapped as slot 4.
+
+**It is mostly harmless for THIS background, which is why the rest looks
+fine**: the reference tile sheet uses index 0 for 3,072 of its 4,096 pixels as
+backdrop, but the assembled image is only 10.4% black, with zero fully-enclosed
+black pixels and a max run of 4 — thin gradient lines, not backdrop. So the
+blacks here are predominantly the genuine slot-4 gradient.
+
+⚠️ **A background whose index 0 covers real screen area would strobe its
+backdrop.** Whether any does has NOT been measured. The general fix is to stop
+matching by colour — carry the palette INDEX through the compositor (an index
+map beside the composite, or an indexed texture plus a palette uniform) so a
+rotation addresses slots rather than colours. That is a change to the
+background pull, not to the shader alone, and it is sized nowhere yet.
+
 ### Open decisions for Rob
 
 1. **What should occupy the region a short (112-tall) background does not
    cover** — the battle backdrop showing through, or the background extending?
    Needs the source read first; recommendation deliberately withheld rather
    than guessed.
-2. **Is the 240-vs-256 horizontal convention fixed in the same pass?** It
-   changes every background's scale slightly, so it is visible on all 92
-   rather than only the 82 — which argues for doing it here, but it is a
-   separate claim and should be its own commit.
+2. **Is the 240-vs-256 horizontal convention fixed in the same pass?**
+   ⚠️ **Answered in practice by the Psychic/Confusion report above — yes.** It
+   was scoped here as a slight scale difference; it actually exposes a margin
+   column the reference never shows, visible on 31 moves. Kept as a decision
+   only because it is still a separate claim and wants its own commit.
 
 Sizing: one session for the mapping plus its geometry assertions; the 112/512
 reads are Step 0 inside it. Verification ends the same way M36P's does — a
 screenshot pass, since this defect passed every existing test.
+
+
+## M36 Affine — the sprite-path affine player — SCOPED 2026-08-13, NOT BUILT
+
+**The data has been extracted since M36A and nothing has ever played it.** This
+section is the plan. **No code was written and nothing is approved.** Every
+number below is measured against the real artifacts, and the command that
+produced it is the one in the paragraph.
+
+### What exists today
+
+**Data: complete and unconsumed.** `data/battle_anims/frames.json` carries
+**325 sequences across 178 tables**, already decoded out of the GBA's sentinel
+encoding into four command kinds — **647 FRAME, 253 END, 60 JUMP, 27 LOOP**.
+**493 of 1,148 templates** name a real affine table (172 distinct symbols).
+
+**Consumers: one, and it reads a single field.**
+`AnimData.affine_sequences_for()` has exactly one caller —
+`_affine_loop_delta`, added in **M36R** to stop Mega Punch's fist hardcoding
+another template's shrink rate. `anim_sprite.gd:153` states the gap in its own
+comment: nothing plays them.
+
+⚠️ **`_run_affine_cmds` IS NOT THIS PLAYER AND MUST NOT BECOME IT.** It is the
+**TASK-path** runner — 11 registered behaviours over hand-transcribed inline
+tables. M36R established that the two runners have **opposite scale
+conventions for one table format** (the sprite path divides through
+`ConvertScaleParam`, the task path passes the accumulator straight to
+`SetSpriteRotScale`) and that entry ends *"DO NOT UNIFY THE TWO PATHS."*
+Building the sprite player on top of `_run_affine_cmds` is the single most
+likely way to get this wrong, and it would invert **493 templates at once**.
+
+### The steps
+
+**1 — Reconcile the extract against source, before any code.** `src/` holds
+**1003 FRAME / 381 END / 84 JUMP / 34 LOOP**; the extract holds
+**647 / 253 / 60 / 27**. The shortfall is *probably* tables outside the battle
+corpus (overworld, pokédex, contest), but "probably" is how the Surf tilemap
+fold shipped — and it is the same shape as the M36E1 finding that a missing
+output file was a refusing generator rather than an absent input. One script,
+one number.
+
+**2 — The player, on `AnimSprite` rather than a free-standing class.** It needs
+the sprite's own frame clock and must die with the sprite; a separate object
+is a second lifetime to keep in step. State: table + sequence index, pc,
+frames-elapsed-within-command, loop counter, and three accumulators
+(`xScale`, `yScale`, `rot`). The per-frame tick applies a FRAME's delta **once
+per frame for `duration` frames** — incremental accumulation, **not** an
+interpolation between endpoints.
+
+⚠️ **`duration == 0` IS AN ABSOLUTE SET, NOT A ZERO-LENGTH FRAME.**
+`{"duration": 0, "xscale": 256, "yscale": 256}` is the initialiser that opens
+a large share of sequences — **178 of 647 FRAME commands use duration 0**, over
+a quarter, so it is the common case rather than an edge one. Read as "nothing
+to do, skip me", every one of those sequences starts from whatever the previous
+animation happened to leave in the accumulator. ⚠️ *Confidence MEDIUM — the
+data shape strongly implies it and `ApplyAffineAnimFrameAbsolute` exists in
+`sprite.c`; this must be read in full at build time rather than inferred from
+the JSON.*
+
+**3 — LOOP and JUMP, which the task runner deliberately omits.**
+`_run_affine_cmds` implements neither, correctly — 0 of its 26 task tables use
+them. Here **16 sequences loop and 60 jump**. ⚠️ **A JUMP is a real terminator**:
+it runs forever, which is exactly what a spinning orb or a pulsing aura wants.
+A player that treats "no END" as malformed will refuse **60 sequences** and
+report it as a data bug.
+
+**4 — The two conventions, applied deliberately rather than inherited.**
+*Scale*: sprite path is `256 / accumulator`, so a **negative delta GROWS the
+sprite**. *Rotation*: the field is a **`u8` that source shifts left 8** before
+it reaches the matrix, so the unit is 65536-per-circle — **180 of 647 FRAMEs
+carry a nonzero rotation, up to magnitude 248**, which makes a missed shift a
+256× error rather than a subtle one. Both are already recorded in M36R's own
+entry; the player inherits those findings rather than re-deriving them.
+
+**5 — AffineNormal clipping: the one thing that cannot be made accurate.** Of
+the 493 templates naming a real table: **273 AffineNormal, 193 AffineDouble,
+19 AffineOff, 8 unresolved**. Hardware clips an `AffineNormal` sprite to its
+ORIGINAL bounding box, so an enlarging one has its corners cut off;
+`AffineDouble` reserves a double-size box and does not. Godot clips neither.
+Measured by walking each template's own table and accumulating: **153 of the
+273 AffineNormal templates have at least one sequence that enlarges the
+sprite** — that is the real exposure, and it is a **fidelity ceiling recorded
+as a divergence**, not a bug queued for a fix. AffineDouble (139 of 193
+enlarge) maps for free.
+
+**6 — Wire the waiter that is already waiting.**
+`_sprite_on_mon_until_affine_ends` waits on the cel clock today because there
+was no affine clock to wait on. It becomes correct the moment the player
+exposes an `affine_ended` flag — one existing consumer, no new mechanism.
+
+**7 — Test with a DURING-RUN sampler.** Standing rule (16): `m36_leak_harness`
+passed **784/784 while 89 moves rendered visibly wrong**, because it asserts
+end state and the VM's own restore runs first. Every assertion here must sample
+**mid-run**. Per rule (7)'s preventive form, write the injection before the
+assertion; the four plausible wrong versions to inject are **lerp instead of
+step**, **duration-0 treated as a skip**, **the task path's scale direction**,
+and **an unshifted rotation**.
+
+### Sizing and confidence
+
+Steps 2–4 are one focused session. Step 1 is about an hour and gates the rest.
+Step 5 is a recorded divergence rather than work. Step 6 is a few lines once
+the player exists.
+
+**Confidence HIGH** on 2/3/4 — the semantics are read from source and the two
+conventions have already been paid for once, in play, by M36R. **MEDIUM** on 1,
+because an unreconciled count is precisely the shape that has bitten this
+milestone repeatedly. **The accuracy ceiling is step 5, and it is not a
+confidence question**: ~153 templates will render un-clipped where hardware
+clips them, and nothing short of a stencil pass changes that.
+
+⚠️ **One measurement error made and caught while writing this section**, worth
+recording because it is rule (6) in yet another dress: a first pass classified
+every non-string command as a FRAME and reported **zero LOOP and JUMP commands
+in the whole corpus** — which would have meant the extractor silently dropped
+all control flow. It had not; `jump` and `loop` are dicts too, keyed by their
+own field. The classifier matched nothing and the empty result read as absence.
+It was caught only by comparing against `grep -c AFFINEANIMCMD_JUMP` in source,
+which is the check that should have come first.
 
 
 ## M36 — sections relocated from CLAUDE.md's roadmap row (2026-07-30)
