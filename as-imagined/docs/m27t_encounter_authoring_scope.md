@@ -311,8 +311,8 @@ those three slots replaced with real species in the Inspector.
 
 | # | piece | depends on | changes play? |
 |---|---|---|---|
-| 1 | **Encounter density** — `MAX_ENCOUNTER_RATE` → 1600 | — | ⚠️ yes, immediately |
-| 2 | **Converter rebuild** — LeafGreen, first-per-map, Kanto guard, `ref_path`, then water/fishing/rock | — | yes (fixes Altering Cave, drops Hoenn) |
+| 1 | ✅ **Encounter density** — `MAX_ENCOUNTER_RATE` → 1600 | — | ⚠️ yes, immediately |
+| 2 | ✅ **Converter rebuild** — LeafGreen, first-per-map, Kanto guard, `ref_path`, all four fields | — | yes (fixes Altering Cave, drops Hoenn) |
 | 3 | **Import the stamp** — per-pair sidecar + ENCOUNTERS overlay mode | — | no |
 | 4 | **Switch the trigger** — stamp + `BEHAVIOR_EXPLICIT` override | 3 | no (one corridor map, no table) |
 | 5 | **Authored table layer** — `EncounterTable`/`EncounterSlot`, `data/encounters/`, migrate Xanadu | — | no |
@@ -356,6 +356,44 @@ species resolution, rate in range, `min ≤ max`, slot-count agreement, map-name
 resolution.
 
 **Order:** 1 and 2 are independent. 3 → 4. 5 → 6. 7 grows alongside 5 and 6.
+
+### Piece 2 as built — the measured delta
+
+⚠️ **THE CONTENT DELTA IS ONE MAP, AND THAT IS THE PROOF THE REASONING WAS
+RIGHT.** Four rulings landed at once, so the outcome was predicted first and
+then checked:
+
+| | before | after |
+|---|---|---|
+| maps in `land_encounters.json` | 192 | **105** |
+| removed | — | **87, every one non-Kanto** (zero `_Frlg` maps lost) |
+| added | — | 0 |
+| **content changed** | — | **1 — `SixIsland_AlteringCave_Frlg`, Smeargle → Zubat** |
+| `slot_rates` | — | unchanged |
+
+The 123 ordinary split maps did not move because last-wins was *already*
+selecting LeafGreen; only the 18-entry map could change. Idempotent —
+byte-identical on re-run.
+
+New sibling files, all Kanto-scoped and LeafGreen: `water_encounters.json` (50
+maps), `fishing_encounters.json` (50, carrying `rod_groups`),
+`rock_smash_encounters.json` (14). ⚠️ **Separate files, not one combined table**
+— each field's runtime consumer arrives at a different time, and keeping
+`land_encounters.json`'s shape untouched is what let the rebuild land with
+**zero runtime changes**. ⚠️ **Only land carries Rob's widened curve**; the
+other three emit source's counts and rates, per his standing 2026-08-04 note
+that those numbers come from him rather than being guessed.
+
+**Break-tested, each failing exactly its own guard and nothing else:** taking
+FireRed fails F.03/F.04 (the version discriminator — Murkrow vs Misdreavus,
+version-exclusive across 59 Kanto land maps); restoring last-wins fails F.05
+(Altering Cave back to Smeargle); and **dropping the Kanto scope makes the
+generator refuse outright**, naming the 116 Hoenn maps that have encounter
+tables and no LeafGreen variant — a build-time failure rather than a test one.
+
+⚠️ **`data/wild_encounters.json` NOW HAS NO CONSUMER.** 1.0 MB, still tracked,
+was the converter's input until piece 2 repointed it at the canonical clone.
+Flagged for Rob rather than deleted.
 
 ---
 

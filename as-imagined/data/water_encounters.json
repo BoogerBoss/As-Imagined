@@ -1,0 +1,1511 @@
+{
+	"maps": {
+		"CeladonCity_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 79,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 109,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"CeruleanCave_1F_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 80,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 80,
+					"max": 55,
+					"min": 45
+				},
+				{
+					"dex": 79,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 79,
+					"max": 50,
+					"min": 40
+				}
+			]
+		},
+		"CeruleanCave_B1F_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 80,
+					"max": 60,
+					"min": 50
+				},
+				{
+					"dex": 80,
+					"max": 65,
+					"min": 55
+				},
+				{
+					"dex": 79,
+					"max": 60,
+					"min": 50
+				},
+				{
+					"dex": 79,
+					"max": 60,
+					"min": 50
+				}
+			]
+		},
+		"CeruleanCity_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"CinnabarIsland_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FiveIsland_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 187,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FiveIsland_Meadow_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 187,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FiveIsland_MemorialPillar_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 187,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FiveIsland_ResortGorgeous_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 187,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FiveIsland_WaterLabyrinth_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 187,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"FourIsland_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 183,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 15
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 15
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 15
+				}
+			]
+		},
+		"FourIsland_IcefallCave_Back_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 45,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 45,
+					"min": 35
+				},
+				{
+					"dex": 131,
+					"max": 45,
+					"min": 30
+				}
+			]
+		},
+		"FourIsland_IcefallCave_Entrance_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 86,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 5
+				},
+				{
+					"dex": 87,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 183,
+					"max": 15,
+					"min": 5
+				},
+				{
+					"dex": 183,
+					"max": 15,
+					"min": 5
+				}
+			]
+		},
+		"FuchsiaCity_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"OneIsland_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"OneIsland_KindleRoad_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"OneIsland_TreasureBeach_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"PalletTown_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route10_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route11_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route12_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route13_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route19_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route20_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route21_North_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route21_South_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route22_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route23_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route24_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route25_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route4_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"Route6_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SSAnne_Exterior_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SafariZone_Center_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SafariZone_East_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SafariZone_North_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SafariZone_West_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SeafoamIslands_B3F_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 86,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 98,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 87,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SeafoamIslands_B4F_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 86,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 98,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 87,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SevenIsland_TanobyRuins_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 226,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SevenIsland_TrainerTower_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 226,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SixIsland_GreenPath_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SixIsland_OutcastIsland_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"SixIsland_RuinValley_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 183,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 183,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 15
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 183,
+					"max": 25,
+					"min": 20
+				}
+			]
+		},
+		"SixIsland_WaterPath_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"ThreeIsland_BerryForest_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"ThreeIsland_BondBridge_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 73,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"TwoIsland_CapeBrink_Frlg": {
+			"encounter_rate": 2,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				},
+				{
+					"dex": 80,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"VermilionCity_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 72,
+					"max": 10,
+					"min": 5
+				},
+				{
+					"dex": 72,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 72,
+					"max": 30,
+					"min": 20
+				},
+				{
+					"dex": 72,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 72,
+					"max": 40,
+					"min": 35
+				}
+			]
+		},
+		"ViridianCity_Frlg": {
+			"encounter_rate": 1,
+			"slots": [
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 25,
+					"min": 20
+				},
+				{
+					"dex": 79,
+					"max": 30,
+					"min": 25
+				},
+				{
+					"dex": 79,
+					"max": 35,
+					"min": 30
+				},
+				{
+					"dex": 79,
+					"max": 40,
+					"min": 35
+				}
+			]
+		}
+	},
+	"slot_rates": [
+		60,
+		30,
+		5,
+		4,
+		1
+	]
+}

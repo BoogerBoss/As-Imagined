@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 55
+const EXPECTED_TOTAL := 64
 
 var _total := 0
 var _failed := 0
@@ -40,6 +40,7 @@ func _ready() -> void:
 	_test_tiles_and_gates()
 	_test_slot_and_level()
 	_test_party_and_mount()
+	_test_converter_rulings()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -310,3 +311,99 @@ func _test_party_and_mount() -> void:
 	OverworldSession.reset()
 	BattleSetupContext.clear()
 	ow.free()
+
+
+## --- F. [M27T piece 2] the converter's four rulings ---
+##
+## ⚠️ **EVERY ASSERTION HERE PINS A DECISION, NOT A MECHANISM.** The version
+## pick, the first-table-per-map rule and the Kanto scope were all previously
+## decided by FILE ORDER — `gen_wild_encounters.py` never read `base_label` and
+## assigned straight into a dict, so the last entry silently won. That produced
+## a LeafGreen game nobody chose and an all-Smeargle Altering Cave nobody chose.
+## A converter-side assert cannot catch a re-decision; these can.
+##
+## Scope of record: `docs/m27t_encounter_authoring_scope.md` §2.2-§2.4.
+func _test_converter_rulings() -> void:
+	if not FileAccess.file_exists(WildEncounters.TABLE_PATH):
+		_gated += 9
+		return
+
+	var land := _read_json(WildEncounters.TABLE_PATH)
+	var maps: Dictionary = land.get("maps", {})
+
+	# Ruling 3 — the Kanto scope. Hoenn's own Altering Cave was in this table
+	# until M27T; a Kanto project carrying Hoenn encounter data is the shape
+	# this drops. Checked through the runtime accessor as well as the file, so
+	# the two cannot disagree.
+	_chk("F.01 Hoenn maps are gone — this is a Kanto table",
+			not WildEncounters.has_table("AlteringCave")
+			and not maps.has("Route101"))
+	_chk("F.02 which leaves the 105 Kanto maps that carry a land table",
+			maps.size() == 105)
+
+	# ⚠️ RULING 1, AND F.04 IS THE ONE THAT MATTERS. Murkrow and Misdreavus are
+	# a version-exclusive pair across 59 Kanto land maps — FireRed ships Murkrow
+	# where LeafGreen ships Misdreavus. F.03 alone would still pass under a
+	# FireRed build if the two ever coexisted; only asserting the ABSENCE of the
+	# FireRed exclusive proves which version was actually taken.
+	var lost: Dictionary = maps.get("FiveIsland_LostCave_Room1_Frlg", {})
+	var dex := {}
+	for s in lost.get("slots", []):
+		dex[int(s.get("dex", 0))] = true
+	_chk("F.03 LeafGreen's Misdreavus is in the table", dex.has(200))
+	_chk("F.04 and FireRed's Murkrow is NOT — the version pick is real",
+			not dex.has(198))
+
+	# Ruling 2 — first table per map. Six Island Altering Cave ships 9 tables
+	# per version and only table 1 (Zubat) is reachable without e-Reader/Mystery
+	# Gift infrastructure. Last-wins took table 9 and shipped all-Smeargle.
+	var cave: Dictionary = maps.get("SixIsland_AlteringCave_Frlg", {})
+	var cave_dex := {}
+	for s in cave.get("slots", []):
+		cave_dex[int(s.get("dex", 0))] = true
+	_chk("F.05 Altering Cave is table 1's Zubat, not table 9's Smeargle",
+			cave_dex.has(41) and not cave_dex.has(235))
+
+	# The three sibling tables. No runtime consumer yet — surfing encounters and
+	# a fishing rod are M27E — so these assert the ARTIFACT, which is what piece
+	# 2 actually delivers. ⚠️ Their rates are SOURCE's, not this project's: only
+	# land carries Rob's own widened curve, and his 2026-08-04 note is explicit
+	# that water/fishing numbers come from him rather than being guessed here.
+	var water := _read_json("res://data/water_encounters.json")
+	_chk("F.06 water converted at source's own 5 slots",
+			int(water.get("maps", {}).size()) == 50
+			and water.get("slot_rates", []).size() == 5)
+	var rock := _read_json("res://data/rock_smash_encounters.json")
+	_chk("F.07 rock smash likewise, on its 14 maps",
+			int(rock.get("maps", {}).size()) == 14
+			and rock.get("slot_rates", []).size() == 5)
+	# The rod split is DATA in the reference, carried through rather than
+	# hardcoded downstream — a consumer that assumed the bands would silently
+	# mis-band a changed table.
+	var fish := _read_json("res://data/fishing_encounters.json")
+	var rods: Dictionary = fish.get("rod_groups", {})
+	var banded := 0
+	for k in rods:
+		banded += (rods[k] as Array).size()
+	_chk("F.08 fishing carries 10 slots and rod bands covering every one",
+			fish.get("slot_rates", []).size() == 10
+			and rods.has("old_rod") and rods.has("good_rod")
+			and rods.has("super_rod") and banded == 10)
+
+	# ⚠️ A GUARD, NOT A REPAIR — mirroring the converter's own. Measured across
+	# all 388 reference entries: zero inversions. If one ever appears it is a
+	# reference defect to report, not something to swap silently.
+	var inverted := 0
+	for name in maps:
+		for s in (maps[name] as Dictionary).get("slots", []):
+			if int(s.get("min", 0)) > int(s.get("max", 0)):
+				inverted += 1
+	_chk("F.09 no table anywhere has an inverted level range (%d)" % inverted,
+			inverted == 0)
+
+
+func _read_json(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}

@@ -1,0 +1,431 @@
+{
+	"maps": {
+		"CeruleanCave_1F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 75,
+					"max": 55,
+					"min": 45
+				},
+				{
+					"dex": 74,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 74,
+					"max": 50,
+					"min": 40
+				}
+			]
+		},
+		"CeruleanCave_2F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 45,
+					"min": 35
+				},
+				{
+					"dex": 75,
+					"max": 55,
+					"min": 45
+				},
+				{
+					"dex": 75,
+					"max": 60,
+					"min": 50
+				},
+				{
+					"dex": 74,
+					"max": 55,
+					"min": 45
+				},
+				{
+					"dex": 74,
+					"max": 55,
+					"min": 45
+				}
+			]
+		},
+		"CeruleanCave_B1F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 50,
+					"min": 40
+				},
+				{
+					"dex": 75,
+					"max": 60,
+					"min": 50
+				},
+				{
+					"dex": 75,
+					"max": 65,
+					"min": 55
+				},
+				{
+					"dex": 74,
+					"max": 60,
+					"min": 50
+				},
+				{
+					"dex": 74,
+					"max": 60,
+					"min": 50
+				}
+			]
+		},
+		"MtEmber_Exterior_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 74,
+					"max": 30,
+					"min": 15
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_1F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_B1F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_B1F_Stairs_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_B2F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_B2F_Stairs_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"MtEmber_RubyPath_B3F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 218,
+					"max": 25,
+					"min": 15
+				},
+				{
+					"dex": 218,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 219,
+					"max": 45,
+					"min": 40
+				},
+				{
+					"dex": 219,
+					"max": 45,
+					"min": 35
+				},
+				{
+					"dex": 219,
+					"max": 35,
+					"min": 25
+				}
+			]
+		},
+		"MtEmber_SummitPath_2F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 74,
+					"max": 30,
+					"min": 15
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"OneIsland_KindleRoad_Frlg": {
+			"encounter_rate": 25,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 74,
+					"max": 30,
+					"min": 15
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"RockTunnel_B1F_Frlg": {
+			"encounter_rate": 50,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 5
+				},
+				{
+					"dex": 74,
+					"max": 20,
+					"min": 10
+				},
+				{
+					"dex": 74,
+					"max": 30,
+					"min": 15
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 40,
+					"min": 30
+				}
+			]
+		},
+		"SevenIsland_SevaultCanyon_Frlg": {
+			"encounter_rate": 25,
+			"slots": [
+				{
+					"dex": 74,
+					"max": 35,
+					"min": 25
+				},
+				{
+					"dex": 75,
+					"max": 45,
+					"min": 30
+				},
+				{
+					"dex": 75,
+					"max": 50,
+					"min": 35
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				},
+				{
+					"dex": 74,
+					"max": 40,
+					"min": 30
+				}
+			]
+		}
+	},
+	"slot_rates": [
+		60,
+		30,
+		5,
+		4,
+		1
+	]
+}
