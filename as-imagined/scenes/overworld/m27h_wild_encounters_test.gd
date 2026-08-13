@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 114
+const EXPECTED_TOTAL := 116
 
 var _total := 0
 var _failed := 0
@@ -935,3 +935,27 @@ func _test_encounter_preview() -> void:
 	_chk("I.23 and it is recomputed on load rather than restored",
 			reloaded != null and reloaded.resource_name == "Pikachu Lv5")
 	DirAccess.remove_absolute(NAME_PROBE)
+
+	# ⚠️ **THE TWO ASSERTIONS BELOW GUARD A DEFECT THIS WHOLE SECTION IS BLIND
+	# TO, AND THAT IS WHY THEY LOOK LIKE THEY ASSERT NOTHING.** I.18-I.23 all
+	# passed while every slot in the real Inspector read `EncounterSlot` — a
+	# script without `@tool` gets a PLACEHOLDER instance in the editor, so the
+	# setters, `_init` and `_validate_property` never run and `resource_name`
+	# stays empty. At runtime the real instance runs and every assertion above is
+	# green, so no headless suite can ever observe the editor half.
+	#
+	# `is_tool()` is therefore a PROXY, deliberately: it cannot prove the label
+	# renders, only that the one property whose absence guarantees it will not
+	# is still set. Stated here rather than implied, per this project's own rule
+	# that a fixture unable to express a claim's negation must say so.
+	#
+	# Only these two are load-bearing — they are the classes the Inspector holds
+	# INSTANCES of. `EncounterPreview` and `WildEncounters` carry `@tool` too,
+	# but defensively: both are static-only today, and static calls run in the
+	# editor either way.
+	_chk("I.24 EncounterSlot is @tool, or the editor sees a placeholder and "
+			+ "every slot reads as its class name",
+			EncounterSlot.new().get_script().is_tool())
+	_chk("I.25 and so is EncounterTable, whose incomplete_reason() the panel "
+			+ "calls on a loaded instance",
+			EncounterTable.new().get_script().is_tool())

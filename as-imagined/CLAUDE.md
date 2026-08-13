@@ -3913,6 +3913,89 @@ precede the brush so a map is painted once. Audio scoping sits before
 grows, and rule 1 — never fill `A` — is in force here as everywhere else.
 
 
+## M27T — Wild encounter authoring *(built 2026-08-12/13)*
+
+⚠️ **SCOPE OF RECORD IS `docs/m27t_encounter_authoring_scope.md`** — 12 rulings,
+every measurement, and a "piece N as built" section each. Nothing is open.
+**Named M27T because M27E and M27H are both taken**; it started life as a
+proposal titled "M27E — Wild Encounter System" and that title is retired.
+
+**Six pieces**: (1) the denominator, (2) the converter, (3) the stamp trigger,
+(4) the shared resolve rule, (5) authored `.tres` tables, (6) the Inspector
+panel. `m27h_wild_encounters_test` **55 → 117 assertions**.
+
+⚠️ **THE DENOMINATOR IS FIRE RED'S 1600, NOT EMERALD'S 2880 — Rob's call, and
+it halved encounter frequency across the whole region until it was found.** The
+rate VALUES are Fire Red's and were being run against the primary reference's
+own constant. At 1600 the rate is *literally the percentage per step*
+(`rate * 16 / 1600 == rate / 100`), so what an author drags is the number they
+are choosing. B.02 asserts against 2880 explicitly, so a revert to the primary
+reference's constant fails loudly rather than merely making grass quiet.
+
+⚠️ **THE TRIGGER IS THE METATILE ATTRIBUTE STAMP, NOT THE BEHAVIOUR — Rob's
+call, and the two genuinely disagree.** FRLG carries an encounter type in
+attribute bits 24-26 (`0x07000000`), which pokeemerald-expansion does not use
+the same way. Measured across the region: **15,677 cells disagree, of which
+9,711 are stamped LAND and invisible to any behaviour-based rule.** Emitted as
+a per-pair `<pair>_encounter_types.json` sidecar beside the behaviour and
+layer-type ones. ⚠️ **The write-once guard was removed from ALL THREE sidecars**
+— a guard that refuses to rewrite is a guard that ships stale data.
+
+⚠️ **`resolve_encounter_type()` IS SHARED BY THE RUNTIME AND THE OVERLAY, and
+it was extracted only after asking what a human would actually SEE.** The
+ENCOUNTERS overlay drew the raw stamp, so Xanadu Nursery's 91 hand-painted
+cells rendered as empty while the runtime spawned on them correctly. **Third
+caller-not-updated instance in this arc** — the same shape as `[M27H H4]`'s
+`caught_pokemon()` accessor.
+
+**Generated stays JSON, authored is `.tres` (Option C).** The generated corpus
+is never hand-edited; taking ownership of a map writes
+`data/encounters/<Map>_land.tres`, which the loader prefers. ⚠️ **This dissolved
+the converter `--force` question entirely** rather than answering it — there is
+no longer a case where regenerating can destroy authored work. Converter
+rulings: **LeafGreen**, first-table-per-map, **Kanto-scoped** (192 → 105 land
+maps). **Altering Cave is deliberately out of scope** and gets a flat table
+like everything else.
+
+⚠️ **`@tool` IS LOAD-BEARING ON `EncounterSlot`/`EncounterTable`, AND ITS
+ABSENCE FAILS ONLY IN THE EDITOR.** Reported from play: every slot read
+`EncounterSlot` instead of its species. A non-`@tool` script gets a PLACEHOLDER
+instance in the editor — properties store raw and `_init`, the setters and
+`_validate_property` never run — so `resource_name` stayed empty and the
+Inspector fell back to the class name. **The suite was green throughout and
+could not have caught it**: at runtime the real instance runs. I.24/I.25 now
+pin `is_tool()` as an explicit PROXY, stated as one at the assertion.
+
+**Panel design, both deliberate.** All rules live in `EncounterPreview`, with
+`addons/map_overlay_editor/encounter_inspector.gd` holding none — the addon is
+this project's one surface with no automated coverage. And the species picker
+is a **Button plus a search popup, not an `OptionButton`**: 386 entries need
+typeahead, and a focused `OptionButton` eats the scroll wheel and silently
+edits data while you scroll the Inspector.
+
+⚠️ **FLAGGED, NOT FIXED.** Xanadu Nursery's grass is **`MB_LONG_GRASS` (3), not
+`MB_TALL_GRASS` (2)** across all 91 painted cells — both fire encounters, but
+long grass is in the run-block set, so running is disabled there. Rob: *"Leave
+it, Xanadu is a test map."* Separately, `TrainerData.species_names()` now has
+two unrelated consumers, so that table's home is arguably wrong.
+
+⚠️ **FOUR VACUOUS ASSERTIONS, EVERY ONE CAUGHT BY INJECTION RATHER THAN BY
+REVIEW.** H.03 compared only top-level keys, so renaming `min`/`max` passed;
+G.10 was a single roll that passed ~86% of the time with the trigger reverted
+(rewritten as 0-of-400); the loader's completeness gate was untestable while
+welded to the live directory (refactored to `scan_authored_dir(path)` driven
+against `user://`); and BG.10/BG.11 were added because the rest of that section
+was blind to the caller. ⚠️ **I.03 broke because the feature was USED** — Rob
+pressed Take Ownership on Route 2, the map correctly stopped being "generated",
+and the test had hardcoded it; the fixture is now chosen at run time and
+verified green both with and without an override present.
+
+⚠️ **`--script` MODE CANNOT LOAD AUTOLOADS**, so probes must drive a real test
+scene. And **`PokemonRegistry` is a non-`@tool` autoload**, which is why species
+names resolve through the JSON-backed `TrainerData` path instead — a cost this
+project had already paid once, recorded in `trainer_data.gd`.
+
+
 ## Current status
 
 Full session-by-session build history (every sub-tier, bug fix, source

@@ -1,3 +1,4 @@
+@tool
 class_name EncounterSlot
 extends Resource
 
@@ -9,6 +10,16 @@ extends Resource
 ## `EditorInspectorPlugin` can intercept `dex` on a sub-resource and swap in a
 ## species picker, and cannot do anything at all with `slots_dex[7]`. Piece 6 is
 ## that picker; this is the shape that makes it possible.
+##
+## ⚠️ **`@tool` IS LOAD-BEARING AND ITS ABSENCE FAILS SILENTLY — reported from
+## the editor, 2026-08-13: every slot read `EncounterSlot` instead of its
+## species.** A script without `@tool` gets a PLACEHOLDER instance in the editor:
+## properties are stored raw and `_init`, the setters and `_validate_property`
+## never run. So `_refresh_name()` never fired, `resource_name` stayed empty, and
+## the Inspector fell back to the class name. **A headless suite cannot see this
+## at all** — at runtime the real instance runs and every assertion passes, which
+## is exactly why it shipped green. The same applies to `EncounterTable`, whose
+## `incomplete_reason()` the panel calls on a loaded instance.
 ##
 ## ⚠️ **DEX NUMBER, NOT A SPECIES KEY, DELIBERATELY.** This project's own pattern
 ## is that species NAMES resolve to dex at GENERATION time and the runtime is

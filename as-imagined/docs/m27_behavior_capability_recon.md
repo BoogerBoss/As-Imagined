@@ -251,6 +251,30 @@ prices the cheaper way to get it.
 
 ### 5. Ambiguous classifications — Rob decides, not me
 
+> ## ✅ RATIFIED 2026-08-13 — (a) and (b) are both CLOSED
+>
+> **(a) Ledges → a per-tile TAG, not a new per-cell array.** Rob's ruling.
+> The evidence below (1,042 of 1,042 ledge placements agreeing with their
+> behaviour) was joined by a second and third independent per-metatile fact
+> during `[M27T]`: layer type, and Fire Red's own encounter stamp, measured at
+> **zero placement variance across 11,031 (pair, metatile) combinations**. That
+> is now a rule rather than a case-by-case call — **per-metatile facts go on the
+> tile, per-position facts (collision, elevation) go on the cell** — and it saves
+> a format field whenever the ledge work starts.
+>
+> **(b) `encounter_source` means "CAN host", not "does host".** Rob's ruling,
+> and settled by measurement rather than argument: **38 Kanto maps carry
+> encounter tiles and deliberately no table**, and source's own chain returns
+> before it ever asks a tile question when the map's table is null. The tile
+> expresses capability; the table gates. ⚠️ `[M27T piece 4]` reduced what this
+> tag has to carry — Fire Red's per-tile stamp now answers "can host" directly
+> for encounters, so the tag matters for other consumers (the overlay, anything
+> DexNav-shaped) rather than for the encounter trigger itself.
+>
+> ⚠️ **Ratifying these did NOT decide §10/§10b** — whether the capability layer
+> gets built at all is still open. (a) is a storage ruling and (b) a semantics
+> one; both were needed by the encounter work regardless of that.
+
 Flagged rather than silently resolved:
 
 **(a) LEDGES — the named hard case.** Evidence, re-measured this session across

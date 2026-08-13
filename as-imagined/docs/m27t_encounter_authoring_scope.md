@@ -30,10 +30,17 @@ double-owning it.
 | 7 | Slot rates? | **The 15-slot curve already provided stands as final** | Rob, 2026-08-12 |
 | 8 | Xanadu's `MB_LONG_GRASS` cells? | **Leave — it is a test map** | Rob, 2026-08-12 |
 
-**Still open, not blocking:** ratifying `docs/m27_behavior_capability_recon.md`
-decisions #1 (ledges as a tile tag) and #2 (`encounter_source` means "can host").
-Decision 5 above reduces what #2 carries, since the stamp answers it directly
-for encounters.
+| 9 | Capability recon #1/#2? | **Ratify both** — ledges as a tile tag; `encounter_source` means "can host" | Rob, 2026-08-13 |
+| 10 | Water/fishing/rock slot rates? | **Leave on source's curves** until M27E wires them | Rob, 2026-08-13 |
+| 11 | The 12→15 padding rule? | **Keep as the default**; override per map in the Inspector | Rob, 2026-08-13 |
+| 12 | Encounter density at 1600? | **Keep — it feels right in play** | Rob, 2026-08-13 |
+
+**Nothing is open.** Ruling 9 is recorded in
+`docs/m27_behavior_capability_recon.md` §5 and closes that doc's two ambiguous
+classifications — ⚠️ **without deciding its §10/§10b question of whether the
+capability layer gets built at all**, which stays open and is not this block's.
+Ruling 12 is the one that needed play rather than measurement, and it is now the
+first thing in this block confirmed by walking rather than by a suite.
 
 ---
 
