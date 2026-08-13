@@ -1442,6 +1442,37 @@ const _MENU_BUTTON_FONT_SIZE := 60
 # constant rather than picking an unrelated number, since both labels sit
 # in the same region and should read as one consistent scale.
 const _MESSAGE_FONT_SIZE := 45
+
+# ⚠️ **[Bugfix, live-reported: "in battle text from characters is too close and
+# overlaps vertically".] THE FONT LIES ABOUT ITS OWN DESCENT, AND GODOT BELIEVES
+# IT.** `power green.ttf` stores its `hhea` descender as **+208** instead of
+# -208 (non-conformant), so `FontFile.get_descent()` answers **0.0** at every
+# size. A line's advance is `ascent + descent`, which made it 34px at size 45 —
+# measured, not inferred:
+#
+#     ascent 34.0   descent 0.0   advance 34.0
+#     max ink ABOVE the baseline: 36.0 ('!')   BELOW: 8.0 ('g')
+#     -> 44.0 of advance is needed before two lines stop overlapping at all
+#
+# So it overflowed in BOTH directions: descenders of one line ran into the caps
+# of the next, and even a single line's '!' exceeded its own reported ascent.
+# Only WRAPPED text shows it, which is why it reads as "text from characters" —
+# a trainer's speech wraps, "X used Y!" usually does not.
+#
+# ⚠️ The value is DERIVED, not tuned by eye, and it is a RATIO so it survives
+# `_MESSAGE_FONT_SIZE` moving (which it already has once — see that constant's
+# own note about its old value of 20). From the font's own `head`/`hhea` tables:
+# `unitsPerEm` 832, ascender 624, descender 208, lineGap 104. Godot already
+# applies the ascender correctly, so what is missing is the descender plus the
+# line gap: (208 + 104) / 832 = **0.375 em**. At size 45 that is 16.875 -> 17,
+# giving a 51px advance — the line height the typeface itself specifies, and
+# comfortably above the 44px overlap floor measured above.
+#
+# ⚠️ Fits: `ActionRegion` spans 0.75625..0.99375 of an 800px viewport = 190px,
+# so even three wrapped lines at 51px sit inside it.
+const _MESSAGE_LINE_RATIO := 0.375
+const _MESSAGE_LINE_SEPARATION := int(round(_MESSAGE_FONT_SIZE * _MESSAGE_LINE_RATIO))
+
 const _MESSAGE_FONT_COLOR := Color8(255, 255, 255)
 const _MESSAGE_FONT_SHADOW_COLOR := Color8(106, 90, 115)
 const _MESSAGE_FONT_SHADOW_OFFSET := Vector2(1, 1)
@@ -5398,6 +5429,10 @@ func _setup_action_region_panel() -> void:
 	# size, so word-wrap is the fix rather than shrinking the font back
 	# down.
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Same broken font, same fix — and this one wraps too ("Choose an action
+	# for X."), so it had the identical overlap. ⚠️ `line_spacing`, not
+	# `line_separation`: Label and RichTextLabel name the constant differently.
+	_status_label.add_theme_constant_override("line_spacing", _MESSAGE_LINE_SEPARATION)
 
 	# [M26c-3 real-proportion fix] MoveInfoType/MoveInfoPP sit directly
 	# beside the move-select grid (the real B_WIN_PP color context, the
@@ -5449,6 +5484,10 @@ func _setup_message_overlay_panel() -> void:
 	_message_label.add_theme_color_override("font_shadow_color", _MESSAGE_FONT_SHADOW_COLOR)
 	_message_label.add_theme_constant_override("shadow_offset_x", int(_MESSAGE_FONT_SHADOW_OFFSET.x))
 	_message_label.add_theme_constant_override("shadow_offset_y", int(_MESSAGE_FONT_SHADOW_OFFSET.y))
+	# See `_MESSAGE_LINE_SEPARATION` — the font reports descent 0, so without
+	# this two wrapped lines overlap. ⚠️ RichTextLabel's constant is
+	# `line_separation`; the Label below uses `line_spacing` for the same thing.
+	_message_label.add_theme_constant_override("line_separation", _MESSAGE_LINE_SEPARATION)
 
 
 # [Message pacing] Swaps ActionPanel over to the message skin and hides the
