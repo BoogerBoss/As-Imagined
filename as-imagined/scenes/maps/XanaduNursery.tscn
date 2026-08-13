@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://bw333cuy27k8s"]
 
-[ext_resource type="TileSet" path="res://assets/map_tilesets/general_frlg__viridian_city_frlg.tres" id="1_17rij"]
+[ext_resource type="TileSet" uid="uid://eufntgm1hh0o" path="res://assets/map_tilesets/general_frlg__viridian_city_frlg.tres" id="1_17rij"]
 
 [node name="XanaduNursery" type="Node2D" unique_id=75580919]
 

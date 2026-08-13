@@ -1238,6 +1238,31 @@ func step() -> bool:
 			# stateless `FieldSpecials` table.
 			if fn == "CreateInGameTradePokemon":
 				return _create_ingame_trade_pokemon()
+			# [Specials Tier 2] Daisy's grooming. Mutates the party, so it sits
+			# with `CreateInGameTradePokemon` rather than in the stateless
+			# `FieldSpecials` table, for the identical reason.
+			if fn == "DaisyMassageServices":
+				return _daisy_massage_services()
+			# [Specials Tier 3] `EnableNationalPokedex` (`event_data.c:82`).
+			# Source also writes a `nationalMagic` byte and `VAR_NATIONAL_DEX`;
+			# both are save-block integrity checks with no equivalent here — see
+			# `Pokedex.NATIONAL_FLAG`.
+			if fn == "EnableNationalPokedex":
+				Pokedex.enable_national(_flags)
+				return true
+			# [Specials Tier 3] `GetProfOaksRatingMessage` (`birch_pc.c:163`) is
+			# `ShowFieldMessage(GetProfOaksRatingMessageByCount(VAR_0x8004))`.
+			# ⚠️ The BAND is computed here (including source's Mew decrement) but
+			# the message itself is left to the caller's own `msgbox`, because
+			# this project has no `ShowFieldMessage` equivalent that can open a
+			# box from inside a special. The band lands in VAR_RESULT so a script
+			# can branch on it; the corridor's only caller
+			# (`PokedexRating_EventScript_ShowRatingMsg`) prints its own text.
+			if fn == "GetProfOaksRatingMessage":
+				if _flags != null:
+					_flags.var_set("VAR_RESULT", OverworldSession.pokedex
+							.oaks_rating_band(_flags.var_get("VAR_0x8004")))
+				return true
 			if FieldSpecials.run(fn):
 				# [M27R 7a-2] ⚠️ The Pokécentre heal jingle, and it has to hang
 				# off the SPECIAL rather than an opcode for the same reason the
@@ -1301,6 +1326,53 @@ func step() -> bool:
 			if vfn == "ScriptGetPartyMonSpecies" or vfn == "GetTradeSpecies":
 				if _flags != null:
 					_flags.var_set(dest, _party_mon_species(_flags.var_get("VAR_0x8004")))
+				return true
+			# [Specials Tier 1/2] Both need the LIVE party, so they live here
+			# rather than in `FieldSpecials.SPECIALVAR_VALUES` — see that table's
+			# own restated admission rule: it holds constants only.
+			#
+			# `CalculatePlayerPartyCount` (`pokemon.c:3058`) is
+			# `CalculatePartyCount`, which counts members up to the first
+			# `SPECIES_NONE`. A `BattleParty` has no empty slots to stop at, so
+			# the size IS the count.
+			if vfn == "CalculatePlayerPartyCount":
+				if _flags != null:
+					_flags.var_set(dest, party.members.size())
+				return true
+			if vfn == "GetLeadMonFriendship":
+				if _flags != null:
+					_flags.var_set(dest, _lead_mon_friendship())
+				return true
+			# [Specials Tier 3] ⚠️ **`GetFrlgPokedexCount` IS NOT A GETTER — ITS
+			# RETURN VALUE IS THE LEAST IMPORTANT THING IT DOES.** `birch_pc.c:92`
+			# writes the SEEN count to `VAR_0x8005` and the CAUGHT count to
+			# `VAR_0x8006` as side effects, and only returns
+			# `IsNationalPokedexEnabled()`. Its corridor caller
+			# (`RatePokedexOrTryGiveBalls`) immediately `copyvar`s 0x8005/0x8006
+			# into 0x8008/0x8009 and branches on THOSE — so an implementation
+			# that answered only the return value would satisfy the dispatcher
+			# and still take every branch on a count of zero.
+			#
+			# `VAR_0x8004` selects which dex: 0 = Kanto, anything else =
+			# National.
+			if vfn == "GetFrlgPokedexCount":
+				if _flags != null:
+					var dex: Pokedex = OverworldSession.pokedex
+					var national := _flags.var_get("VAR_0x8004") != 0
+					_flags.var_set("VAR_0x8005", dex.national_seen_count()
+							if national else dex.kanto_seen_count())
+					_flags.var_set("VAR_0x8006", dex.national_caught_count()
+							if national else dex.kanto_caught_count())
+					_flags.var_set(dest, 1 if Pokedex.national_enabled(_flags) else 0)
+				return true
+			if vfn == "HasAllKantoMons":
+				if _flags != null:
+					_flags.var_set(dest,
+							1 if OverworldSession.pokedex.has_all_kanto() else 0)
+				return true
+			if vfn == "HasAllMons":
+				if _flags != null:
+					_flags.var_set(dest, 1 if OverworldSession.pokedex.has_all() else 0)
 				return true
 			# [M27G G3a] `GetInGameTradeSpeciesInfo` needs both `party`
 			# (indirectly, via the row it looks up) AND `buffers` — writes
@@ -2097,6 +2169,12 @@ func _give_mon(dex: int, level: int) -> bool:
 	party.members.append(PokemonFactory.create_battle_pokemon(dex, level))
 	if party.active_indices.is_empty():
 		party.active_indices = [0]
+	# [Specials Tier 3] Source sets SEEN and CAUGHT together in
+	# `GiveMonToPlayer` (`pokemon.c:6885-6886`), i.e. on ACQUISITION rather than
+	# on capture specifically — which is why a gift mon (the starter, Bill's
+	# Eevee) counts toward the dex exactly like a caught one. `mark_caught`
+	# folds the SEEN half in; see its own note.
+	OverworldSession.pokedex.mark_caught(dex)
 	_set_result_value(MON_GIVEN_TO_PARTY)
 	return true
 
@@ -2218,6 +2296,100 @@ func answer_party_choice(index: int) -> void:
 ## `_begin_nickname`'s own `PC_MON_CHOSEN` guard, there is no second branch to
 ## refuse here; an out-of-range slot degrades to 0 (no species), the same
 ## "unknown constant" shape `_literal` already uses elsewhere.
+## [Specials Tier 2] `GetLeadMonFriendship` (`field_specials.c:4609`) — the lead
+## Pokémon's friendship as a **0-6 BAND, not a raw value**, which the Daisy
+## script then branches on.
+##
+## ⚠️ **THE SCOPE DOC CALLED THIS "blocked on a friendship system this project
+## has never built", AND THAT WAS WRONG — the same misfiling that parked
+## `SetUnlockedPokedexFlags` under M33.** Friendship has been modelled since the
+## battle engine was built: `BattlePokemon.friendship`, seeded from the
+## species' own `base_friendship` through `from_species`, carried by
+## `PokemonFactory` and by the save. Nothing needed building; the function only
+## needed reading.
+##
+## ⚠️ The bands are NOT evenly spaced and the boundaries are inclusive from
+## below — 255 exactly for 6, then >=200, >=150, >=100, >=50, >0. Transcribed
+## rather than derived, because a "friendship / 42" style approximation would
+## agree at the ends and disagree in the middle where Daisy's dialogue lives.
+##
+## `GetLeadMonIndex` is the FIRST non-egg, non-empty member. This project models
+## no eggs at all and a `BattleParty` has no empty slots, so that is index 0 —
+## and source's own fallback for "no valid member" is also 0, so an empty party
+## degrades identically rather than needing a branch of its own.
+func _lead_mon_friendship() -> int:
+	if party.members.is_empty():
+		return 0
+	var mon: BattlePokemon = party.members[0]
+	if mon == null:
+		return 0
+	var f := mon.friendship
+	if f == 255:
+		return 6
+	if f >= 200:
+		return 5
+	if f >= 150:
+		return 4
+	if f >= 100:
+		return 3
+	if f >= 50:
+		return 2
+	return 1 if f > 0 else 0
+
+
+## [Specials Tier 2] `DaisyMassageServices` (`field_specials.c:4603`) — two
+## lines: `AdjustFriendship(&party[VAR_0x8004], FRIENDSHIP_EVENT_MASSAGE)` and
+## `VarSet(VAR_MASSAGE_COOLDOWN_STEP_COUNTER, 0)`.
+##
+## ⚠️ **+3 IS THE WHOLE OF `AdjustFriendship` HERE, AND THAT IS A DERIVED
+## RESULT RATHER THAN A SIMPLIFICATION.** Source's function is 72 lines; every
+## branch of it was walked before this was written, and each one is inert for
+## this event in this project:
+##
+##   * `ShouldSkipFriendshipChange()` is TRUE only inside the Battle
+##     Frontier/Pike/Pyramid (`pokemon.c:5865`). Daisy is in Pallet Town.
+##   * The band index does not matter: `sFriendshipEventModifiers[
+##     FRIENDSHIP_EVENT_MASSAGE]` is `{3, 3, 3}` (`pokemon.c:644`) — the same
+##     value in all three friendship bands, uniquely among the events.
+##   * `CalculateFriendshipBonuses` adds three bonuses, and ALL THREE are
+##     unreachable by construction, not by omission:
+##       - `HOLD_EFFECT_FRIENDSHIP_UP` (Soothe Bell) would make it `150*3/100`
+##         = 4. Soothe Bell is in `items.json` with hold effect 27 but has NO
+##         `data/items/item_0463.tres`, and per this project's two-layer data
+##         rule the file's absence IS the answer to "do we implement this
+##         item?" — so nothing can hold one.
+##       - `BALL_LUXURY` (+1) and a met-location matching the current map
+##         section (+1) both read fields `BattlePokemon` does not have: there is
+##         no ball and no met location anywhere in the model.
+##
+## So the honest port is a flat +3, clamped to `MAX_FRIENDSHIP` 255. ⚠️ Each of
+## those three would become live the day the field it reads is added, which is
+## why they are recorded here rather than silently dropped.
+##
+## `VAR_MASSAGE_COOLDOWN_STEP_COUNTER` is already seeded to 500 by
+## `FlagStore.seed_new_game_flags`, so resetting it to 0 completes a loop this
+## project had built one half of.
+func _daisy_massage_services() -> bool:
+	var slot := _flags.var_get("VAR_0x8004") if _flags != null else 0
+	if slot >= 0 and slot < party.members.size():
+		var mon: BattlePokemon = party.members[slot]
+		if mon != null:
+			mon.friendship = clampi(mon.friendship + MASSAGE_FRIENDSHIP_DELTA,
+					0, MAX_FRIENDSHIP)
+	if _flags != null:
+		_flags.var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 0)
+	return true
+
+
+## `sFriendshipEventModifiers[FRIENDSHIP_EVENT_MASSAGE]` = `{3, 3, 3}`
+## (`pokemon.c:644`) — band-independent, which is what lets `_daisy_massage_
+## services` skip the band lookup entirely.
+const MASSAGE_FRIENDSHIP_DELTA := 3
+
+## `MAX_FRIENDSHIP` (`constants/pokemon.h:223`).
+const MAX_FRIENDSHIP := 255
+
+
 func _party_mon_species(slot: int) -> int:
 	if slot < 0 or slot >= party.members.size():
 		return 0
@@ -2322,6 +2494,12 @@ func _create_ingame_trade_pokemon() -> bool:
 	incoming.nickname = str(row.get("nickname", ""))
 	incoming.held_item = _resolve_trade_held_item(int(row.get("held_item", 0)))
 	party.members[slot] = incoming
+	# [Specials Tier 3] A trade is an acquisition, so it sets both flags — the
+	# same `GiveMonToPlayer` rule the `givemon` opcode follows. ⚠️ The mon traded
+	# AWAY keeps its own flags: source never clears a dex bit, and the player
+	# genuinely did see and own it.
+	if incoming.species != null:
+		OverworldSession.pokedex.mark_caught(incoming.species.national_dex_num)
 	return true
 
 

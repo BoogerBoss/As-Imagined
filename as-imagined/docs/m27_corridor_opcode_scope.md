@@ -30,18 +30,90 @@ Room, Record Corner — the only corridor callers of these are themselves
 Cable-Club-gated scripts), and the remaining **4 are blocked on systems
 outside this scope, not on opcode work**:
 
-- `GetFrlgPokedexCount` / `SetUnlockedPokedexFlags` / `EnableNationalPokedex`
-  / `HasAllMons` / `GetProfOaksRatingMessage` — all **M33** (Pokédex).
+- `GetFrlgPokedexCount` / `EnableNationalPokedex` / `HasAllMons` /
+  `GetProfOaksRatingMessage` — all **M33** (Pokédex).
+- ⚠️ **`SetUnlockedPokedexFlags` WAS LISTED HERE AND DID NOT BELONG.**
+  Corrected 2026-08-12 after it soft-locked a live playthrough. It is not a
+  Pokédex function at all — only its name suggests one. `save_location.c:125`
+  sets three bits of `gSaveBlock2Ptr->gcnLinkFlags`, a field `global.h:610`
+  annotates "Read by Pokémon Colosseum/XD"; grepping the whole reference finds
+  it written in three places and read in exactly one, `rom_header_gf.c`, which
+  merely publishes its byte offset so a GameCube game can locate it in the
+  save. No GBA code path reads it. It is now a `FieldSpecials.NOOP_SPECIALS`
+  entry, blocked on nothing.
+
+  **The cost of the misfiling is the lesson.** "Blocked on M33" is a
+  reasonable-sounding parking place, and this one sat mid-way through
+  `PalletTown_ProfessorOaksLab_EventScript_ReceiveDexScene` — so the halt
+  stranded the parcel-delivery scene at pc=73 with `FLAG_SYS_POKEDEX_GET`
+  already set, but the five Poké Balls (the only Poké Ball gift in Kanto) and
+  the five `setvar`s that open the Viridian mart, the old man, the rival's
+  house and Route 22 all still ahead of it. `EventScript_ProfOak`'s
+  `goto_if_ge VAR_MAP_SCENE_VIRIDIAN_CITY_MART, 1` then stayed satisfied
+  forever and the scene replayed on every talk. **Grouping by name rather than
+  by body is how a no-op gets filed as a milestone dependency**; the other four
+  above were re-checked against their real bodies and do belong.
 - `ChooseMonForMoveTutor` — **M30** (move relearner/tutor mechanics).
 - `SaveGame` — every real corridor caller of `Common_EventScript_SaveGame`
   is Cable-Club-gated; the actual save system (`SaveManager`) already
   exists and needs no new work until a non-multiplayer caller exists.
-- `GetLeadMonFriendship` / `DaisyMassageServices` — blocked on a friendship
-  system this project has never built (already flagged in
-  `docs/m18_5h_recon.md`; not this scope's to open).
+- ⚠️ **`GetLeadMonFriendship` / `DaisyMassageServices` — THE SECOND MISFILING,
+  AND IT IS THE SAME MISTAKE AS THE ONE ABOVE.** This read: "blocked on a
+  friendship system this project has never built (already flagged in
+  `docs/m18_5h_recon.md`; not this scope's to open)." **Friendship has been
+  modelled since the battle engine was built** — `BattlePokemon.friendship`,
+  seeded from the species' own `base_friendship` through `from_species`,
+  carried by `PokemonFactory`, by trainer parties and by the save. Nothing
+  needed building. Corrected and implemented 2026-08-13.
 
-**No specials work is proposed here.** Everything actionable in this
-category belongs to milestones that already own it.
+  `GetLeadMonFriendship` (`field_specials.c:4609`) is a pure 6-band threshold
+  read of one field. `DaisyMassageServices` (`:4603`) is `AdjustFriendship(...,
+  FRIENDSHIP_EVENT_MASSAGE)` plus a var reset, and that 72-line function
+  reduces to a flat **+3** here: the event's modifier row is `{3, 3, 3}`
+  (`pokemon.c:644`) so the band index is irrelevant, and all three
+  `CalculateFriendshipBonuses` terms are unreachable by construction — Soothe
+  Bell has no `.tres` (so nothing can hold it), and `BattlePokemon` has neither
+  a ball nor a met location. `VAR_MASSAGE_COOLDOWN_STEP_COUNTER` was already
+  being seeded by `FlagStore.seed_new_game_flags`; this closed the other half
+  of that loop. See `ScriptVM._daisy_massage_services` for the full derivation.
+
+**Specials work HAS since been done, and this section's own conclusion —
+"No specials work is proposed here" — did not survive contact with a
+playthrough.** A full Step 0 pass over every reachable special (2026-08-13,
+27 unimplemented names / 48 uses) found three classes the original sweep
+grouped by name rather than by body. Tier 1 and Tier 2 are now implemented:
+
+| name | uses | resolution |
+|---|---|---|
+| `ShouldTryRematchBattle` | 8 | constant `0` — mutable rematch state is an explicit `TrainerData` exclusion |
+| `DoesPartyHaveEnigmaBerry` | 1 | constant `0` — the e-Reader berry has no `.tres` |
+| `CalculatePlayerPartyCount` | 1 | real party size, in `ScriptVM` (needs live state) |
+| `GetLeadMonFriendship` | 1 | real 6-band read, in `ScriptVM` |
+| `DaisyMassageServices` | 1 | real +3 and cooldown reset, in `ScriptVM` |
+
+⚠️ **`ShouldTryRematchBattle` was not a tidy-up — it was a live bug affecting
+every trainer in the region.** It is the opcode immediately after
+`trainerbattle_single` in the standard trainer script shape, and an
+already-beaten trainer falls through to it, so re-talking to any defeated
+trainer halted the script before its post-battle line. Verified fixed against
+the real compiled corpus: `Route3_EventScript_Robin` now reaches `DONE` and
+prints "ROUTE 4 is at the foot of MT. MOON."
+
+**Still open, correctly:** the Pokédex-count group (`GetFrlgPokedexCount` ×5,
+`HasAllKantoMons`, `HasAllMons`, `GetProfOaksRatingMessage`,
+`EnableNationalPokedex`) needs a **seen/caught flag store — NOT the Pokédex
+screen**; the elevator quartet, PC boxes, slots, trainer card, diploma and
+move tutor are genuine content gaps.
+
+⚠️ **Cable Club (`CloseLink` ×7, `TryTradeLinkup`, `SetCableClubWarp`,
+`DoCableClubWarp` — 10 uses) — DECIDED IN PRINCIPLE, DELIBERATELY NOT BUILT.**
+Rob's call, 2026-08-13: the eventual shape is **option (c)** — intercept the
+scene early with an in-world refusal (a "the link cable isn't connected" style
+line) so the conversation ENDS CLEANLY, rather than (a) leaving the halt, which
+is a dead conversation on any Pokécentre 2F, or (b) making them plain no-ops,
+which walks the player into a Cable Club that visibly does nothing. Recorded
+here so the reasoning is not re-derived; **no time is to be spent implementing
+it now**, and it is not blocking anything.
 
 ## Result 2: op codes — 6 found, 1 closed by verification, 5 real, tiered by size
 

@@ -1153,6 +1153,21 @@ func _try_step(dir: int) -> void:
 	var now_in := manager.chunk_owning(_cell)
 	if now_in != "" and now_in != was_in:
 		manager.request_neighbours(now_in)
+		# [Bugfix] The CONNECTION-CROSSING half of source's own temp clear
+		# (`LoadMapFromCameraTransition`, `overworld.c:889`) — the same call the
+		# warp path makes from `_place_player`.
+		#
+		# ⚠️ **INCLUDED EVEN THOUGH `_run_arrival_map_scripts` DELIBERATELY IS
+		# NOT.** That function's own doc comment records skipping the crossing
+		# path as a disclosed simplification, made to keep C4/C5's streaming
+		# lightweight — so following it here would be the consistent-looking
+		# choice. It is the wrong one: a temp register is scoped to "the map you
+		# are on", and a seam crossing changes which map that is just as much as
+		# a warp does. Skipping it would leave a temp latched across exactly the
+		# boundary `PalletTownEvents`' own sign-post beat (`VAR_TEMP_1`, set in
+		# Pallet, crossed out of at the Route 1 seam) relies on to reset. Cheap
+		# enough to be a non-question: two prefix scans of a small dictionary.
+		OverworldSession.flags.clear_temp_field_event_data()
 		if _weather != null:
 			_weather.request_weather(manager.weather_of(now_in))
 	_reparent_for_elevation()
@@ -2106,6 +2121,28 @@ func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool
 	# time to tell a wild encounter from a simulator battle. Without it Run
 	# forfeits instead of fleeing, and a forfeit whites the player out.
 	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key, true)
+	# [Specials Tier 3] Every opponent is marked SEEN. Source does this per mon
+	# as it is SENT OUT (`battle_main.c:5514`, gated on
+	# `partyState[trainer][slot].sentOut`).
+	#
+	# ⚠️ **DISCLOSED DIVERGENCE, and it is one-directional: this can only
+	# OVER-mark, never under-mark.** Marking the whole opposing party here
+	# differs from source in exactly one situation — you LOSE (or a wild battle
+	# somehow ends) before a trainer's last Pokémon is ever sent out, and that
+	# unseen mon is credited anyway. It agrees everywhere else, because a trainer
+	# battle runs until their whole party has fainted, so every mon they own does
+	# come out. For a wild battle the two are identical by definition.
+	#
+	# Chosen over the faithful hook deliberately: `pokemon_switched_in` does NOT
+	# fire for the initial send-out (only the three mid-battle emit sites do), so
+	# being exact would mean the overworld reaching through `_battle_screen` into
+	# its `BattleManager` — a new cross-layer dependency, on the engine half that
+	# is deliberately shared with the simulator, to correct a count in a losing
+	# battle. Flagged rather than hidden; if a Pokédex screen ever shows SEEN
+	# entries the player can inspect, this is the seam to tighten.
+	for mon: BattlePokemon in opp.members:
+		if mon != null and mon.species != null:
+			OverworldSession.pokedex.mark_seen(mon.species.national_dex_num)
 	# [Bugfix, live-reported] The trainer's own win/lose speech and Oak's
 	# tutorial flag, if a script staged any. ⚠️ ASSIGNED ON EVERY PATH, not just
 	# the script one — see `_pending_battle_speech` for why an unconditional
@@ -2232,6 +2269,13 @@ func _apply_battle_result() -> bool:
 		var party := OverworldSession.player_party()
 		if party.members.size() < BattleParty.PARTY_SIZE:
 			party.members.append(r.caught_pokemon)
+			# [Specials Tier 3] ⚠️ INSIDE the room check, matching source: the
+			# dex flags are set by `GiveMonToPlayer` only on the
+			# `sentToPc != MON_CANT_GIVE` branch (`pokemon.c:6883`), so a mon
+			# that could not be accepted is not credited either.
+			if r.caught_pokemon.species != null:
+				OverworldSession.pokedex.mark_caught(
+						r.caught_pokemon.species.national_dex_num)
 		else:
 			push_warning("overworld: caught a Pokémon with a full party — refused")
 	if r.outcome == BattleOutcome.WON:
@@ -2908,6 +2952,18 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 	# shown again — there is no real scenario where the player should still
 	# be invisible once standing on a freshly-loaded map.
 	_player.visible = true
+	# [Bugfix] Source's `ClearTempFieldEventData()` on the warp path
+	# (`LoadMapFromWarp`, `overworld.c:954`). ⚠️ **HERE, NOT IN
+	# `_run_arrival_map_scripts`, BECAUSE THE ORDER IS LOAD-BEARING**: a real
+	# `OnTransition`/`OnLoad` legitimately SEEDS temp state for the map it is
+	# arriving on (`RocketHideout_B4F_OnLoad` -> `setvar VAR_TEMP_1, 0`,
+	# `TrainerTower_OnTransition` -> four `setflag FLAG_TEMP_*`,
+	# `SevenIsland_SevaultCanyon_TanobyKey_OnTransition` -> `setvar VAR_TEMP_8,
+	# 0`). Source clears first and runs those scripts afterwards; clearing later
+	# would wipe exactly the state they just wrote. Both scripted and door warps
+	# reach this function before their own `_run_arrival_map_scripts` call, so
+	# one placement covers both.
+	OverworldSession.flags.clear_temp_field_event_data()
 	_player.position = manager.local_pixel_of(_cell)
 	_snap_camera_to_player()
 	if _camera != null:

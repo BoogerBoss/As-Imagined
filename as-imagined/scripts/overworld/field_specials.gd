@@ -70,6 +70,33 @@ const NICKNAME_SPECIAL := "ChangePokemonNickname"
 ## send-out primitives for a real visual beat instead of porting that
 ## cable-trade spectacle faithfully — see `docs/m27g_recon.md`'s own G3
 ## Step 0 section for the reasoning.
+## ⚠️ **[Bugfix, live-reported: "I can deliver Oak's parcel and trigger the
+## Pokédex speech indefinitely" / "didn't get given Poké Balls" / "the parcel
+## delivery flag never lands"] `SetUnlockedPokedexFlags` IS NOT A POKÉDEX
+## FUNCTION, DESPITE ITS NAME — and `docs/m27_corridor_opcode_scope.md` §33-34
+## filing it under "M33 (Pokédex)" alongside `GetFrlgPokedexCount` and
+## `HasAllMons` is the mistake this entry corrects.** Its whole body
+## (`save_location.c:125-143`) sets three bits of `gSaveBlock2Ptr->gcnLinkFlags`
+## and nothing else, and `global.h:610` annotates that field "Read by Pokémon
+## Colosseum/XD". Greppped the entire reference: the field is written in exactly
+## three places (here, `SetPostgameFlags`, `new_game.c`'s zeroing) and READ in
+## exactly one — `rom_header_gf.c`, which only publishes its byte offset so a
+## GameCube game can find it in the save. **No GBA code path ever reads it.**
+## GCN linking sits inside the same permanent link/Union-Room exclusion
+## `BufferUnionRoomPlayerName` below is already justified by, so this is a
+## genuine no-op in the `DisableMsgBoxWalkaway` sense — a port of a function
+## with no local effect, not a stand-in for one.
+##
+## It mattered far out of proportion to that. It sits mid-way through
+## `PalletTown_ProfessorOaksLab_EventScript_ReceiveDexScene`, so halting on it
+## stranded the script at pc=73 with `FLAG_SYS_POKEDEX_GET` already set but
+## every consequence still ahead of it: the five Poké Balls (the ONLY Poké Ball
+## gift in the Kanto corpus), and the five `setvar`s that advance
+## `VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB` to 6 and open the Viridian
+## mart, the old man, the rival's house and Route 22. With none of those
+## landing, `EventScript_ProfOak`'s `goto_if_ge VAR_MAP_SCENE_VIRIDIAN_CITY_MART,
+## 1` stayed satisfied and the whole scene replayed on every talk, forever.
+## One unimplemented no-op, four reported symptoms, and a soft-locked corridor.
 const NOOP_SPECIALS := [
 	"UpdateFollowingPokemon",
 	"DrawWholeMapView",
@@ -78,6 +105,7 @@ const NOOP_SPECIALS := [
 	"OpenMuseumFossilPic",
 	"CloseMuseumFossilPic",
 	"DoInGameTradeScene",
+	"SetUnlockedPokedexFlags",
 ]
 
 
@@ -94,10 +122,34 @@ const NOOP_SPECIALS := [
 ## testing and then been wrong somewhere else. Read the function, do not guess
 ## from the branch that follows it.
 ##
-## ⚠️ Every entry is a **1-2 use** function region-wide — a short tail being
-## closed, not a policy. A future session adds entries here one at a time with
-## the same justification; the moment this list grows by category it has become
-## M27G and belongs there.
+## ⚠️ **THE ADMISSION RULE, RESTATED 2026-08-13 — AND THE OLD WORDING WAS
+## ALREADY DESCRIBING ITSELF WRONGLY.** It read: "Every entry is a **1-2 use**
+## function region-wide — a short tail being closed, not a policy." Use count
+## was never the real criterion, and three of the original five entries fail it
+## on their own stated reasoning: `IsPokerusInParty` ("Pokerus is not
+## modelled"), `BufferUnionRoomPlayerName` ("link ... is a confirmed permanent
+## exclusion") and `CountPlayerTrainerStars` ("no trainer card exists here") are
+## admitted because their answer is INVARIANT under a documented project
+## exclusion, not because they are rare.
+##
+## The honest rule, which is what this table has actually been enforcing:
+##
+##   1. the value is the function's REAL return in this project, derived by
+##      reading its body — never a convenient one that happens to work; and
+##   2. it is a CONSTANT here, because either the system it interrogates is
+##      permanently excluded, or the geography/state it tests cannot occur.
+##
+## Anything needing live state belongs in `ScriptVM` beside
+## `ScriptGetPartyMonSpecies` (which is where `CalculatePlayerPartyCount` and
+## `GetLeadMonFriendship` went), and anything needing a system this project
+## intends to build stays halting so the gap keeps reporting itself.
+##
+## ⚠️ Under the old wording `ShouldTryRematchBattle` would have been refused for
+## being too common — it is the second opcode of essentially every trainer
+## script in Kanto. That would have been exactly backwards: it is the single
+## most load-bearing entry here, and admitting it fixes a live bug (see its own
+## note). Rarity was a proxy for "small enough not to matter"; invariance is the
+## property that was actually doing the work.
 const SPECIALVAR_VALUES := {
 	# 0 stars on a new save: no Hall of Fame, no complete dex, no contest
 	# paintings, no Frontier symbols (`trainer_card.c:664`). Genuinely 0, and
@@ -113,6 +165,34 @@ const SPECIALVAR_VALUES := {
 	# FALSE with no link players connected (`union_room.c:3382`); link is a
 	# confirmed permanent exclusion, so there can never be one.
 	"BufferUnionRoomPlayerName": [0, "link/Union Room is permanently excluded, so there is never a name"],
+	# ⚠️ **[Bugfix, live-reported class: every already-beaten trainer in the
+	# corridor is MUTE.] THIS ONE IS NOT A TIDY-UP — IT IS THE HIGHEST-TRAFFIC
+	# HALT IN THE FIELD ENGINE.** `specialvar VAR_RESULT,
+	# ShouldTryRematchBattle` is the opcode IMMEDIATELY AFTER
+	# `trainerbattle_single` in the standard trainer script shape — all 8 of
+	# Route 3's trainers, Lass Robin included, and essentially every trainer in
+	# Kanto. `_trainer_battle`'s own contract is that an ALREADY-BEATEN trainer
+	# falls through to the next opcode, so re-talking to any trainer you have
+	# already defeated halted the script here and their post-battle line
+	# (`message Route3_Text_RobinPostBattle`, two opcodes later) had never once
+	# printed.
+	#
+	# 0 is source's own answer here, not a stand-in. `ShouldTryRematchBattle` ->
+	# `ShouldTryRematchBattleForTrainerId` -> `IsFirstTrainerIdReadyForRematch(
+	# gRematchTable, id) || WasSecondRematchWon(gRematchTable, id)`
+	# (`battle_setup.c:2060-2071`). Both read MUTABLE rematch state, and
+	# `TrainerData`'s own header records that as an explicit project exclusion:
+	# "any MUTABLE 'has this trainer been beaten / rematch state' field —
+	# rematch_group_id/rematch_tier below are static source data only". Nothing
+	# can ever register a rematch, so FALSE is not merely true today, it is
+	# structurally guaranteed — the same shape as the two entries above.
+	"ShouldTryRematchBattle": [0, "rematch state is an explicit TrainerData exclusion, so no rematch can ever be registered"],
+	# `CheckPartyMonHasHeldItem(ITEM_ENIGMA_BERRY_E_READER)`
+	# (`script_pokemon_util.c:108`). The e-Reader Enigma Berry is not in this
+	# project's implemented item set — `items.json` lists it, no `.tres` backs
+	# it, and per the two-layer data rule the file's absence IS the answer — so
+	# no party member can ever hold one.
+	"DoesPartyHaveEnigmaBerry": [0, "the e-Reader Enigma Berry has no .tres, so it is unobtainable and unholdable here"],
 }
 
 

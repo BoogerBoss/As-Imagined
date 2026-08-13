@@ -47,7 +47,7 @@ extends Node
 ##     `resume_after_battle`), which is the seam under test. The overlay mount
 ##     itself is `[M27D D5]`'s.
 
-const EXPECTED_TOTAL := 18
+const EXPECTED_TOTAL := 21
 
 ## Route 22's early-rival trigger, in the map's own LOCAL cells.
 const TRIGGER_CELL := Vector2i(33, 5)
@@ -165,6 +165,7 @@ func _pump_until(ow, cond: Callable, steps: int = 400) -> bool:
 
 func _ready() -> void:
 	await _test_trigger_to_battle_and_back()
+	await _test_yes_no_waits_for_question_to_finish_typing()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -290,5 +291,77 @@ func _test_trigger_to_battle_and_back() -> void:
 
 	ow._abandon_script()
 	for _i in range(45):
+		await get_tree().process_frame
+	ow.queue_free()
+
+
+## --- F. the yes/no cursor must not beat its own question onto screen -----
+##
+## [Bugfix, live-reported: "the dialog prompt isn't shown, it skips right to
+## yes/no"] `Std_MsgboxYesNo` compiles to `message` / `waitmessage` /
+## `yesnobox` -- no `waitbuttonpress` -- so nothing else in that chain ever
+## blocked the yes/no cursor from opening before the question's own text had
+## even started typing (see `ScriptDriver`'s `WAIT_YES_NO` branch for the
+## fix, and its own doc comment for the full mechanism). Every OTHER yes/no
+## suite in this project drives a bare `ScriptVM` and treats `WAIT_MESSAGE`
+## as instantly resumable with no real `MessageBox`/`YesNoBox` behind it --
+## which is exactly the shape that let this ship unnoticed. Only a REAL
+## driven pair, which only this file's own real-scene machinery provides,
+## can see it.
+func _test_yes_no_waits_for_question_to_finish_typing() -> void:
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "Route22_Frlg"
+	ow.start_cell = Vector2i(-1, -1)
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	ow.set_process(false)
+
+	# A real, long-enough question -- at TextTyper's own 0.02s/char, ~1s to
+	# type fully, giving many frames in which a premature cursor would show.
+	var question := "Do you want to give a nickname to this Pokemon?"
+	var source := ScriptVM.ScriptSource.new()
+	source.ops_by_label = {"F_Q": [
+		{"op": "message", "args": ["F_QuestionText"]},
+		{"op": "waitmessage", "args": []},
+		{"op": "yesnobox", "args": []},
+		{"op": "end", "args": []},
+	]}
+	source.texts = {"F_QuestionText": [question]}
+	var vm := ScriptVM.new(source, ow.flags)
+	vm.start("F_Q")
+	ow._vm = vm
+
+	var saw_yes_no_open := false
+	var saw_yes_no_while_typing := false
+	var guard := 0
+	while ow._vm != null and guard < 300:
+		ow._drive_script()
+		if ow._yes_no != null and ow._yes_no.is_open:
+			saw_yes_no_open = true
+			if ow._box != null and ow._box.is_typing:
+				saw_yes_no_while_typing = true
+			break
+		await get_tree().process_frame
+		guard += 1
+
+	_chk("F.01 the yes/no cursor does eventually open", saw_yes_no_open)
+	_chk("F.02 -- and NEVER while the question is still typing (the reported bug)",
+			not saw_yes_no_while_typing)
+	_chk("F.03 the question's real text reached the box before the cursor did",
+			ow._box != null and ow._box.page_count > 0
+			and ow._expanded_pages()[0] == question)
+
+	# Let it finish cleanly rather than leaving a parked VM behind.
+	if ow._vm != null and ow._vm.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+		ow._vm.answer_yes_no(true)
+		var drain := 0
+		while ow._vm != null and drain < 50:
+			ow._drive_script()
+			await get_tree().process_frame
+			drain += 1
+
+	ow._abandon_script()
+	for _i in range(10):
 		await get_tree().process_frame
 	ow.queue_free()

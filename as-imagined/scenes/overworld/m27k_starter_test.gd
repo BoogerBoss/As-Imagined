@@ -248,8 +248,23 @@ func _run_starter(ball_label: String) -> Dictionary:
 			guard += 1
 	return {
 		"party": party.members,
-		"player_species": flags.var_get("PLAYER_STARTER_SPECIES"),
-		"rival_species": flags.var_get("RIVAL_STARTER_SPECIES"),
+		# ⚠️ **`VAR_TEMP_2`/`VAR_TEMP_3`, NOT `PLAYER_STARTER_SPECIES`/
+		# `RIVAL_STARTER_SPECIES` — AND READING THE ALIAS NAMES HERE USED TO
+		# WORK, WHICH IS THE PROBLEM.** Oak's Lab declares
+		# `.equ PLAYER_STARTER_SPECIES, VAR_TEMP_2` in its file preamble;
+		# `gen_map_scripts.py` dropped every `.equ` line, so the alias reached
+		# the VM verbatim and `setvar` created a var literally named
+		# `PLAYER_STARTER_SPECIES`. Self-consistent within this one script, so
+		# the scene played correctly and this test passed — by accident, against
+		# a var source does not have. Now that the generator substitutes, the
+		# real slot is the temp var, and reading it here is what makes this
+		# assertion about the ENGINE rather than about a spelling.
+		#
+		# ⚠️ It also stops the test lying about temp scope: `VAR_TEMP_2` is
+		# cleared on every warp and seam crossing by
+		# `FlagStore.clear_temp_field_event_data`, and the alias slot never was.
+		"player_species": flags.var_get("VAR_TEMP_2"),
+		"rival_species": flags.var_get("VAR_TEMP_3"),
 		"pokemon_get": flags.flag_get("FLAG_SYS_POKEMON_GET"),
 		"removed": vm.removed_objects,
 		"halted": halted,

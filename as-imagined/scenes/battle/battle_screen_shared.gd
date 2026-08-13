@@ -9013,6 +9013,10 @@ func _on_run_pressed() -> void:
 				# unrelated moment the next real drain happened, typically
 				# stapled to the front of the next move's narration.
 				await _run_message_pacing()
+				# ⚠️ See the trainer branch below — a drain that hands control
+				# BACK to the player must rebuild the menu, or there is nothing
+				# left on screen to press.
+				_refresh_ui()
 			return
 		# A trainer battle: refuse outright, matching source. No turn is
 		# spent, no outcome is produced, the battle continues untouched.
@@ -9022,6 +9026,27 @@ func _on_run_pressed() -> void:
 		# never appeared when it was pressed — pressing Run in a trainer battle
 		# looked like the button did nothing at all.
 		await _run_message_pacing()
+		# ⚠️ **WITHOUT THIS REBUILD THE GAME HARD LOCKS** [Bugfix,
+		# live-reported: "hard lock after trying to run from rival battle"].
+		#
+		# `_enter_message_mode()` hides BOTH `_top_action_hbox` and
+		# `_fight_action_hbox`, and `_exit_message_mode()` deliberately does
+		# NOT put them back — it restores only the panel skin and the grid
+		# containers, because it is documented as handing off to `_refresh_ui()`
+		# for whichever menu is actually needed next. `_layout_action_menu_for()`
+		# is the ONLY thing that sets those two visible, and `_refresh_ui()` is
+		# the only route to it.
+		#
+		# So a drain that RETURNS CONTROL TO THE PLAYER — rather than ending
+		# the battle or being followed by `_dispatch_move`'s own trailing
+		# refresh — leaves the panel looking normal and completely empty:
+		# measured directly as `top=false fight=false grid=true`, zero action
+		# buttons visible in tree, with `_pacing_active` already back to false
+		# so input is accepted and there is nothing to accept it with.
+		#
+		# This is why the refusal could not simply be given the `await` that
+		# made its message appear; the two have to land together.
+		_refresh_ui()
 		return
 	_clear_active_hit_effects()
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")

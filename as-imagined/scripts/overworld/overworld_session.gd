@@ -38,6 +38,11 @@ static var bag := Bag.new()
 ## worse than none.
 static var respawn := RespawnPoint.new()
 
+## [Specials Tier 3] Seen/caught species. ⚠️ NOT the Pokédex screen — see
+## `Pokedex`' own header for why the five specials that need this were misfiled
+## under M33, which owns the browsable UI that will consume it.
+static var pokedex := Pokedex.new()
+
 ## [M27I I3b] Money and coins. Static for the same reason the bag is — a battle
 ## is a scene swap, and prize money that vanished with the fight that earned it
 ## would be worse than no wallet.
@@ -353,6 +358,7 @@ static func reset() -> void:
 	bag = Bag.new()
 	wallet = Wallet.new()
 	respawn = RespawnPoint.new()
+	pokedex = Pokedex.new()
 	identity = PlayerIdentity.new()
 	TextBuffers.identity = identity
 	playtime = 0.0

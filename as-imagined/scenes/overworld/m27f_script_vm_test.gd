@@ -14,11 +14,16 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 317
+const EXPECTED_TOTAL := 354
 
 var _total := 0
 var _failed := 0
 var _gated := 0
+
+## [Specials Tier 2] Pre-grooming friendship, for O.11. Fields rather than
+## locals because O.08-O.11 share one long drive of the real script.
+var _o_friendship_before := 0
+var _o_lead_friendship_before := 0
 
 
 func _chk(label: String, cond: bool) -> void:
@@ -104,6 +109,9 @@ func _ready() -> void:
 	_test_m27g_g6_event_script()
 	_test_m27g_g8_g9()
 	_test_m27r_movement_tail()
+	_test_temp_scope()
+	_test_specials_tier12()
+	_test_pokedex_store()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -1735,6 +1743,10 @@ func _test_m27g_g2_choose_party_mon() -> void:
 	flags_gm.var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 999)
 	var vm_gm := ScriptVM.new(_src(ops_o, texts_o), flags_gm)
 	vm_gm.party = party_o
+	# Snapshotted BEFORE the script runs, so O.11 compares against real
+	# pre-grooming values rather than re-deriving them afterwards.
+	_o_lead_friendship_before = party_o.members[0].friendship
+	_o_friendship_before = party_o.members[1].friendship
 	vm_gm.start("PalletTown_RivalsHouse_EventScript_GroomMon")
 	# The offer's own yes/no, then WAIT_PARTY_CHOICE.
 	_drive(vm_gm)
@@ -1751,11 +1763,28 @@ func _test_m27g_g2_choose_party_mon() -> void:
 			+ "PARTY_SIZE stayed unresolved-to-0, the script would have taken "
 			+ "the Decline branch unconditionally and this would still read 0",
 			flags_gm.var_get("VAR_RESULT") == 4)
-	_chk("O.10 the script then halts at the one real blocker left -- special "
-			+ "DaisyMassageServices, which needs a friendship system this "
-			+ "project doesn't have -- not a halt anywhere EARLIER than that",
-			vm_gm.pause_reason == ScriptVM.Pause.UNKNOWN_OP
-			and vm_gm.diagnostic.contains("DaisyMassageServices"))
+	# ⚠️ **THIS ASSERTION USED TO PIN THE HALT, AND ITS STATED REASON WAS FALSE.**
+	# It read: "halts at the one real blocker left -- special
+	# DaisyMassageServices, which needs a friendship system this project doesn't
+	# have". That claim came from `docs/m18_5h_recon.md` and was carried forward
+	# into `docs/m27_corridor_opcode_scope.md` unexamined. **Friendship has been
+	# modelled the whole time** — `BattlePokemon.friendship`, seeded from
+	# `base_friendship` via `from_species`, carried by `PokemonFactory` and by
+	# the save. Reading `AdjustFriendship`'s real body during the specials Step 0
+	# showed the massage event needs a flat +3 and nothing else (see
+	# `ScriptVM._daisy_massage_services` for why all three bonus terms are
+	# structurally inert here). The same "filed by NAME, not by body" mistake
+	# that parked `SetUnlockedPokedexFlags` under M33.
+	#
+	# Flipped to pin the real end state: the whole script now completes, and the
+	# grooming actually lands on the mon the player chose.
+	_chk("O.10 the real grooming script now RUNS TO COMPLETION rather than "
+			+ "halting (diagnostic if not: '%s')" % vm_gm.diagnostic,
+			vm_gm.pause_reason != ScriptVM.Pause.UNKNOWN_OP)
+	_chk("O.11 -- and it groomed the mon the player actually chose, +3 on the "
+			+ "SECOND party member rather than the lead",
+			party_o.members[1].friendship == _o_friendship_before + 3
+			and party_o.members[0].friendship == _o_lead_friendship_before)
 
 
 ## Section P -- [M27G G3a] In-game trade: `GetTradeSpecies`/
@@ -2630,3 +2659,321 @@ func _test_m27r_movement_tail() -> void:
 	_run(vmw)
 	_chk("T.15 trywondercardscript is a no-op, and the script CONTINUES past it "
 			+ "rather than halting", vmw.pause_reason == ScriptVM.Pause.DONE)
+
+
+## --- U. temp field-event scope ---
+##
+## `FlagStore.clear_temp_field_event_data` — source's `ClearTempFieldEventData`
+## (`event_data.c:58`), which this project never had.
+##
+## ⚠️ **THE INTERESTING ASSERTIONS ARE THE NEGATIVE ONES.** A clear that is too
+## WIDE is far worse than one that is too narrow: it would silently wipe story
+## progress on every doorway, and every symptom would look like an unrelated
+## flag bug somewhere else. So the persistence checks below carry the same
+## weight as the clearing ones.
+func _test_temp_scope() -> void:
+	var f := FlagStore.new()
+
+	# Numbered temps, both families.
+	f.var_set("VAR_TEMP_1", 7)
+	f.var_set("VAR_TEMP_F", 3)
+	f.flag_set("FLAG_TEMP_2")
+	f.flag_set("FLAG_TEMP_1F")
+	# ⚠️ The NAMED spellings. These are header `#define`s, not `.equ` aliases,
+	# so `gen_map_scripts.py`'s alias pass never rewrites them and they arrive
+	# as distinct names — an enumerated 16+32 list would miss all of them, which
+	# is exactly why the implementation is a prefix rule.
+	f.var_set("VAR_TEMP_CHALLENGE_STATUS", 2)
+	f.flag_set("FLAG_TEMP_HIDE_FOLLOWER")
+	# Real, persistent progress that must SURVIVE.
+	f.var_set("VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB", 6)
+	f.flag_set("FLAG_SYS_POKEDEX_GET")
+	f.flag_set("FLAG_BADGE01_GET")
+	# ⚠️ Named explicitly by source alongside the two ranges.
+	f.flag_set("FLAG_SYS_USE_STRENGTH")
+
+	f.clear_temp_field_event_data()
+
+	_chk("U.01 numbered temp vars clear",
+			f.var_get("VAR_TEMP_1") == 0 and f.var_get("VAR_TEMP_F") == 0)
+	_chk("U.02 numbered temp flags clear",
+			not f.flag_get("FLAG_TEMP_2") and not f.flag_get("FLAG_TEMP_1F"))
+	_chk("U.03 the NAMED temp spellings clear too",
+			f.var_get("VAR_TEMP_CHALLENGE_STATUS") == 0
+			and not f.flag_get("FLAG_TEMP_HIDE_FOLLOWER"))
+	_chk("U.04 the five by-name clears run", not f.flag_get("FLAG_SYS_USE_STRENGTH"))
+	# ⚠️ THE GUARD THAT MATTERS. A prefix rule that reached one character wider
+	# would take the whole save with it.
+	_chk("U.05 persistent progress SURVIVES",
+			f.var_get("VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB") == 6
+			and f.flag_get("FLAG_SYS_POKEDEX_GET")
+			and f.flag_get("FLAG_BADGE01_GET"))
+	# ⚠️ Idempotent: every warp calls this, and most of them have nothing to
+	# clear. A second pass must not throw on an already-empty store.
+	f.clear_temp_field_event_data()
+	_chk("U.06 clearing twice is harmless",
+			f.flag_get("FLAG_BADGE01_GET") and f.var_get("VAR_TEMP_1") == 0)
+	# ⚠️ Names that merely LOOK temp-ish must not be caught. `VAR_TEMPO` shares
+	# five characters with the prefix and is not a temp register.
+	var g := FlagStore.new()
+	g.var_set("VAR_TEMPO", 5)
+	g.flag_set("FLAG_TEMPLE_OPEN")
+	g.clear_temp_field_event_data()
+	_chk("U.07 a name that only shares a prefix fragment is untouched",
+			g.var_get("VAR_TEMPO") == 5 and g.flag_get("FLAG_TEMPLE_OPEN"))
+
+
+## --- V. specials Tier 1/2 ---
+##
+## The five closed in one pass after the Step 0 read-through: two constants that
+## are structurally invariant here, two that need the live party, and Daisy's
+## grooming.
+func _test_specials_tier12() -> void:
+	# ⚠️ **THE ONE THAT WAS A LIVE BUG.** `ShouldTryRematchBattle` is the opcode
+	# immediately after `trainerbattle_single` in the standard trainer shape, and
+	# an already-beaten trainer FALLS THROUGH to it — so halting here meant every
+	# beaten trainer in the corridor was mute. Reproduced in miniature: the
+	# already-beaten fall-through, the rematch check, then the post-battle line
+	# that must now actually be reached.
+	var flags := FlagStore.new()
+	var vm := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "ShouldTryRematchBattle"]),
+			_op("goto_if_eq", ["VAR_RESULT", "TRUE", "REMATCH"]),
+			_op("message", ["PostBattle"]), _op("end")],
+		"REMATCH": [_op("message", ["Rematch"]), _op("end")],
+	}, {"PostBattle": ["See you around!"], "Rematch": ["Let's go again!"]}), flags)
+	vm.start("A")
+	var trace := _drive(vm)
+	_chk("V.01 the rematch check no longer halts",
+			vm.pause_reason != ScriptVM.Pause.UNKNOWN_OP)
+	_chk("V.02 it answers FALSE, so the POST-BATTLE line is the one reached",
+			flags.var_get("VAR_RESULT") == 0 and trace.has("message")
+			and vm.pending_pages.size() > 0
+			and str(vm.pending_pages[0]).contains("See you around"))
+
+	# The e-Reader berry: FALSE because the item has no `.tres` at all.
+	var f2 := FlagStore.new()
+	var vm2 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "DoesPartyHaveEnigmaBerry"]), _op("end")],
+	}), f2)
+	vm2.start("A")
+	vm2.step()
+	_chk("V.03 DoesPartyHaveEnigmaBerry answers FALSE without halting",
+			vm2.pause_reason != ScriptVM.Pause.UNKNOWN_OP and f2.var_get("VAR_RESULT") == 0)
+
+	# --- the two that read the LIVE party ---
+	var f3 := FlagStore.new()
+	var vm3 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "CalculatePlayerPartyCount"]), _op("end")],
+	}), f3)
+	vm3.party = OverworldParty.build_debug_player_party()
+	vm3.start("A")
+	vm3.step()
+	_chk("V.04 CalculatePlayerPartyCount reports the REAL size (%d)"
+			% vm3.party.members.size(),
+			f3.var_get("VAR_RESULT") == vm3.party.members.size()
+			and vm3.party.members.size() > 0)
+
+	# ⚠️ THE BANDS ARE UNEVEN AND INCLUSIVE FROM BELOW. A "friendship / 42"
+	# approximation agrees at both ends and disagrees in the middle, which is
+	# exactly where Daisy's dialogue branches — so every boundary is pinned,
+	# including both sides of one of them.
+	var bands := [[255, 6], [254, 5], [200, 5], [199, 4], [150, 4],
+			[149, 3], [100, 3], [99, 2], [50, 2], [49, 1], [1, 1], [0, 0]]
+	var band_ok := true
+	for pair: Array in bands:
+		var f4 := FlagStore.new()
+		var vm4 := ScriptVM.new(_src({
+			"A": [_op("specialvar", ["VAR_RESULT", "GetLeadMonFriendship"]), _op("end")],
+		}), f4)
+		vm4.party = OverworldParty.build_debug_player_party()
+		vm4.party.members[0].friendship = int(pair[0])
+		vm4.start("A")
+		vm4.step()
+		if f4.var_get("VAR_RESULT") != int(pair[1]):
+			band_ok = false
+			print("   band mismatch: friendship %d -> %d, expected %d"
+					% [int(pair[0]), f4.var_get("VAR_RESULT"), int(pair[1])])
+	_chk("V.05 GetLeadMonFriendship reproduces all seven bands and their edges",
+			band_ok)
+
+	# An empty party must degrade to 0 rather than indexing off the end —
+	# source's own GetLeadMonIndex fallback is 0 for the same reason.
+	var f5 := FlagStore.new()
+	var vm5 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "GetLeadMonFriendship"]), _op("end")],
+	}), f5)
+	vm5.start("A")
+	vm5.step()
+	_chk("V.06 an empty party answers 0 rather than erroring",
+			vm5.pause_reason != ScriptVM.Pause.UNKNOWN_OP and f5.var_get("VAR_RESULT") == 0)
+
+	# --- Daisy's grooming: +3, clamped, and the cooldown reset ---
+	var f6 := FlagStore.new()
+	f6.var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 500)
+	f6.var_set("VAR_0x8004", 0)
+	var vm6 := ScriptVM.new(_src({
+		"A": [_op("special", ["DaisyMassageServices"]), _op("end")],
+	}), f6)
+	vm6.party = OverworldParty.build_debug_player_party()
+	vm6.party.members[0].friendship = 100
+	vm6.start("A")
+	vm6.step()
+	_chk("V.07 the massage adds source's own flat +3",
+			vm6.party.members[0].friendship == 103)
+	# ⚠️ The cooldown var is seeded to 500 by seed_new_game_flags; this is the
+	# other half of a loop the project had only built one end of.
+	_chk("V.08 and resets the massage cooldown counter",
+			f6.var_get("VAR_MASSAGE_COOLDOWN_STEP_COUNTER") == 0)
+
+	var f7 := FlagStore.new()
+	f7.var_set("VAR_0x8004", 0)
+	var vm7 := ScriptVM.new(_src({
+		"A": [_op("special", ["DaisyMassageServices"]), _op("end")],
+	}), f7)
+	vm7.party = OverworldParty.build_debug_player_party()
+	vm7.party.members[0].friendship = 254
+	vm7.start("A")
+	vm7.step()
+	_chk("V.09 and clamps at MAX_FRIENDSHIP rather than overflowing past 255",
+			vm7.party.members[0].friendship == 255)
+
+
+## --- W. the seen/caught store, and the five specials it unblocks ---
+##
+## ⚠️ **NOT the Pokédex screen** — see `Pokedex`' own header for why these five
+## were misfiled under M33.
+func _test_pokedex_store() -> void:
+	var dex := Pokedex.new()
+	dex.mark_seen(19)      # Rattata
+	dex.mark_caught(25)    # Pikachu
+	_chk("W.01 marking caught also marks SEEN, the way every source acquisition "
+			+ "site pairs them", dex.is_seen(25) and dex.is_caught(25))
+	_chk("W.02 while marking seen alone does NOT mark caught",
+			dex.is_seen(19) and not dex.is_caught(19))
+	_chk("W.03 counts are seen-vs-caught distinct (2 seen, 1 caught)",
+			dex.kanto_seen_count() == 2 and dex.kanto_caught_count() == 1)
+	# ⚠️ A 0 would be counted by nothing yet inflate the totals — a test fixture
+	# with no registry backing has national_dex_num 0.
+	dex.mark_caught(0)
+	dex.mark_seen(-1)
+	_chk("W.04 a non-positive dex number is refused, not stored",
+			dex.kanto_seen_count() == 2)
+
+	# ⚠️ **MEW IS EXCLUDED FROM EVERY KANTO COUNT** (`// -1 excludes Mew`).
+	var d2 := Pokedex.new()
+	d2.mark_caught(151)
+	_chk("W.05 Mew does not count toward the KANTO totals",
+			d2.kanto_caught_count() == 0 and d2.kanto_seen_count() == 0)
+	_chk("W.06 but it does count nationally", d2.national_caught_count() == 1)
+	# 150 is Mewtwo, the last Kanto species that IS counted — the other side of
+	# the same boundary, so an off-by-one cannot pass W.05 alone.
+	var d3 := Pokedex.new()
+	d3.mark_caught(150)
+	_chk("W.07 Mewtwo (150) DOES count toward Kanto",
+			d3.kanto_caught_count() == 1)
+
+	# `HasAllKantoMons` — 150, not 151.
+	var d4 := Pokedex.new()
+	for n in range(1, 151):
+		d4.mark_caught(n)
+	_chk("W.08 has_all_kanto is satisfied by 150 species, Mew NOT required",
+			d4.has_all_kanto() and not d4.is_caught(151))
+
+	# ⚠️ THE MEW DECREMENT in Oak's rating.
+	var d5 := Pokedex.new()
+	_chk("W.09 the rating band is the count rounded down to a ten",
+			d5.oaks_rating_band(0) == 0 and d5.oaks_rating_band(9) == 0
+			and d5.oaks_rating_band(10) == 10 and d5.oaks_rating_band(29) == 20)
+	d5.mark_caught(151)
+	_chk("W.10 -- but holding Mew subtracts one FIRST, so 10 drops a band",
+			d5.oaks_rating_band(10) == 0 and d5.oaks_rating_band(11) == 10)
+	_chk("W.11 and the decrement cannot underflow a zero count",
+			d5.oaks_rating_band(0) == 0)
+
+	# Round trip.
+	var d6 := Pokedex.new()
+	d6.mark_seen(1)
+	d6.mark_caught(4)
+	var d7 := Pokedex.new()
+	d7.from_save(d6.to_save())
+	_chk("W.12 the store round-trips through save/load",
+			d7.is_seen(1) and d7.is_caught(4) and d7.is_seen(4)
+			and not d7.is_caught(1))
+	var d8 := Pokedex.new()
+	d8.from_save({})
+	_chk("W.13 and an older save with no pokedex key loads as an empty dex",
+			d8.kanto_seen_count() == 0)
+
+	# --- the specials themselves, through real opcode dispatch ---
+	OverworldSession.reset()
+	OverworldSession.pokedex.mark_seen(19)
+	OverworldSession.pokedex.mark_caught(25)
+	OverworldSession.pokedex.mark_caught(150)
+
+	var f := FlagStore.new()
+	f.var_set("VAR_0x8004", 0)  # 0 selects the KANTO dex
+	var vm := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "GetFrlgPokedexCount"]), _op("end")],
+	}), f)
+	vm.start("A")
+	vm.step()
+	# ⚠️ **THE SIDE EFFECTS ARE THE POINT.** Its corridor caller copies
+	# VAR_0x8005/0x8006 straight into 0x8008/0x8009 and branches on those, so an
+	# implementation that returned only the national-dex bool would dispatch
+	# cleanly and still branch on a count of zero.
+	_chk("W.14 GetFrlgPokedexCount writes the SEEN count to VAR_0x8005",
+			f.var_get("VAR_0x8005") == 3)
+	_chk("W.15 and the CAUGHT count to VAR_0x8006",
+			f.var_get("VAR_0x8006") == 2)
+	_chk("W.16 and returns national-dex-enabled, which is FALSE here",
+			f.var_get("VAR_RESULT") == 0)
+
+	# `EnableNationalPokedex` flips exactly that return.
+	var vm2 := ScriptVM.new(_src({
+		"A": [_op("special", ["EnableNationalPokedex"]),
+			_op("specialvar", ["VAR_RESULT", "GetFrlgPokedexCount"]), _op("end")],
+	}), f)
+	vm2.start("A")
+	_drive(vm2)
+	_chk("W.17 EnableNationalPokedex makes the same call answer TRUE",
+			f.var_get("VAR_RESULT") == 1
+			and f.flag_get("FLAG_SYS_NATIONAL_DEX"))
+
+	var f3 := FlagStore.new()
+	var vm3 := ScriptVM.new(_src({
+		"A": [_op("specialvar", ["VAR_RESULT", "HasAllKantoMons"]), _op("end")],
+	}), f3)
+	vm3.start("A")
+	vm3.step()
+	_chk("W.18 HasAllKantoMons answers FALSE on a nearly-empty dex without halting",
+			vm3.pause_reason != ScriptVM.Pause.UNKNOWN_OP
+			and f3.var_get("VAR_RESULT") == 0)
+
+	var f4 := FlagStore.new()
+	f4.var_set("VAR_0x8004", 25)
+	var vm4 := ScriptVM.new(_src({
+		"A": [_op("special", ["GetProfOaksRatingMessage"]), _op("end")],
+	}), f4)
+	vm4.start("A")
+	vm4.step()
+	_chk("W.19 GetProfOaksRatingMessage resolves a band rather than halting",
+			vm4.pause_reason != ScriptVM.Pause.UNKNOWN_OP
+			and f4.var_get("VAR_RESULT") == 20)
+
+	# ⚠️ THE WRITE POINT. A store nobody writes to answers 0 forever, which is
+	# the same silent-wrong-answer class this whole pass exists to remove — so
+	# the `givemon` opcode is driven for real here, not just the store's own API.
+	OverworldSession.reset()
+	var f5 := FlagStore.new()
+	var vm5 := ScriptVM.new(_src({
+		"A": [_op("givemon", ["SPECIES_BULBASAUR", "5"]), _op("end")],
+	}), f5)
+	vm5.party = OverworldSession.player_party()
+	vm5.start("A")
+	vm5.step()
+	_chk("W.20 a GIFT mon is credited to the dex, not just a caught one "
+			+ "(source sets both flags in GiveMonToPlayer, on acquisition)",
+			OverworldSession.pokedex.is_caught(1)
+			and OverworldSession.pokedex.kanto_caught_count() == 1)
+	OverworldSession.reset()

@@ -1,11 +1,11 @@
-[gd_resource type="TileSet" format=3]
+[gd_resource type="TileSet" format=3 uid="uid://2umu86pdsbam"]
 
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_ground.png" id="1_23yrr"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_objects.png" id="2_afvfn"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg_primary_overhangs.png" id="3_klemx"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_ground.png" id="4_m1ho6"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_objects.png" id="5_0rdii"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_overhangs.png" id="6_sb3jy"]
+[ext_resource type="Texture2D" uid="uid://bjbnd7cnk06w4" path="res://assets/map_atlases/general_frlg_primary_ground.png" id="1_23yrr"]
+[ext_resource type="Texture2D" uid="uid://m2x87tk880i8" path="res://assets/map_atlases/general_frlg_primary_objects.png" id="2_afvfn"]
+[ext_resource type="Texture2D" uid="uid://bg8w1ho3q8crl" path="res://assets/map_atlases/general_frlg_primary_overhangs.png" id="3_klemx"]
+[ext_resource type="Texture2D" uid="uid://b6pxx8836so2" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_ground.png" id="4_m1ho6"]
+[ext_resource type="Texture2D" uid="uid://c7v7w4oisll5m" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_objects.png" id="5_0rdii"]
+[ext_resource type="Texture2D" uid="uid://c5bim33oq1tr2" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_secondary_overhangs.png" id="6_sb3jy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wvk8s"]
 texture = ExtResource("1_23yrr")

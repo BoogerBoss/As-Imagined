@@ -1,10 +1,10 @@
 [gd_scene format=4 uid="uid://bpwggumfh0gxc"]
 
-[ext_resource type="TileSet" path="res://assets/map_tilesets/general_frlg__pallet_town_frlg.tres" id="1_6pweh"]
-[ext_resource type="Script" path="res://scripts/overworld/entities/npc.gd" id="2_17clq"]
-[ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="3_jcs8g"]
-[ext_resource type="Script" path="res://scripts/overworld/entities/trigger.gd" id="4_w3gw5"]
-[ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="5_4ax51"]
+[ext_resource type="TileSet" uid="uid://2umu86pdsbam" path="res://assets/map_tilesets/general_frlg__pallet_town_frlg.tres" id="1_6pweh"]
+[ext_resource type="Script" uid="uid://oddtwkyhpfs7" path="res://scripts/overworld/entities/npc.gd" id="2_17clq"]
+[ext_resource type="Script" uid="uid://dhuckejefgvqa" path="res://scripts/overworld/entities/warp.gd" id="3_jcs8g"]
+[ext_resource type="Script" uid="uid://cxo14g5ogaslx" path="res://scripts/overworld/entities/trigger.gd" id="4_w3gw5"]
+[ext_resource type="Script" uid="uid://bhf8kupxvxas5" path="res://scripts/overworld/entities/sign.gd" id="5_4ax51"]
 
 [node name="PalletTown_Frlg" type="Node2D" unique_id=1313972344]
 

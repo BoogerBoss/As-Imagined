@@ -70,6 +70,10 @@ static func build_payload(map_name: String, cell: Vector2i, facing: int,
 		"bag": OverworldSession.bag.to_save(),
 		"wallet": OverworldSession.wallet.to_save(),
 		"respawn": OverworldSession.respawn.to_save(),
+		# [Specials Tier 3] Seen/caught. Absent from older saves, which
+		# `from_save` reads as an empty dex rather than failing — the same
+		# forward-compatibility shape `object_events` below already uses.
+		"pokedex": OverworldSession.pokedex.to_save(),
 		"party": OverworldSession.player_party().to_save(),
 		# [M27G G9] Script-driven object-event changes — source's own
 		# `objectEventTemplates` equivalent. Absent from older saves, which
@@ -147,6 +151,7 @@ static func apply(payload: Dictionary) -> int:
 	OverworldSession.reset()
 	OverworldSession.identity.from_save(payload.get("identity", {}))
 	OverworldSession.flags.from_save(payload.get("flags", {}))
+	OverworldSession.pokedex.from_save(payload.get("pokedex", {}))
 	OverworldSession.bag.from_save(payload.get("bag", {}))
 	OverworldSession.wallet.from_save(payload.get("wallet", {}))
 	OverworldSession.respawn.from_save(payload.get("respawn", {}))

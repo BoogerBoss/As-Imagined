@@ -1,0 +1,100 @@
+[gd_resource type="Resource" script_class="EncounterTable" format=3 uid="uid://dn24rjch2snt5"]
+
+[ext_resource type="Script" uid="uid://dsojjbpkg576a" path="res://scripts/overworld/encounter_table.gd" id="1_pewx5"]
+[ext_resource type="Script" uid="uid://b57harpvahjhp" path="res://scripts/overworld/encounter_slot.gd" id="2_qsimm"]
+
+[sub_resource type="Resource" id="Resource_b3rmn"]
+script = ExtResource("2_qsimm")
+dex = 19
+min_level = 3
+max_level = 3
+
+[sub_resource type="Resource" id="Resource_7upex"]
+script = ExtResource("2_qsimm")
+dex = 16
+min_level = 3
+max_level = 3
+
+[sub_resource type="Resource" id="Resource_o0h36"]
+script = ExtResource("2_qsimm")
+dex = 19
+min_level = 4
+max_level = 4
+
+[sub_resource type="Resource" id="Resource_xju2d"]
+script = ExtResource("2_qsimm")
+dex = 16
+min_level = 4
+max_level = 4
+
+[sub_resource type="Resource" id="Resource_sfrol"]
+script = ExtResource("2_qsimm")
+dex = 19
+min_level = 2
+max_level = 2
+
+[sub_resource type="Resource" id="Resource_p8lq6"]
+script = ExtResource("2_qsimm")
+dex = 16
+min_level = 2
+max_level = 2
+
+[sub_resource type="Resource" id="Resource_gcoyo"]
+script = ExtResource("2_qsimm")
+dex = 19
+min_level = 5
+max_level = 5
+
+[sub_resource type="Resource" id="Resource_65aru"]
+script = ExtResource("2_qsimm")
+dex = 16
+min_level = 5
+max_level = 5
+
+[sub_resource type="Resource" id="Resource_1t200"]
+script = ExtResource("2_qsimm")
+dex = 10
+min_level = 4
+max_level = 4
+
+[sub_resource type="Resource" id="Resource_k1y0l"]
+script = ExtResource("2_qsimm")
+dex = 13
+min_level = 4
+max_level = 4
+
+[sub_resource type="Resource" id="Resource_r7tog"]
+script = ExtResource("2_qsimm")
+dex = 10
+min_level = 5
+max_level = 5
+
+[sub_resource type="Resource" id="Resource_3ds6v"]
+script = ExtResource("2_qsimm")
+dex = 13
+min_level = 5
+max_level = 5
+
+[sub_resource type="Resource" id="Resource_xkwqh"]
+script = ExtResource("2_qsimm")
+dex = 13
+min_level = 4
+max_level = 4
+
+[sub_resource type="Resource" id="Resource_docy4"]
+script = ExtResource("2_qsimm")
+dex = 10
+min_level = 5
+max_level = 5
+
+[sub_resource type="Resource" id="Resource_fhvqo"]
+script = ExtResource("2_qsimm")
+dex = 13
+min_level = 5
+max_level = 5
+
+[resource]
+script = ExtResource("1_pewx5")
+map_name = "Route2_Frlg"
+encounter_rate = 17
+slots = Array[ExtResource("2_qsimm")]([SubResource("Resource_b3rmn"), SubResource("Resource_7upex"), SubResource("Resource_o0h36"), SubResource("Resource_xju2d"), SubResource("Resource_sfrol"), SubResource("Resource_p8lq6"), SubResource("Resource_gcoyo"), SubResource("Resource_65aru"), SubResource("Resource_1t200"), SubResource("Resource_k1y0l"), SubResource("Resource_r7tog"), SubResource("Resource_3ds6v"), SubResource("Resource_xkwqh"), SubResource("Resource_docy4"), SubResource("Resource_fhvqo")])

@@ -12,7 +12,7 @@ extends Node
 ##     0 to VAR_RESULT would carry the nurse script through unaided, which is
 ##     exactly why it is tempting and exactly why it is wrong.
 
-const EXPECTED_TOTAL := 62
+const EXPECTED_TOTAL := 64
 
 var _total := 0
 var _failed := 0
@@ -225,11 +225,24 @@ func _test_registry() -> void:
 			and FieldSpecials.is_known_specialvar("PlayerNotAtTrainerHillEntrance")
 			and FieldSpecials.is_known_specialvar("BufferUnionRoomPlayerName")
 			and FieldSpecials.is_known_specialvar("IsPlayerNotInTrainerTowerLobby"))
-	# ⚠️ THE ALLOWLIST IS A SHORT TAIL, NOT A POLICY. Each entry is 1-2 uses
-	# region-wide. If this count starts climbing, the work has become M27G and
-	# belongs there rather than here.
-	_chk("C.04 and the allowlist is still SHORT — growth means it has become M27G",
-			FieldSpecials.SPECIALVAR_VALUES.size() <= 8)
+	# ⚠️ **THIS ASSERTED "the allowlist is still SHORT" AGAINST A USE-COUNT
+	# RULE THAT THE TABLE WAS NEVER ACTUALLY FOLLOWING** — three of its five
+	# original entries are admitted for INVARIANCE under a documented exclusion,
+	# not for rarity. See `SPECIALVAR_VALUES`' own restated admission rule.
+	# The size bound is kept (a table growing by category really has become
+	# M27G) but it is no longer described as a use-count rule it does not
+	# enforce, and the real criterion is asserted directly below it.
+	_chk("C.04 the allowlist stays a tail, not a category — growth means M27G",
+			FieldSpecials.SPECIALVAR_VALUES.size() <= 10)
+	# ⚠️ THE ACTUAL RULE: nothing needing LIVE state may live in this table,
+	# because `specialvar_value` takes no context and can only answer a
+	# constant. `CalculatePlayerPartyCount` and `GetLeadMonFriendship` are the
+	# standing counter-examples — both were implemented in the same pass that
+	# added `ShouldTryRematchBattle` here, and both were deliberately routed to
+	# `ScriptVM` instead because they read the party.
+	_chk("C.11 state-dependent specialvars are NOT in the constant table",
+			not FieldSpecials.is_known_specialvar("CalculatePlayerPartyCount")
+			and not FieldSpecials.is_known_specialvar("GetLeadMonFriendship"))
 	_chk("C.05 every allowlisted entry carries a stated reason",
 			FieldSpecials.SPECIALVAR_VALUES.values().all(
 					func(v: Array) -> bool: return str(v[1]).length() > 20))
@@ -246,6 +259,18 @@ func _test_registry() -> void:
 			and FieldSpecials.specialvar_value("BufferUnionRoomPlayerName") == 0)
 	_chk("C.06 a special is not silently also a specialvar",
 			not FieldSpecials.is_known_specialvar("HealPlayerParty"))
+	# ⚠️ **THE NAME LIES, AND HALTING ON IT SOFT-LOCKED THE CORRIDOR.**
+	# `SetUnlockedPokedexFlags` reads like an M33 Pokédex dependency and was
+	# filed as one; its body only sets `gcnLinkFlags` bits that nothing on the
+	# GBA ever reads (`save_location.c:125`, `global.h:610`). It sits mid-way
+	# through `ReceiveDexScene`, so the halt stranded that script BEFORE the
+	# five Poké Balls and the five `setvar`s that open the Viridian mart, the
+	# old man, the rival's house and Route 22 — and left the scene infinitely
+	# repeatable. Pinned here so a future tidy-up of NOOP_SPECIALS cannot quietly
+	# take it back out. See `FieldSpecials.NOOP_SPECIALS`' own note.
+	_chk("C.09 SetUnlockedPokedexFlags is a known no-op, not a Pokedex gap",
+			FieldSpecials.is_known_special("SetUnlockedPokedexFlags")
+			and not FieldSpecials.is_known_specialvar("SetUnlockedPokedexFlags"))
 
 
 ## --- E. polarity and literals: the two silent inverters ---

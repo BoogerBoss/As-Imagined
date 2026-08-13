@@ -118,6 +118,71 @@ def iter_inc_files():
                 yield os.path.join(root, f)
 
 
+EQU_RE = re.compile(r"^[ \t]*\.equ[ \t]+(\w+)[ \t]*,[ \t]*(\S+?),?[ \t]*(?:@.*)?$", re.M)
+"""``.equ NAME, VALUE`` — an assembler alias.
+
+⚠️ **THESE WERE BEING DROPPED ENTIRELY, AND THE FAILURE WAS SILENT AND
+WRONG-ANSWERED RATHER THAN LOUD.** ``compile_body`` skips every line starting
+with ``.`` (bar ``.string``/``.2byte``), so the definitions vanished — but the
+USES did not. The alias reached the VM as a bare token, and
+``ScriptVM._literal`` answers **0** for a token it has no case for. Zero is a
+valid number, so nothing errors and nothing halts; the comparison just quietly
+does the wrong thing. That is the exact bug class ``ScriptAudit`` (M27S) was
+built to make loud, and the audit HAD been reporting every one of these — they
+were read as unresolved *constants* needing 42 new ``match`` cases, when they
+are unresolved *aliases* needing one pass here.
+
+What the 42 real ones cost, worst first:
+
+* **Numeric aliases became 0.** ``HELIX_FOSSIL, 1`` / ``DOME_FOSSIL, 2`` /
+  ``OLD_AMBER, 3`` all collapsed to the same value, so every fossil choice in
+  the Cinnabar lab revived the same fossil. ``MAGIKARP_PRICE, 500`` -> free.
+  ``REQUIRED_SEEN_MONS, 10`` / ``REQUIRED_CAUGHT_MONS, 30|40|50`` /
+  ``REQUIRED_OWNED_MONS, 20`` -> 0, so every Oak's-aide dex gate on Routes 2,
+  10, 11, 15 and 16 passed unconditionally.
+* **``VAR_0x800x`` aliases broke ACROSS names.** Vermilion Gym's
+  ``SWITCH1_ID``/``SWITCH2_ID``/``TRASH_CAN_ID`` and Five Island's
+  ``PLAYER_X_POS``/``PLAYER_Y_POS`` name the argument vars the engine itself
+  writes: the special wrote ``VAR_0x8004`` and the script read ``SWITCH1_ID``,
+  which is a different slot. The trash-can switch puzzle could not work.
+* **``VAR_TEMP_*``/``FLAG_TEMP_*`` aliases got their own storage slot.**
+  ``PLAYER_STARTER_NUM``, ``RIVAL_STARTER_ID``, ``SIGN_LADY_READY``,
+  ``SHOWED_OAK_COMPLETE_DEX``, ``RECEIVED_TOWN_MAP``. Self-consistent within
+  one file, so these worked by accident — right up until anything else touched
+  the real var. ⚠️ They ALSO dodged temp-scope clearing, which is its own bug
+  and is fixed separately in ``FlagStore.clear_temp_field_event_data``.
+
+⚠️ **SCOPED PER FILE, AND THAT IS LOAD-BEARING, NOT TIDINESS.**
+``REQUIRED_CAUGHT_MONS`` is defined three times with three DIFFERENT values —
+30 in ``Route11_EastEntrance_2F``, 40 in ``Route16_NorthEntrance_2F``, 50 in
+``Route15_WestEntrance_2F``. One global table would silently give two of those
+three routes the wrong gate. Per-file also reproduces the real assembler here
+exactly: measured across the corpus, **every** ``.equ`` sits in its file's
+preamble ahead of the first label, **no** alias is used in a file that does not
+define it, and **no** alias's value is itself an alias — all three verified
+before this was written, and all three asserted below so a future corpus edit
+that breaks one fails the build instead of the game.
+"""
+
+
+def parse_equ(src):
+    """Every ``.equ`` alias defined in one file, as {name: value}."""
+    return {m.group(1): m.group(2) for m in EQU_RE.finditer(src)}
+
+
+def resolve_equ(tokens, equ):
+    """Substitute aliases in an argument list.
+
+    ⚠️ Whole-token replacement, never textual: a label such as
+    ``Route4_EventScript_MAGIKARP_PRICE_Sign`` merely CONTAINS an alias name
+    and must not be rewritten. Args arrive already split by ``parse_args``, so
+    an exact dictionary hit is the whole test.
+    """
+    if not equ:
+        return tokens
+    return [equ.get(t, t) for t in tokens]
+
+
 def parse_args(rest):
     """Split an operand list, respecting quoted strings."""
     out, cur, depth, q = [], "", 0, False
@@ -258,8 +323,12 @@ def expand_macros(body, macros):
     return body
 
 
-def compile_body(body):
+def compile_body(body, equ=None):
     """Returns (ops, data) -- the opcodes, and any `.2byte` data block.
+
+    `equ` is the defining file's own `.equ` alias table (see `EQU_RE`), applied
+    to every argument this label compiles. Optional so the existing callers and
+    tests that pass a bare body keep working unchanged.
 
     ⚠️ **A LABEL CAN BE BOTH.** A mart's stock list is DATA that sits under an
     ordinary label, and in FRLG's own asm it is followed by leftover script
@@ -298,11 +367,13 @@ def compile_body(body):
                 # `while (itemList[i])` (SetShopItemsForSale, shop.c:384), so
                 # emitting it would put a phantom row on every shelf.
                 if val and val != "ITEM_NONE":
-                    data.append(val)
+                    data.append(resolve_equ([val], equ)[0])
             continue
         parts = line.split(None, 1)
         op = parts[0]
         args = parse_args(parts[1]) if len(parts) > 1 else []
+
+        args = resolve_equ(args, equ)
 
         if op == "msgbox":
             text_label = args[0] if args else ""
@@ -315,15 +386,91 @@ def compile_body(body):
     return ops, data
 
 
+def check_equ_assumptions(equ_defs, sources):
+    """The three properties per-file `.equ` scoping relies on. Returns problems.
+
+    ⚠️ **ASSERTED, NOT ASSUMED.** Each was measured true across the corpus
+    before `resolve_equ` was written; each would fail SILENTLY and produce a
+    wrong number rather than an error if a future hand edit broke it, which is
+    the whole failure mode this fix exists to end. Same discipline as the
+    `pokemart` stock check and the `normalize()` collision assert below.
+    """
+    problems = []
+    owner = {}
+    for rel, equ in equ_defs.items():
+        for name in equ:
+            owner.setdefault(name, []).append(rel)
+
+    # 1. An alias must only be used in the file that defines it. Per-file
+    #    scoping is what lets REQUIRED_CAUGHT_MONS be 30, 40 and 50 in three
+    #    different files; a cross-file use would silently resolve to nothing.
+    for rel, src in sources.items():
+        mine = equ_defs.get(rel, {})
+        for name in owner:
+            if name in mine:
+                continue
+            if re.search(r"\b%s\b" % re.escape(name), src):
+                problems.append(
+                    "%s uses alias %s, which only %s defines"
+                    % (rel, name, "/".join(owner[name])))
+
+    # 2. No alias may resolve to another alias -- `resolve_equ` is one pass.
+    for rel, equ in equ_defs.items():
+        for name, val in equ.items():
+            if val in equ:
+                problems.append(
+                    "%s: .equ %s resolves to alias %s, and resolution is "
+                    "single-pass" % (rel, name, val))
+
+    # 3. An alias must not shadow a name that is ALREADY a real constant, or
+    #    substitution would rewrite a legitimate use of that constant elsewhere
+    #    in the same file.
+    #
+    #    ⚠️ **TESTED AGAINST THE REAL TABLES, NOT A NAME PREFIX — the first
+    #    draft of this guard used `name.startswith(("VAR_", "FLAG_", "ITEM_",
+    #    "MAP_", "TRAINER_"))` and immediately failed the build on
+    #    `.equ TRAINER_VISITING, VAR_TEMP_1` (SevenIsland_House_Room1), which is
+    #    a perfectly legal alias that merely shares a prefix.** Two things make
+    #    prefix-shadowing structurally harmless anyway: `resolve_equ` runs
+    #    BEFORE `_canonicalise_trainers`, so the alias token is gone before
+    #    anything tries to read it as a constant, and `is_trainer_constant`
+    #    answers False for it. A guard that cries wolf on legal input gets
+    #    deleted by the next session, so it has to test the real property.
+    known = set()
+    for fname in ("item_name_to_id.json", "species_name_to_id.json",
+                  "move_name_to_id.json"):
+        fpath = os.path.join(PROJECT, "data", fname)
+        if os.path.exists(fpath):
+            known.update(json.load(open(fpath, encoding="utf-8")).keys())
+    for rel, equ in equ_defs.items():
+        for name in equ:
+            if name in known or is_trainer_constant(name):
+                problems.append(
+                    "%s: .equ %s shadows a real constant of the same name"
+                    % (rel, name))
+    return problems
+
+
 def main():
     scripts = {}
     data_lists = {}
+    equ_defs = {}
+    sources = {}
     for path in iter_inc_files():
         try:
             src = open(path, encoding="utf-8", errors="ignore").read()
         except OSError:
             continue
         macros, macro_spans = extract_macros(src)
+        # ⚠️ Read from the WHOLE file, not just the preamble. Every `.equ` in
+        # the real corpus does sit ahead of the first label (asserted below),
+        # but scanning the whole file means a hand-authored one placed further
+        # down still resolves rather than silently reverting to the 0-answering
+        # behaviour this fix exists to remove.
+        equ = parse_equ(src)
+        rel = os.path.relpath(path, REF)
+        equ_defs[rel] = equ
+        sources[rel] = src
         # Label boundaries are computed against the ORIGINAL text (so match
         # offsets stay valid), but each label's own BODY is sliced out of a
         # copy with every macro definition blanked -- otherwise a macro
@@ -336,12 +483,23 @@ def main():
             start = m.end()
             end = marks[i + 1].start() if i + 1 < len(marks) else len(src)
             body = expand_macros(src_clean[start:end], macros)
-            ops, data = compile_body(body)
+            ops, data = compile_body(body, equ)
             if data:
                 data_lists.setdefault(name, data)
             if ops is None or not ops:
                 continue
             scripts.setdefault(name, ops)
+
+    # ⚠️ BEFORE writing anything. A broken assumption here means every alias
+    # downstream of it compiled to the wrong number, so the output is not worth
+    # keeping.
+    equ_problems = check_equ_assumptions(equ_defs, sources)
+    if equ_problems:
+        print("gen_map_scripts: %d .equ assumption(s) broken:" % len(equ_problems),
+              file=sys.stderr)
+        for p in equ_problems[:20]:
+            print("   " + p, file=sys.stderr)
+        return 1
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:

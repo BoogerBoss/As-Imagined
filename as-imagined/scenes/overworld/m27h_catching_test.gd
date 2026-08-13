@@ -14,7 +14,7 @@ extends Node
 ##   * a catch is NOT a win — CAUGHT is its own outcome, and conflating them
 ##     would pay prize money and could set a defeated-trainer flag.
 
-const EXPECTED_TOTAL := 56
+const EXPECTED_TOTAL := 60
 
 var _total := 0
 var _failed := 0
@@ -57,6 +57,10 @@ func _ready() -> void:
 	_test_outcome()
 	_test_wiring()
 	_test_fleeing()
+	# ⚠️ AWAITED. This one suspends (it awaits the real `_on_run_pressed`, which
+	# now awaits its own message drain), so calling it bare would let `_ready`
+	# race ahead to Z.99 and count its four assertions as missing.
+	await _test_flee_message()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -423,3 +427,91 @@ func _test_fleeing() -> void:
 	bm.try_flee(me, foe, _rng(1))
 	_chk("F.11 every attempt is reported for the log", reported.size() == 1)
 	bm.free()
+
+
+## --- G. the flee message reaches the box ---
+func _test_flee_message() -> void:
+	# ⚠️ **GATED ON THE BATTLE SCREEN BEING LOADABLE AT ALL, which is not a
+	# formality here.** `battle_screen_shared.gd` depends on `AnimBehaviors`, and
+	# a parse error anywhere in that file makes this whole scene fail to
+	# instantiate — so an unrelated in-flight edit to the battle-animation layer
+	# would otherwise turn these four assertions into a phantom failure in the
+	# CATCHING suite, pointing at the wrong author and the wrong file. Counted
+	# into `_gated` so `Z.99`'s arithmetic still balances, which is the same
+	# shape `m27a_step_resolver_test` uses when `map_scripts.json` is absent.
+	var packed: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	var bs: Control = packed.instantiate() as Control if packed != null else null
+	if bs == null:
+		print("m27h_catching_test: G.01-G.04 GATED — battle screen would not "
+				+ "instantiate (a dependency of battle_screen_shared.gd does not "
+				+ "parse); the flee-message assertions did not run")
+		_gated += 4
+		return
+	bs.overlay_mode = true
+
+	# ⚠️ A REAL battle, not a bare manager. `_on_run_pressed` reads
+	# `get_active_player_mon()`/`get_active_opponent_mon()`, and on a manager with
+	# no parties both answer null — `try_flee(null, null)` then fails and the
+	# code silently takes the FAILURE branch, so G.02 would be pinning the wrong
+	# arm of the very `if` it exists to test.
+	var bm := BattleManager.new()
+	add_child(bm)
+	var me := _target(45, 20, 1.0)
+	var foe := _target(45, 20, 1.0)
+	bm.start_battle(me, foe)
+	# ⚠️ AFTER `start_battle`, not before: switch-in runs `_reset_mon_stats`,
+	# which restores `original_speed` over anything assigned earlier — the same
+	# restore that once silently undid a mid-battle level-up. Setting it first
+	# left both mons at their real speeds, the escape roll then failed, and the
+	# test was quietly pinning the FAILURE branch.
+	me.speed = 200
+	foe.speed = 1
+	bm.is_wild_battle = true
+	bs._bm = bm
+	# ⚠️ `_return_to_overworld_if_pending` short-circuits on `_is_autoplay_run`,
+	# and this suite runs under `--autoplay` — so without clearing it the emit
+	# path never executes and G.02 would be testing the harness, not the fix.
+	# Safe: the drain still bypasses via `not is_inside_tree()`, which is the
+	# behaviour G.01 is actually pinning.
+	bs._is_autoplay_run = false
+
+	var outcomes: Array[int] = []
+	bs.battle_finished.connect(func(o: int) -> void: outcomes.append(o))
+
+	# A guaranteed escape: far faster, so `try_flee` succeeds outright.
+	bs._pending_beats.clear()
+	await bs._on_run_pressed()
+	_chk("G.01 a successful escape hands its beats to the drain rather than "
+			+ "leaving them queued for a screen that is about to be freed",
+			bs._pending_beats.is_empty())
+	# ⚠️ The diagnostic names the setup, because every way this assertion can
+	# fail spuriously is a setup problem that looks identical from outside: a
+	# null active mon, a non-wild manager, or a restored speed all just take the
+	# FAILURE branch silently.
+	_chk("G.02 and still reports RAN, so the drain did not swallow the outcome "
+			+ "(got %s; wild=%s actives=%s/%s)"
+			% [str(outcomes), str(bm.is_wild_battle),
+			str(bm.get_active_player_mon() != null),
+			str(bm.get_active_opponent_mon() != null)],
+			outcomes.size() == 1 and outcomes[0] == BattleOutcome.RAN)
+
+	# ⚠️ THE TRAINER REFUSAL HAD THE IDENTICAL BUG and was the least visible of
+	# the three: nothing drains between the press and the player's next action,
+	# so source's own "No! There's no running from a Trainer battle!" never
+	# appeared and the button looked inert.
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2.start_battle(_target(45, 20, 1.0), _target(45, 20, 1.0))
+	bm2.is_wild_battle = false
+	bs._bm = bm2
+	outcomes.clear()
+	bs._pending_beats.clear()
+	await bs._on_run_pressed()
+	_chk("G.03 the trainer refusal is drained too", bs._pending_beats.is_empty())
+	_chk("G.04 and produces no outcome — the battle continues untouched",
+			outcomes.is_empty())
+
+	bs._bm = null
+	bm.queue_free()
+	bm2.queue_free()
+	bs.free()

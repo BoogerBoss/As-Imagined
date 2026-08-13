@@ -32,7 +32,33 @@ const START_VELOCITY := -5
 const SHEET := "res://assets/sprites/overworld/field_effects/emotion_exclamation.png"
 
 ## One tile above the entity's own origin (`sprite->y = objEventSprite->y - 16`).
+##
+## ⚠️ Y WAS ALREADY CORRECT and is deliberately untouched. An entity's sprite is
+## drawn at `y = CELL - size.y` (= -16 for a 16x32 person), so it spans
+## `node.y - 16 .. node.y + 16` and its visual CENTRE is exactly `node.y` — which
+## is what source's `objEventSprite->y` means too. The resulting bubble overlaps
+## the top 8px of the head, and that is source's own look, not a bug.
 const Y_ABOVE := -16.0
+
+## ⚠️ **[Bugfix, live-reported: "the exclamation is not centered over the
+## character".] HALF A TILE RIGHT, BECAUSE A NODE'S POSITION IS THE TILE'S
+## TOP-LEFT AND ITS SPRITE'S CENTRE IS NOT.**
+##
+## `OverworldEntity.make_sprite` offsets the frame by `(CELL - size.x) * 0.5`, so
+## the visual centre lands at `node.x + CELL/2` — and that holds for BOTH frame
+## widths in the corpus: a 16-wide frame spans `node.x .. node.x+16` (centre +8)
+## and a 32-wide one spans `node.x-8 .. node.x+24` (centre +8 as well). This icon
+## is `centered = true`, so without the shift its centre sat on the tile's LEFT
+## EDGE — 8px, half a tile, to the left of the character on every emote in the
+## game, player and NPC alike (both paths share `_sync`).
+##
+## Source has no equivalent term because it never needed one: `sprite->x =
+## objEventSprite->x` compares two OAM positions that are BOTH already centred by
+## their own `centerToCornerVec`. The offset exists here purely because this
+## project's node origin is a tile corner rather than a sprite centre — a
+## mechanism difference, corrected at the seam rather than by moving every
+## entity's origin.
+const X_CENTRE := float(OverworldEntity.CELL) * 0.5
 
 var _follow: Node2D = null
 var _elapsed := 0.0
@@ -85,4 +111,4 @@ func _process(delta: float) -> void:
 func _sync() -> void:
 	if _follow == null or not is_instance_valid(_follow):
 		return
-	position = _follow.position + Vector2(0.0, Y_ABOVE + float(_offset))
+	position = _follow.position + Vector2(X_CENTRE, Y_ABOVE + float(_offset))

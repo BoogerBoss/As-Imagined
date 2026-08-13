@@ -196,6 +196,70 @@ func seed_new_game_flags() -> void:
 	var_set("VAR_MASSAGE_COOLDOWN_STEP_COUNTER", 500)
 
 
+## The five non-range flags `ClearTempFieldEventData` clears BY NAME alongside
+## the two ranges (`event_data.c:62-66`). Kept as data rather than five calls so
+## the list stays greppable next to the ranges it accompanies.
+##
+## ⚠️ Some of these name systems this project has not built (Strength is M27E,
+## the Union Room is permanently excluded). Clearing a flag nothing sets yet is
+## a harmless no-op — `flag_clear` erases a key that need not exist — and
+## porting the list whole means the behaviour is already right on the day those
+## systems land, rather than being a gap nobody remembers to close.
+const TEMP_NAMED_CLEARS: PackedStringArray = [
+	"FLAG_SYS_ENC_UP_ITEM",
+	"FLAG_SYS_ENC_DOWN_ITEM",
+	"FLAG_SYS_USE_STRENGTH",
+	"FLAG_SYS_CTRL_OBJ_DELETE",
+	"FLAG_NURSE_UNION_ROOM_REMINDER",
+]
+
+
+## Source: `ClearTempFieldEventData` (`event_data.c:58`), called on every warp
+## (`LoadMapFromWarp`) and every connection crossing
+## (`LoadMapFromCameraTransition`, `overworld.c:889, 954`).
+##
+## ⚠️ **THIS NEVER EXISTED IN THIS PROJECT, AND TWO PLACES IN THE CODEBASE
+## ALREADY DOCUMENTED IT AS IF IT DID.** `PalletTownEvents.VAR_SCENE`'s own
+## comment reads "`VAR_TEMP_*` deliberately: a temp var is cleared on map
+## change, which is right for a one-conversation beat"; `NameUsage`'s
+## `SHARED_PREFIXES` justifies its whole exemption with "chosen precisely
+## BECAUSE a temp var clears on map change". Neither was true — `VAR_TEMP_*`
+## and `FLAG_TEMP_*` were ordinary persistent entries that nothing ever
+## cleared, so every "one-conversation beat" in the corridus stayed latched for
+## the rest of the save. Measured reach: 51 temp registers are live in the
+## compiled corpus (`VAR_TEMP_1` alone in 641 places).
+##
+## ⚠️ **THE RANGE TEST IS A NAME-PREFIX TEST, AND THAT IS EXACT HERE RATHER
+## THAN AN APPROXIMATION.** Source clears two ADDRESS ranges — flags
+## `0x0..0x1F` and vars `0x4000..0x400F`. This project has no addresses, only
+## names, so the two would diverge if any `*_TEMP_*` name sat outside its
+## range or any in-range register were spelled differently. Both were checked
+## against the real headers before this was written: all **36** `FLAG_TEMP_*`
+## and all **23** `VAR_TEMP_*` defines resolve inside their range, and nothing
+## else does. That matters because the corpus really does use the NAMED
+## spellings as well as the numbered ones — `FLAG_TEMP_HIDE_FOLLOWER`,
+## `FLAG_TEMP_SKIP_GABBY_INTERVIEW`, `VAR_TEMP_CHALLENGE_STATUS` — and those
+## are header `#define`s rather than `.equ` aliases, so `gen_map_scripts.py`'s
+## own alias pass never touches them and they arrive here as distinct names.
+## An enumerated 16+32 list would have silently missed all eight of them.
+func clear_temp_field_event_data() -> void:
+	for name in _flags.keys():
+		if str(name).begins_with(TEMP_FLAG_PREFIX):
+			_flags.erase(name)
+	for name in _vars.keys():
+		if str(name).begins_with(TEMP_VAR_PREFIX):
+			_vars.erase(name)
+	for f in TEMP_NAMED_CLEARS:
+		flag_clear(f)
+
+
+## The two prefixes `clear_temp_field_event_data` treats as temp-scoped. Public
+## so the audit tooling and tests name the same rule this does rather than
+## re-spelling it.
+const TEMP_FLAG_PREFIX := "FLAG_TEMP_"
+const TEMP_VAR_PREFIX := "VAR_TEMP_"
+
+
 ## The flag name recording that `trainer_key` has been beaten.
 ##
 ## Static so a caller can name the flag without holding a store — the same shape

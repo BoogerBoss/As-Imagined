@@ -335,8 +335,37 @@ def parse_frame_data(base_defines):
                 seq.append({"jump": eval_expr(args[0], resolver)})
             elif kind == "AFFINEANIMCMD_LOOP":
                 seq.append({"loop": eval_expr(args[0], resolver)})
-            elif kind == "AFFINEANIMCMD_END":
+            elif kind in ("AFFINEANIMCMD_END", "AFFINEANIMCMD_END_ALT"):
+                # ⚠️ **[M36F] `END_ALT` IS THE SAME OPCODE AS `END`, AND
+                # DROPPING IT COST 10 SEQUENCES THEIR TERMINATOR.**
+                # `AFFINEANIMCMD_END_ALT(_val)` expands to
+                # `{.end = {.type = AFFINEANIMCMDTYPE_END, .val = _val}}`
+                # (`include/sprite.h:134`) — the SAME 0x7FFF type `END` uses,
+                # dispatched to the same `AffineAnimCmd_end`. The `.val`
+                # payload is READ NOWHERE in the entire reference (grep:
+                # 0 hits for `.end.val`), and all 10 battle-anim uses pass
+                # the same literal 1, so it carries no behaviour to model.
+                # Emitting a plain "end" is the faithful port, not a
+                # flattening.
                 seq.append("end")
+            else:
+                # ⚠️ **NO SILENT DROPS. THIS `else` IS THE POINT OF THE FIX,
+                # NOT THE BRANCH ABOVE IT.**
+                # This chain had no fallthrough, so an unrecognised macro
+                # produced NOTHING and said NOTHING — which is exactly how
+                # `END_ALT` removed a terminator from 10 sequences without a
+                # single warning, and how any future upstream macro would do
+                # the same. Same kill-the-bug-class discipline as
+                # `gen_trainer_data`'s `AI_TOKEN_MAP` `SystemExit` (which
+                # replaced a `.get(key, 0)` that had silently zeroed
+                # `CHECKVIABILITY` on 80 trainers) and `normalize()`'s
+                # collision assert. Fail the build and name the macro.
+                raise SystemExit(
+                    "gen_battle_anim_meta: unrecognised animation command "
+                    "macro %r in a sequence body -- refusing to emit a "
+                    "silently-truncated corpus. Add a branch above, or add "
+                    "it to IGNORED_CMD_MACROS if it genuinely carries no "
+                    "runtime meaning." % kind)
         return seq
 
     for path in sorted(glob.glob(ANIM_C_GLOB)):
