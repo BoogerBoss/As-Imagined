@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/battle/anims/vortex_preview.gd" id="1_jlaxu"]
+
+[node name="VortexPreview" type="Node2D" unique_id=1970809973]
+script = ExtResource("1_jlaxu")
+
+[node name="Bg" type="ColorRect" parent="." unique_id=623800235]
+offset_right = 1200.0
+offset_bottom = 800.0
+mouse_filter = 2
+color = Color(0.06, 0.05, 0.09, 1)
+
+[node name="Mount" type="Node2D" parent="." unique_id=312516345]
+position = Vector2(600, 400)
+scale = Vector2(4, 4)

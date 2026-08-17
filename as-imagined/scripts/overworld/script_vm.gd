@@ -2542,6 +2542,38 @@ func _obtain_item(args: Array) -> bool:
 	if ok and audio != null:
 		audio.play_fanfare("MUS_OBTAIN_ITEM")
 
+	# [Bugfix, live-reported: "item balls don't disappear in forest"] ⚠️ **THE
+	# BALL REMOVES ITSELF, AND ONLY `finditem` DOES IT.**
+	#
+	# A forest ball's whole script is `finditem ITEM_X` / `end` — the hide is
+	# not in the map script at all. It lives in the standard script this
+	# function reproduces: `Std_FindItem` -> `EventScript_PickUpItem`
+	# (`field_script_source/data/scripts/obtain_item.inc:123`) opens with
+	# `removeobject VAR_LAST_TALKED`. M27I I3 ported that script's message and
+	# branch structure and not this line, so every ball kept its
+	# `FLAG_HIDE_VIRIDIAN_FOREST_*` unset and stayed visible and solid.
+	#
+	# ⚠️ **SCOPED TO `finditem`, NEVER THE SHARED PATH.** `giveitem`/
+	# `giveitem_msg` route through this same function, and source keeps them in
+	# a SEPARATE standard script (`Std_ObtainItem`, :4) that does NOT remove
+	# anything. Hoisting this out of the `current_op` check would delete every
+	# NPC who hands the player an item — Oak's parcel, the aide with the Poké
+	# Balls, every gift script. That split is the design, not an accident of
+	# how source happened to factor it.
+	#
+	# ⚠️ **SUCCESS BRANCH ONLY** (source gates on `VAR_0x8007 == TRUE`), so a
+	# full bag leaves the ball standing and you can come back for it.
+	#
+	# `VAR_LAST_TALKED` is source's own spelling AND the only one that works
+	# here: item balls carry no `local_id` (0 in the whole forest scene), so
+	# there is nothing else to address them by. `ScriptDriver.
+	# resolve_movement_entity` already resolves that token to `vm.subject`, and
+	# the existing `remove` op then sets the entity's `visibility_flag` and
+	# calls `apply_entity_visibility` — hiding it AND freeing its cell, live.
+	if ok and current_op == "finditem":
+		removed_objects.append("VAR_LAST_TALKED")
+		pending_object_ops.append({"op": "remove", "target": "VAR_LAST_TALKED"})
+
 	# STR_VAR_2 is the item, STR_VAR_1 the count, STR_VAR_3 the pocket — the
 	# slots source's own strings read.
 	buffers.set_slot(1, _item_name(item_id, qty))

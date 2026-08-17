@@ -47,7 +47,7 @@ extends Node
 ##     `resume_after_battle`), which is the seam under test. The overlay mount
 ##     itself is `[M27D D5]`'s.
 
-const EXPECTED_TOTAL := 21
+const EXPECTED_TOTAL := 29
 
 ## Route 22's early-rival trigger, in the map's own LOCAL cells.
 const TRIGGER_CELL := Vector2i(33, 5)
@@ -166,12 +166,171 @@ func _pump_until(ow, cond: Callable, steps: int = 400) -> bool:
 func _ready() -> void:
 	await _test_trigger_to_battle_and_back()
 	await _test_yes_no_waits_for_question_to_finish_typing()
+	await _test_scripted_warp_resumes_only_its_own_caller()
+	await _test_ledge_hop_drops_a_shadow()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
 			% [_total, _gated, EXPECTED_TOTAL], accounted == EXPECTED_TOTAL)
 	print("m27g_integration_test: %d/%d passed" % [_total - _failed, _total])
 	get_tree().quit()
+
+
+## --- F. a scripted warp resumes ITS OWN caller, nothing else ---
+##
+## [Bugfix, live-reported: "Oak was visible then flew north off the screen"]
+##
+## ⚠️ **THE SEAM: `_do_scripted_warp` ENDS BY RESUMING A SCRIPT, AND THE ONE
+## LIVE AT THAT MOMENT NEED NOT BE THE ONE IT PARKED.** Running the
+## destination's OnTransition goes through `run_script`, which replaces
+## `_driver.vm`, so the caller that issued the `warp` is gone by then; the very
+## next line, `check_on_frame_map_script()`, is a no-op only WHILE a VM is live,
+## so it promptly starts the map's OnFrame script — and the unconditional
+## resume landed on THAT, clearing a `waitmovement` one frame into a six-tile
+## walk.
+##
+## Driven against the real Oak's Lab because its OnFrame script
+## (`ChooseStarterScene`) is precisely that shape: `applymovement` +
+## `waitmovement 0`, then a `setobjectxyperm` that teleports Oak to his baked
+## cell. Resumed early, the teleport lands mid-walk and the remaining `walk_up`s
+## carry him off the top of the map — which is exactly what a player saw.
+##
+## ⚠️ Deliberately NOT driven through the full `PalletTown_EventScript_OakTrigger`
+## cutscene, which is ~1,600 frames of walking and text. A synthetic caller does
+## the two things that matter — arm the scene var, then `warp` — so the seam is
+## reached in ~200 frames.
+##
+## ⚠️ `_process` is left RUNNING here, unlike the sections above.
+## `_run_map_script_to_completion` waits on `_vm` clearing and relies on
+## `_process` to drive it, so pumping by hand would hang the arrival forever.
+func _test_scripted_warp_resumes_only_its_own_caller() -> void:
+	OverworldSession.reset()
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PalletTown_Frlg"
+	ow.start_cell = Vector2i(12, 1)
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var man: MapManager = ow.manager
+	var lab := "PalletTown_ProfessorOaksLab_Frlg"
+	if ow._driver == null or not MapConstants.is_baked("MAP_PALLET_TOWN_PROFESSOR_OAKS_LAB"):
+		_gated += 4
+		ow.queue_free()
+		return
+
+	# The two ops of OakTrigger that matter, without its cutscene.
+	ow._driver.source.ops_by_label["_TestScriptedWarpToLab"] = [
+		{"op": "setvar", "args": ["VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB", "1"]},
+		{"op": "warp", "args": ["MAP_PALLET_TOWN_PROFESSOR_OAKS_LAB", "6", "12"]},
+		{"op": "waitstate", "args": []},
+		{"op": "end", "args": []},
+	]
+	ow.run_script("_TestScriptedWarpToLab")
+
+	var oak: OverworldEntity = null
+	var min_y := 99
+	var prepped := false
+	var waited_frames := 0
+	for _f in range(600):
+		await get_tree().process_frame
+		if ow._box != null and ow._box.is_open:
+			ow._box.close()
+		var o := man.find_entity_by_local_id("LOCALID_OAKS_LAB_PROF_OAK")
+		if o != null and is_instance_valid(o):
+			oak = o
+			min_y = mini(min_y, oak.cell.y)
+			if oak.cell == Vector2i(6, 11):
+				prepped = true
+		# How long the OnFrame script actually held its own `waitmovement`.
+		if ow._vm != null and ow._vm.pause_reason == ScriptVM.Pause.WAIT_MOVEMENT:
+			waited_frames += 1
+
+	_chk("F.01 the lab's OnTransition prepped Oak at (6,11) before the scene ran",
+			prepped)
+	# THE ASSERTION THAT IS THE BUG. Oak walks six tiles up from (6,11) to
+	# (6,5); the lab is 12 tiles tall. Resumed early he reached (6,-2).
+	_chk("F.02 Oak never leaves the map (lowest row reached %d, must be >= 0)"
+			% min_y, oak != null and min_y >= 0)
+	_chk("F.03 and ends on his own resting cell (6,3), not mid-walk",
+			oak != null and is_instance_valid(oak) and oak.cell == Vector2i(6, 3))
+	# ⚠️ **THIS DOES NOT DISCRIMINATE THE BUG ABOVE, and injection proved it —
+	# stated rather than implied.** Restoring the unconditional resume fails
+	# F.02/F.03 and leaves this GREEN, because the scene's later `waitmovement`
+	# (op 9, on the player) still blocks normally even after op 3 was skipped.
+	# It guards a different regression — `waitmovement` ceasing to block at all,
+	# which is what the first, wrong diagnosis of this bug accused it of.
+	_chk("F.04 waitmovement still blocks for real (%d frames)" % waited_frames,
+			waited_frames > 60)
+
+	ow.queue_free()
+	await get_tree().process_frame
+
+
+## --- G. a real ledge hop drops a shadow ---
+##
+## [Bugfix, live-reported: "there is no shadow below player"]
+##
+## ⚠️ **THIS EXISTS BECAUSE THE UNIT GUARD COULD NOT SEE THE CALL SITE.**
+## `m27e_surf_test`'s own I-section calls `_spawn_jump_shadow()` DIRECTLY, so
+## deleting the call from `_try_step`'s ledge branch left it fully green — the
+## `[M27H H4]` `caught_pokemon()` shape exactly: a guard on the callee, blind to
+## a caller that never calls. Only a real hop on a real ledge closes it, which
+## is why this one boots a map.
+func _test_ledge_hop_drops_a_shadow() -> void:
+	OverworldSession.reset()
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "Route1_Frlg"
+	ow.start_cell = Vector2i(-1, -1)
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var man: MapManager = ow.manager
+	var origin: Vector2i = man.origin_of("Route1_Frlg")
+	# The ledge TILE carries MB_JUMP_SOUTH; you hop from the tile above it.
+	var from := Vector2i(-9999, -9999)
+	for y in range(1, 78):
+		for x in range(1, 23):
+			var c := origin + Vector2i(x, y)
+			if man.behavior_at(c) == MetatileBehavior.MB_JUMP_SOUTH:
+				from = c + Vector2i(0, -1)
+				break
+		if from.x != -9999:
+			break
+	if from.x == -9999:
+		_gated += 4
+		ow.queue_free()
+		return
+
+	ow._cell = from
+	ow._place_player("Route1_Frlg", from)
+	await get_tree().process_frame
+	_chk("G.01 no shadow before the hop", ow._jump_shadow == null)
+
+	ow._try_step(StepResolver.Dir.SOUTH)
+	var seen := false
+	var moved := false
+	for _f in range(400):
+		await get_tree().process_frame
+		if ow._jump_shadow != null and is_instance_valid(ow._jump_shadow):
+			seen = true
+		if not ow._moving:
+			break
+	moved = ow._cell == from + Vector2i(0, 2)
+	# ⚠️ Without this the section could pass on a REFUSED step, where nothing
+	# hops and nothing is expected to appear.
+	_chk("G.02 the step really was a two-tile ledge hop (%s -> %s)"
+			% [from - origin, ow._cell - origin], moved)
+	_chk("G.03 a shadow existed during the hop", seen)
+	await get_tree().process_frame
+	_chk("G.04 and is cleared once the player lands", ow._jump_shadow == null)
+
+	ow.queue_free()
+	await get_tree().process_frame
 
 
 func _test_trigger_to_battle_and_back() -> void:

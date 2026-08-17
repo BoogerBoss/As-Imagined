@@ -180,6 +180,59 @@ const OPPOSITE := {
 	MapData.Connection.EAST: MapData.Connection.WEST,
 }
 
+## Human-readable edge names, for labelling only — never round-tripped back
+## into an enum. `_existing_keys` in the connect dialog records why: a label is
+## for a human, and parsing one back is how a display change becomes a wrong
+## edit.
+const DIRECTION_NAMES := {
+	MapData.Connection.NONE: "NONE",
+	MapData.Connection.SOUTH: "SOUTH",
+	MapData.Connection.NORTH: "NORTH",
+	MapData.Connection.WEST: "WEST",
+	MapData.Connection.EAST: "EAST",
+	MapData.Connection.DIVE: "DIVE",
+	MapData.Connection.EMERGE: "EMERGE",
+}
+
+
+static func direction_name(direction: int) -> String:
+	return str(DIRECTION_NAMES.get(direction, "DIR_%d" % direction))
+
+
+## The maps this one borders, in its own connection order, ready to navigate to.
+##
+## ⚠️ **NAVIGATION, NOT LOADING — so this deliberately does NOT reuse
+## `MapData.loadable_connections()`.** That one answers the question a chunk
+## loader asks and drops DIVE/EMERGE (real links that warp rather than stitch)
+## along with anything unbaked. An author wants to open the map on the other
+## side of an edge whatever kind of edge it is, and wants to be TOLD when the
+## other side has no scene rather than have the row silently vanish — a missing
+## neighbour is a thing to go and bake, not a thing to hide.
+##
+## `openable` is the flag a caller gates its button on; `map` is "" when the
+## destination constant resolves to nothing at all, which is a pipeline bug
+## rather than an unbaked map and reads differently in a list.
+static func neighbours_of(map_name: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var md := _load_data(map_name)
+	if md == null:
+		return out
+	for i in range(md.connections.size()):
+		var c: Dictionary = md.connections[i]
+		var constant := str(c.get("map", ""))
+		var nb := MapConstants.map_name_for(constant)
+		var path := OUT_DIR + nb + ".tscn"
+		out.append({
+			"index": i,
+			"direction": int(c.get("direction", MapData.Connection.NONE)),
+			"offset": int(c.get("offset", 0)),
+			"constant": constant,
+			"map": nb,
+			"scene_path": path,
+			"openable": nb != "" and ResourceLoader.exists(path),
+		})
+	return out
+
 
 ## Every map reachable from `origin_map` by connections, and the rect it
 ## occupies, with `origin_map` itself at (0, 0).
@@ -188,16 +241,25 @@ const OPPOSITE := {
 ## property of one edge — a map two hops away can land on top of you, which is
 ## exactly what nearly happened to Xanadu Nursery and Pewter City (Pewter sits
 ## at (-12,-40) from Route 2, two hops from nothing obvious).
-static func placed_rects(origin_map: String) -> Dictionary:
+## [M27M5c Phase 4] `overrides` answers "where would everything sit IF this map
+## were a different shape" without writing that shape to disk first.
+##
+## Keyed by map name, each entry `{"size": Vector2i, "connections": Array}` with
+## both optional. ⚠️ **THE POINT IS THAT THE RESIZE GUARD RUNS THIS BFS RATHER
+## THAN A SECOND COPY OF IT.** Placement is not a property of one edge — a map
+## two hops away can land on top of you — so a guard that re-derived the geometry
+## would be a second implementation of the one rule that has to agree with
+## `MapManager` exactly. Empty by default, so every existing caller is unchanged.
+static func placed_rects(origin_map: String, overrides: Dictionary = {}) -> Dictionary:
 	var out := {}
-	var md := _load_data(origin_map)
+	var md := _load_data_as(origin_map, overrides)
 	if md == null:
 		return out
 	out[origin_map] = Rect2i(Vector2i.ZERO, Vector2i(md.width, md.height))
 	var queue: Array = [origin_map]
 	while not queue.is_empty():
 		var host: String = queue.pop_front()
-		var hd := _load_data(host)
+		var hd := _load_data_as(host, overrides)
 		if hd == null:
 			continue
 		var horigin: Vector2i = (out[host] as Rect2i).position
@@ -205,13 +267,36 @@ static func placed_rects(origin_map: String) -> Dictionary:
 			var nb := MapConstants.map_name_for(str(c.get("map", "")))
 			if nb == "" or out.has(nb):
 				continue
-			var nd := _load_data(nb)
+			var nd := _load_data_as(nb, overrides)
 			if nd == null:
 				continue
 			var o := MapManager.neighbour_origin(horigin, hd, c, nd)
 			out[nb] = Rect2i(o, Vector2i(nd.width, nd.height))
 			queue.append(nb)
 	return out
+
+
+## A map's data with any override applied, on a COPY.
+##
+## ⚠️ **THE `duplicate()` IS LOAD-BEARING.** `load()` hands back the cached
+## resource — the very instance the open scene's overlay is painting into — so
+## writing a hypothetical width onto it would silently resize the live map to
+## answer a what-if question. Shallow is correct and deliberate: only `width`,
+## `height` and the `connections` REFERENCE are replaced, and the seven per-cell
+## arrays are never touched, so sharing them costs nothing.
+static func _load_data_as(map_name: String, overrides: Dictionary) -> MapData:
+	var md := _load_data(map_name)
+	if md == null or not overrides.has(map_name):
+		return md
+	var o: Dictionary = overrides[map_name]
+	var copy: MapData = md.duplicate()
+	if o.has("size"):
+		var size: Vector2i = o["size"]
+		copy.width = size.x
+		copy.height = size.y
+	if o.has("connections"):
+		copy.connections.assign(o["connections"])
+	return copy
 
 
 ## Which already-placed maps a proposed link would land on top of.

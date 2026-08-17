@@ -33,8 +33,13 @@ extends RefCounted
 ## `MapData.map_name` — the same contract `MapConstants.NAME_BY_CONSTANT` has,
 ## so callers cannot tell the two tables apart and nothing downstream needs to
 ## know which half a map came from.
-const NAME_BY_CONSTANT := {
-	"MAP_AUTHORED_XANADU_NURSERY": "XanaduNursery",
+## ⚠️ **EMPTY, AND THAT IS THE CURRENT STATE RATHER THAN A GAP.** Xanadu
+## Nursery was the one entry and was deleted with the Kanto-wide bake; the
+## table, the naming rule and every consumer below survive it deliberately,
+## because the next authored map costs one line here instead of rebuilding
+## the seam. `MapConstants.map_name_for` still delegates here on a miss and
+## simply gets "" for everything today.
+const NAME_BY_CONSTANT := {	"MAP_AUTHORED_XANADU_NURSERY": "XanaduNursery",
 }
 
 

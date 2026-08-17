@@ -1,0 +1,55 @@
+[gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://assets/sprites/battle_anims/small_ember.png" id="1_8myyw"]
+[ext_resource type="Script" path="res://scenes/battle/anims/ember.gd" id="2_fmmc0"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_7k2qa"]
+blend_mode = 1
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gm0qm"]
+atlas = ExtResource("1_8myyw")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7fd4x"]
+atlas = ExtResource("1_8myyw")
+region = Rect2(0, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nhnt1"]
+atlas = ExtResource("1_8myyw")
+region = Rect2(0, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8jqpr"]
+atlas = ExtResource("1_8myyw")
+region = Rect2(0, 96, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_io10m"]
+atlas = ExtResource("1_8myyw")
+region = Rect2(0, 128, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_o66dk"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gm0qm")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7fd4x")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nhnt1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8jqpr")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_io10m")
+}],
+"loop": 0,
+"name": &"default",
+"speed": 30.0
+}]
+
+[node name="Ember" type="AnimatedSprite2D" unique_id=1148096861]
+material = SubResource("CanvasItemMaterial_7k2qa")
+sprite_frames = SubResource("SpriteFrames_o66dk")
+script = ExtResource("2_fmmc0")

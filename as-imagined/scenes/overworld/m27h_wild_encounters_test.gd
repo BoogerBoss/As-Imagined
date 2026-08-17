@@ -12,7 +12,9 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 116
+## ⚠️ 116 → 117 on 2026-08-13: H.02b, the pinned known defect that re-pointing
+## this suite's authored fixture off the deleted Xanadu Nursery exposed.
+const EXPECTED_TOTAL := 117
 
 var _total := 0
 var _failed := 0
@@ -598,19 +600,53 @@ func _test_stamp_trigger() -> void:
 ##
 ## Scope of record: `docs/m27t_encounter_authoring_scope.md` §4.
 func _test_authored_layer() -> void:
-	# The migrated table. Xanadu is the project's only authored map, and its
-	# grass exists ONLY because of piece 4's override — so this layer and that
-	# one are load-bearing for the same 91 cells.
-	_chk("H.01 Xanadu's authored table still resolves after the move to .tres",
-			WildEncounters.has_table("XanaduNursery"))
-	var x := WildEncounters.table_for("XanaduNursery")
+	# ⚠️ **RE-POINTED FROM XANADU NURSERY TO ROUTE 2, 2026-08-13 — AND DOING SO
+	# EXPOSED A REAL DEFECT THAT THE XANADU FIXTURE HAD BEEN MASKING.** See
+	# H.02b below; this assertion is the half that still holds.
+	_chk("H.01 an authored table is registered and loads from .tres",
+			"Route2_Frlg" in WildEncounters.authored_map_names())
+	var auth := load("res://data/encounters/Route2_Frlg_land.tres") as EncounterTable
+	var adex := {}
+	for s in auth.slots:
+		adex[int(s.dex)] = true
+	_chk("H.02 with its own rate, its 15 slots and its own species intact",
+			auth != null and auth.encounter_rate == 17 and auth.slots.size() == 15
+			and adex.has(19) and adex.has(16) and adex.has(10) and adex.has(13))
+
+	# ⚠️⚠️ **KNOWN DEFECT, PINNED AS A BASELINE RATHER THAN FIXED — the authored
+	# table is IGNORED AT RUNTIME, and the editor says otherwise.**
+	#
+	# `WildEncounters.table_for` is generated-first/authored-second, on a stated
+	# premise: *"They are disjoint by construction — an imported map is never in
+	# the authored file"* (`wild_encounters.gd:343-345`). That was TRUE while
+	# Xanadu Nursery — a map the importer never produced — was the only authored
+	# table. **[M27T piece 5]'s Take Ownership broke it**: taking ownership of an
+	# IMPORTED map writes `<Map>_land.tres` for a map that also has a generated
+	# entry, so the two sets now genuinely overlap and the generated one wins.
+	#
+	# Consequence, measured: Route 2's authored rate of 17 never reaches the
+	# roll — the game keeps using the generated 21 — while `digest_for` still
+	# reports the map as "authored", so the panel says you own a table the
+	# encounter roll does not read.
+	#
+	# ⚠️ **The Xanadu fixture is exactly why this shipped unseen**: it was the
+	# only test of this layer and it was the one map for which the disjointness
+	# premise held, so the overlapping case was never exercised.
+	#
+	# Flagged not fixed, per this project's standing "flag, don't silently fix"
+	# rule — the precedence order is a recorded decision with a written
+	# rationale, and reversing it is Rob's call, not a test's. **When it is
+	# fixed this assertion fails, which is the point.**
+	var runtime := WildEncounters.table_for("Route2_Frlg")
+	_chk("H.02b KNOWN DEFECT: an authored override loses to the generated "
+			+ "table for the same map (rate %d, authored says %d)"
+			% [int(runtime.get("encounter_rate", 0)), auth.encounter_rate],
+			int(runtime.get("encounter_rate", 0)) == 21
+			and auth.encounter_rate == 17)
+	var x := runtime
 	var dexes := {}
 	for s in x.get("slots", []):
 		dexes[int(s.get("dex", 0))] = true
-	_chk("H.02 with its rate, its 15 slots and its own species intact",
-			int(x.get("encounter_rate", 0)) == 21
-			and x.get("slots", []).size() == 15
-			and dexes.has(19) and dexes.has(16) and dexes.has(10) and dexes.has(13))
 	# ⚠️ THE SHAPE IS THE GENERATED ONE. `to_runtime()` meets the JSON layer's
 	# dictionary exactly, which is what kept this storage change invisible past
 	# `table_for()` — the roll, the party builder and every older test are
@@ -781,7 +817,12 @@ func _test_encounter_preview() -> void:
 	# "generated" has to be taken ownership of first, and "none" is a map that
 	# simply does not spawn — the panel says something different for each, so
 	# collapsing them would make the button lie about what it is about to do.
-	var authored := EncounterPreview.digest_for("XanaduNursery")
+	# ⚠️ **THE RATE HERE IS THE GENERATED ONE, NOT THE AUTHORED ONE — see
+	# H.02b.** The panel correctly reports the map as authored (there really is
+	# a `.tres` for it) and then shows the table `table_for` returns, which is
+	# still the generated one. Asserted as it behaves rather than as it should,
+	# so the defect has exactly one home and this does not fail twice for it.
+	var authored := EncounterPreview.digest_for("Route2_Frlg")
 	_chk("I.02 an authored map reports itself as authored, with its real table",
 			str(authored["source"]) == "authored"
 			and int(authored["encounter_rate"]) == 21
@@ -888,8 +929,8 @@ func _test_encounter_preview() -> void:
 	_chk("I.16 and a table with no tiles is called out too — it can never fire",
 			EncounterPreview.mismatch_for("Route2_Frlg", empty).contains("never fire"))
 	_chk("I.17 while a map whose tiles and table agree says nothing at all",
-			EncounterPreview.mismatch_for("XanaduNursery",
-					load("res://scenes/maps/XanaduNursery_data.tres") as MapData) == "")
+			EncounterPreview.mismatch_for("Route2_Frlg",
+					load("res://scenes/maps/Route2_Frlg_data.tres") as MapData) == "")
 
 	# ⚠️ **THE INSPECTOR SHOWS `resource_name` INSTEAD OF THE CLASS NAME**, which
 	# is what turns fifteen array rows reading `EncounterSlot` into a table you
@@ -904,9 +945,9 @@ func _test_encounter_preview() -> void:
 	_chk("I.19 collapsing to a single level drops the band",
 			lab.resource_name == "Pikachu Lv5")
 	# ⚠️ THE DISCRIMINATOR, AND IT IS WHY THE BAND IS IN THE LABEL AT ALL.
-	# Xanadu carries dex 19 in FOUR slots at levels 3/4/2/5 — species alone
-	# leaves four identical rows, so a prettier label would still not tell you
-	# which slot you were editing.
+	# Route 2's authored table carries dex 19 in several slots at different
+	# levels — species alone leaves identical-looking rows, so a prettier label
+	# would still not tell you which slot you were editing.
 	var a := EncounterSlot.new()
 	a.dex = 19
 	a.max_level = 3

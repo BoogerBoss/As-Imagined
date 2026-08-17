@@ -103,8 +103,14 @@ func _test_destination() -> void:
 		var e := RespawnPoint.entry(str(id))
 		if not ResourceLoader.exists("res://scenes/maps/%s.tscn" % str(e.get("respawn_map", ""))):
 			unbaked += 1
-	_chk("C.04 most respawn maps are genuinely unbaked (%d of %d)"
-			% [unbaked, RespawnPoint.ids().size()], unbaked > 30)
+	# ⚠️ **WAS `> 30` AND IS NOW 22, BECAUSE THE KANTO-WIDE BAKE BAKED KANTO'S.**
+	# The heal-location table is region-wide (42 entries, 20 of them Kanto), so
+	# what remains unbaked is Hoenn's half — which this project will never bake.
+	# The claim being pinned is unchanged: an unbaked respawn map is a REAL case
+	# the whiteout has to survive, not a hypothetical one.
+	_chk("C.04 respawn maps outside the baked region are genuinely unbaked "
+			+ "(%d of %d)" % [unbaked, RespawnPoint.ids().size()],
+			unbaked == 22 and unbaked < RespawnPoint.ids().size())
 	_chk("C.05 an unset respawn resolves to nothing rather than a wrong map",
 			RespawnPoint.new().respawn_warp().is_empty())
 

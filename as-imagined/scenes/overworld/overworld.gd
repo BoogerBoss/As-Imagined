@@ -154,6 +154,10 @@ const PLAYER_SURF_GRAPHICS_ID := "OBJ_EVENT_GFX_GREEN_SURF"
 @onready var manager: MapManager = $MapManager
 
 var _player: Node2D
+
+## [Bugfix, live-reported] The ledge-hop ground shadow, alive only for the
+## duration of one hop. See `_spawn_jump_shadow`.
+var _jump_shadow: Sprite2D = null
 var _camera: Camera2D
 ## GLOBAL, not map-local.
 ##
@@ -270,6 +274,37 @@ const _USED_MOVE_MESSAGE_SECONDS := 0.5
 ## about 1.16x an NPC.
 const _WALK_STEP_SECONDS := 13.4 / 60.0
 const _RUN_STEP_SECONDS := _WALK_STEP_SECONDS / 2.0
+
+## A ledge hop covers TWO tiles at walking pace — see `_try_step`'s own note for
+## the source citation and why this is derived from the walk rather than copied
+## as source's literal 32 frames.
+const _LEDGE_HOP_SECONDS := _WALK_STEP_SECONDS * 2.0
+
+## [Bugfix, live-reported: "no shadow below player" on a ledge hop] The jump
+## shadow. `InitJumpRegular` ends with `DoShadowFieldEffect`
+## (`event_object_movement.c:7459`), so every LEDGE hop drops a shadow.
+##
+## ⚠️ **LEDGE ONLY, AND THE ASYMMETRY IS SOURCE'S.** The surf mount/dismount hop
+## goes through `InitJumpSpecial`, which does NOT call `DoShadowFieldEffect` —
+## so riding on or off the water correctly has no shadow. Giving one to
+## `_add_jump_arc` generally would be the tidy-looking mistake.
+##
+## Size is the player's own `.shadowSize = SHADOW_SIZE_M`
+## (`gObjectEventGraphicsInfo_GreenNormal`). ⚠️ It is a CONSTANT rather than a
+## lookup because `ObjectEventGraphics` does not carry `shadowSize` — the
+## generator never emitted it. Fine while the player is the only thing that
+## hops a ledge; a scripted NPC `jump_2_*` (56 region-wide uses) would need the
+## real per-id value, which is a generator change, not a constant to guess.
+const _SHADOW_SHEET := "res://assets/sprites/overworld/field_effects/shadow_medium.png"
+
+## `sYOffset = (height >> 1) - gShadowVerticalOffsets[shadowSize]`
+## (`field_effect_helpers.c:371`) = (32 >> 1) - 4 = 12 for the player.
+##
+## ⚠️ Source measures that from the sprite's own CENTRE, and this project's
+## entity sprites are drawn so their visual centre lands exactly on `node.y`
+## (see `EmoteIcon`'s own header, which had to make the identical correction on
+## the X axis). So 12 applies unchanged here — it is not a re-derived guess.
+const _SHADOW_Y := 12.0
 
 ## Source gates running on the B button. B is already spoken for here — it is
 ## `ui_cancel`, which opens the START menu in the field — so running takes SHIFT
@@ -1183,9 +1218,31 @@ func _try_step(dir: int) -> void:
 	# `field_player_avatar.c:1347`.
 	if outcome == StepResolver.Outcome.LEDGE_JUMP and _audio != null:
 		_audio.play_se("SE_LEDGE")
+	# ⚠️ **[Bugfix, live-reported: "ledge jump doesn't feel canon — speed is
+	# fast"] A LEDGE HOP TRAVELS AT EXACTLY WALKING PACE. IT ONLY LOOKS FAST
+	# BECAUSE IT COVERS TWO TILES.**
+	#
+	# Source: `distanceToTime[JUMP_DISTANCE_FAR] = 32` frames
+	# (`DoJumpSpriteMovement`, `event_object_movement.c:10916`) against a walk's
+	# 16 frames per tile — the SAME 16 frames per tile, twice over. The old
+	# hardcoded 0.26 covered BOTH tiles, i.e. 0.13s each against this project's
+	# own 0.223s walk step: roughly 1.7x too fast.
+	#
+	# ⚠️ **DERIVED FROM THE WALK, NOT TRANSCRIBED AS 0.533s.** Source is
+	# 60fps-locked at 16 frames a tile; this project's step is its own tuned
+	# value, so copying the CONSTANT would put the hop back out of step the
+	# moment the walk is retuned. Preserving the INVARIANT — one hop = two
+	# walk-tiles of time — is the same call `[M27F Stage 3b]` made for the walk
+	# cycle's own cadence.
+	#
+	# ⚠️ **DELIBERATELY DOES NOT SCALE WITH RUNNING**, and that is source, not
+	# an oversight: the FAST/FASTER jump types are chosen only for the FOLLOWER
+	# (`localId == OBJ_EVENT_ID_FOLLOWER`, `InitJumpRegular`), so a dashing
+	# player still hops at normal speed.
+	#
 	# [M27E E1d] STOP_SURFING is an ordinary-speed step, not a ledge hop — the
-	# 0.26 is the hop's own arc duration and would read as a stumble ashore.
-	var dur := 0.26 if outcome == StepResolver.Outcome.LEDGE_JUMP \
+	# hop's own duration would read as a stumble ashore.
+	var dur := _LEDGE_HOP_SECONDS if outcome == StepResolver.Outcome.LEDGE_JUMP \
 			else (_RUN_STEP_SECONDS if _running else _WALK_STEP_SECONDS)
 	# [M27F Stage 3b] The player's ordinary step is a tween, NOT a MovementRunner
 	# script — the two paths are separate and the walk cycle has to be driven on
@@ -1217,6 +1274,7 @@ func _try_step(dir: int) -> void:
 		var lspr := _player_sprite()
 		if lspr != null:
 			_add_jump_arc(t, lspr, lspr.position.y, dur)
+		_spawn_jump_shadow()
 	# [M27C C5] THE WARP CHECK LIVES HERE, on the completion of a real step, and
 	# nowhere else. Source fires warps from `TryStartStepBasedScript` under
 	# `input->tookStep`, and that is the entire reason arriving on a warp tile
@@ -1225,6 +1283,9 @@ func _try_step(dir: int) -> void:
 	# ping-pong the player between two doors forever.
 	t.finished.connect(func() -> void:
 		_moving = false
+		# The hop is over; the shadow goes with it (source stops the effect on
+		# `jumpDone`). Unconditional -- a no-op when there was no hop.
+		_clear_jump_shadow()
 		# [M27E E1c] The deferred half of a ride-ashore: the flag flipped at
 		# step start, the blob comes off now that the player has ARRIVED. Runs
 		# before the warp bail — the visual state must settle either way.
@@ -3025,6 +3086,26 @@ static func _map_script_prefix(map_name: String) -> String:
 ## `message` anywhere in its own call graph (checked directly against every
 ## corridor map's own table before relying on this), so this can never
 ## stall on player input mid-fade.
+## ⚠️ **THE CALLING SCRIPT IS DESTROYED BY THIS, AND FIXING THAT NEEDS MORE
+## THAN THIS FUNCTION — flagged, deliberately not fixed here.** `run_script`
+## assigns `_driver.vm` unconditionally, so an arrival script run from inside a
+## SCRIPTED warp throws away the script that issued the `warp`: it never
+## reaches its own `waitstate`/`releaseall`.
+##
+## Parking the caller and handing it back afterwards was built and MEASURED,
+## and it trades one visible bug for another: with the caller restored,
+## `check_on_frame_map_script()` (a no-op while any VM is live) never gets a
+## chance to fire, and its only other call site is step-completion — so
+## `ChooseStarterScene` did not start until the player took another step.
+## That is the "OnFrame cutscene starts one tile late" defect `_do_warp`
+## already carries a fix and a comment for. Measured on the real OakTrigger
+## path: Oak prepped to (6, 11) correctly and then stood there indefinitely.
+##
+## Closing it properly means giving OnFrame somewhere to be re-checked when a
+## script ENDS (source polls it every frame; this project checks it at
+## step-completion and on warp arrival only). That is a flow change worth its
+## own pass, not a rider on a bugfix. The Oak-flies-off-the-map symptom does
+## NOT need it — see `_do_scripted_warp`'s own resume guard.
 func _run_map_script_to_completion(label: String) -> void:
 	if _driver == null or not _driver.has_script(label):
 		return
@@ -3110,6 +3191,26 @@ func _do_scripted_warp(warp_data: Dictionary) -> void:
 		return
 
 	_warping = true
+	# ⚠️ [Bugfix, live-reported: "Oak was visible then flew north off the
+	# screen"] **THE SCRIPT PARKED ON `waitstate` IS THE ONLY ONE THIS
+	# FUNCTION MAY RESUME, AND IT IS NOT NECESSARILY THE ONE LIVE AT THE END.**
+	#
+	# `_run_arrival_map_scripts` runs the destination's OnTransition/OnWarp
+	# through `run_script`, which REPLACES `_driver.vm` — so by the time
+	# control returns here, the caller that issued the `warp` may be gone and
+	# `_vm` may be a script something else started in the meantime.
+	# `check_on_frame_map_script()` below is exactly such a something: it is a
+	# no-op while a VM is live, so the moment the caller stops being live it
+	# starts the map's OnFrame script instead.
+	#
+	# Measured on the real `PalletTown_EventScript_OakTrigger` -> `warp` ->
+	# `ChooseStarterScene` path: the unconditional resume landed on
+	# ChooseStarterScene and cleared its `waitmovement`, so `setobjectxyperm
+	# OAK, 6, 3` (op 5) fired ONE FRAME into a six-tile walk. Oak teleported to
+	# his baked cell mid-walk and the five remaining `walk_up`s carried him to
+	# (6, -2), off the top of the map. `waitmovement` itself was never at
+	# fault — it holds for the full 96 frames when it is left alone.
+	var caller: ScriptVM = _vm
 	await _fade_to(1.0)
 
 	_teardown_and_load(dest)
@@ -3129,7 +3230,9 @@ func _do_scripted_warp(warp_data: Dictionary) -> void:
 	# A no-op here whenever the calling script (about to `resume()`) is still
 	# the active `_vm`, which is the common case for a scripted `warp` opcode.
 	check_on_frame_map_script()
-	if _vm != null:
+	# Identity, not merely non-null — see the header above. Resuming anything
+	# other than the parked caller skips whatever IT was waiting for.
+	if _vm != null and _vm == caller:
 		_vm.resume()
 
 
@@ -3388,6 +3491,51 @@ func _jump_onto_water(dir: int) -> void:
 	var base_y := spr.position.y if spr != null else 0.0
 	_add_jump_arc(t, spr, base_y, _MOUNT_JUMP_SECONDS)
 	t.finished.connect(func() -> void: _finish_mount_jump(spr, base_y))
+
+
+## Put a shadow on the ground under the player for the duration of a ledge hop.
+##
+## ⚠️ **A CHILD OF THE PLAYER NODE, AND THAT IS WHY IT NEEDS NO PER-FRAME
+## UPDATE.** Source's `UpdateShadowFieldEffect` sets `sprite->y = linkedSprite->y
+## + sYOffset` — the LINKED SPRITE'S BASE Y, which does not include the jump
+## arc, since the arc lives in `y2`. That separation is the whole effect: the
+## body rises and the shadow does not. This project already splits it the same
+## way — `_add_jump_arc` drives the BODY SPRITE while the player NODE tweens
+## along the ground — so parenting to the node reproduces it exactly, with no
+## update function to keep in step.
+##
+## ⚠️ Degrades to no shadow if the sheet is missing rather than erroring:
+## `run_overworld_tests.sh` fails a run on any engine ERROR line, and a missing
+## decoration must never fail a suite or stop a hop. Same call `EmoteIcon.spawn`
+## already makes.
+func _spawn_jump_shadow() -> void:
+	if _player == null or not is_instance_valid(_player):
+		return
+	_clear_jump_shadow()
+	if not ResourceLoader.exists(_SHADOW_SHEET):
+		return
+	var tex := load(_SHADOW_SHEET) as Texture2D
+	if tex == null:
+		return
+	var s := Sprite2D.new()
+	s.texture = tex
+	s.centered = true
+	# X: half a tile, because a node's position is the tile's TOP-LEFT while the
+	# sprite's visual centre is not — the same correction `EmoteIcon.X_CENTRE`
+	# documents at length. Source needs no equivalent term (both its sprites are
+	# already OAM-centred).
+	s.position = Vector2(float(OverworldEntity.CELL) * 0.5, _SHADOW_Y)
+	# Behind the body. Relative by default, so this stays correct through
+	# `_reparent_for_elevation`'s own strata swap.
+	s.z_index = -1
+	_player.add_child(s)
+	_jump_shadow = s
+
+
+func _clear_jump_shadow() -> void:
+	if _jump_shadow != null and is_instance_valid(_jump_shadow):
+		_jump_shadow.queue_free()
+	_jump_shadow = null
 
 
 ## Add source's jump arc to an existing tween, driving `spr`'s own y.

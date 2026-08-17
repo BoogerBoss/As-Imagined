@@ -54,6 +54,28 @@ var _new_map_dialog: AcceptDialog = null
 var _connect_button: Button = null
 var _connect_dialog: AcceptDialog = null
 
+## [M27M5c Phase 4] Change the open map's dimensions after the fact.
+##
+## ⚠️ **A DIALOG RATHER THAN A PAIR OF INSPECTOR PROPERTIES ON `MapData`, AND
+## THE OBVIOUS VERSION IS ACTIVELY DANGEROUS.** `width` and `height` are plain
+## exported ints, so the Inspector will happily let you type over them — and that
+## changes the row stride of seven arrays without moving a single cell, which
+## shears the whole map into something that still loads. Everything this tool
+## does beyond the two numbers (re-layout, the tiles, the entities, the seams)
+## is invisible from an Inspector field.
+var _resize_button: Button = null
+var _resize_dialog: AcceptDialog = null
+
+## Walk the connection graph instead of the file list.
+##
+## ⚠️ **THE FILE LIST STOPPED BEING A NAVIGATION TOOL WHEN THE BAKE WENT
+## REGION-WIDE.** At 32-38 corridor maps, finding a neighbour in the FileSystem
+## dock was fine; at 421 it means scrolling several hundred filenames to reach
+## the map you are already looking at the edge of. The graph knows the answer
+## already — `MapAuthoring.neighbours_of` — so this is that answer as a button.
+var _goto_button: Button = null
+var _goto_dialog: AcceptDialog = null
+
 ## [M27Q Q4 follow-up] The overlay toggle.
 ##
 ## ⚠️ **THIS EXISTS BECAUSE "REMEMBER TO DELETE IT BEFORE SAVING" IS NOT A
@@ -157,6 +179,35 @@ func _enter_tree() -> void:
 	_connect_button.pressed.connect(func() -> void: _connect_dialog.popup_fresh())
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _connect_button)
 
+	# [M27M5c Phase 4] Change an existing map's dimensions. Toolbar rather than
+	# Inspector for the same reason Connect Map is: it needs four inputs, a live
+	# budget readout and a refusal REASON, and an Inspector property cannot say
+	# why it said no.
+	_resize_dialog = preload(
+			"res://addons/map_overlay_editor/resize_map_dialog.gd").new()
+	# The dialog cannot reach get_undo_redo() itself — it is not an EditorPlugin
+	# — so the commit is handed in rather than reimplemented there.
+	_resize_dialog.commit = _commit_resize
+	EditorInterface.get_base_control().add_child(_resize_dialog)
+	_resize_button = Button.new()
+	_resize_button.text = "Resize Map"
+	_resize_button.tooltip_text = ("Grow or trim the OPEN map by edge. Tiles, "
+			+ "cell data and placed entities all move; neighbour seams are "
+			+ "corrected; an overlap is refused and the maps are named.")
+	_resize_button.pressed.connect(func() -> void: _resize_dialog.popup_fresh())
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _resize_button)
+
+	_goto_dialog = preload(
+			"res://addons/map_overlay_editor/goto_neighbour_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(_goto_dialog)
+	_goto_button = Button.new()
+	_goto_button.text = "Go To Edge"
+	_goto_button.tooltip_text = ("Open a map that borders the open one, picked "
+			+ "off its own connections instead of the 421-file list. Unbaked "
+			+ "destinations are listed and disabled rather than hidden.")
+	_goto_button.pressed.connect(func() -> void: _goto_dialog.popup_fresh())
+	add_control_to_container(CONTAINER_CANVAS_EDITOR_MENU, _goto_button)
+
 	_overlay_button = Button.new()
 	_overlay_button.text = "Overlay"
 	_overlay_button.toggle_mode = true
@@ -224,6 +275,24 @@ func _exit_tree() -> void:
 	if _connect_dialog != null:
 		_connect_dialog.queue_free()
 		_connect_dialog = null
+	if _resize_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _resize_button)
+		_resize_button.queue_free()
+		_resize_button = null
+	if _resize_dialog != null:
+		# Parented to the editor base control, so plugin teardown will not take
+		# it — same reason as _name_dialog and _new_map_dialog above.
+		_resize_dialog.queue_free()
+		_resize_dialog = null
+	if _goto_button != null:
+		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _goto_button)
+		_goto_button.queue_free()
+		_goto_button = null
+	if _goto_dialog != null:
+		# Parented to the editor base control, so plugin teardown will not take
+		# it — same reason as _name_dialog and _new_map_dialog above.
+		_goto_dialog.queue_free()
+		_goto_dialog = null
 	if _overlay_button != null:
 		remove_control_from_container(CONTAINER_CANVAS_EDITOR_MENU, _overlay_button)
 		_overlay_button.queue_free()
@@ -346,17 +415,79 @@ func _on_sync_pressed() -> void:
 				% int(report["unresolved"]))
 
 
+## [M27M5c Phase 4] Put a resize in the editor's undo history.
+##
+## Both directions restore a snapshot through the same method, so redo is the
+## apply and undo is the apply of the earlier state — one path to get right
+## rather than an operation and a hand-written inverse.
+##
+## ⚠️ **`add_undo_reference` ON EVERY TRIMMED ENTITY IS WHAT MAKES THE TRIM
+## REVERSIBLE.** `MapResize.resize_scene` detaches those nodes without freeing
+## them, so at this moment nothing in the scene tree owns them: without a
+## reference held by the undo action they would leak, and with a `queue_free`
+## instead the trim half of a resize would be permanently irreversible while the
+## rest undid cleanly.
+##
+## `commit_action()` runs the do method, which is idempotent here — the state it
+## restores is already live, since the dialog applied it before calling.
+func _commit_resize(overlay: MapOverlay, pre: Dictionary, post: Dictionary,
+		removed: Array) -> void:
+	if overlay == null or not is_instance_valid(overlay):
+		return
+	var ur := get_undo_redo()
+	ur.create_action("Resize map", UndoRedo.MERGE_DISABLE, overlay)
+	ur.add_do_method(overlay, "restore_resize", post)
+	ur.add_undo_method(overlay, "restore_resize", pre)
+	for node in removed:
+		if node != null and is_instance_valid(node):
+			ur.add_undo_reference(node)
+	ur.commit_action()
+
+
 func _on_legend_toggled(pressed: bool) -> void:
 	if _target != null and is_instance_valid(_target):
 		_target.show_legend = pressed
 
 
+## ⚠️ **ACCEPTS ANY NODE IN A MAP SCENE THAT HAS A LIVE OVERLAY, NOT JUST THE
+## OVERLAY ITSELF — and the narrow version made the click path unusable.**
+##
+## Reported from use: *"I can't click the warp because it just selects the
+## TileMapLayer instead of the warp event."* The cause is a circle, not a
+## missing step. `_select_entity_at` falls through on a miss ON PURPOSE (see its
+## own comment — swallowing every click would make the overlay unselectable),
+## so a click on empty ground reaches Godot, which selects the TileMapLayer
+## under the cursor. That deselects the MapOverlay — and with `_handles`
+## answering only for a MapOverlay, the plugin was never asked about any click
+## again. **One stray click locked you out for the rest of the session**, and
+## the way back was to re-select the overlay in the scene tree, which is not
+## something the viewport ever told you.
+##
+## This is the same family as the defect this addon already shipped once
+## (click-to-select disabling itself by moving the selection); that one was
+## fixed by not moving the selection, and this is the other half — staying
+## reachable when something ELSE moves it.
+##
+## Cheap enough to run per selection: one walk of the edited root's direct
+## children. Anything outside a map scene still answers false, so the addon
+## stays inert everywhere else.
 func _handles(object: Object) -> bool:
-	return object is MapOverlay
+	if object is MapOverlay:
+		return true
+	var node := object as Node
+	if node == null:
+		return false
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or MapOverlay.overlay_in(root) == null:
+		return false
+	return node == root or root.is_ancestor_of(node)
 
 
 func _edit(object: Object) -> void:
+	# The overlay is the target whichever node the selection actually landed on.
 	_target = object as MapOverlay
+	if _target == null:
+		_target = MapOverlay.overlay_in(EditorInterface.get_edited_scene_root())
 	_painting = false
 
 
@@ -386,6 +517,11 @@ func _forward_canvas_gui_input(event: InputEvent) -> bool:
 	# both select a node and write a cell.
 	if _target.edit_mode == MapOverlay.EditMode.NONE:
 		if _target.mode == MapOverlay.Mode.EVENTS:
+			# Double-click FIRST: the second press of a double-click is an
+			# ordinary press that merely also carries the flag, so leaving it to
+			# fall through would cycle the stack on the way past.
+			if _follow_warp_at(event):
+				return true
 			return _select_entity_at(event)
 		return false
 
@@ -408,6 +544,57 @@ func _forward_canvas_gui_input(event: InputEvent) -> bool:
 		return true
 
 	return false
+
+
+## Double-click a warp in EVENTS mode to open the map it leads to.
+##
+## ⚠️ **THIS IS THE NAVIGATION THAT ACTUALLY COVERS THE REGION.** Measured over
+## the 421 baked maps: **360 have no connections at all** — every interior,
+## every gate, Viridian Forest — so Go To Edge cannot reach them, while **402
+## contain at least one warp**. Of 1,294 warps, 1,275 resolve to a baked scene
+## and 0 are unbaked.
+##
+## ⚠️ **REFUSES WHILE THE OVERLAY IS DIRTY RATHER THAN SAVING FIRST, AND THIS
+## REVERSES MY OWN EARLIER RECOMMENDATION.** Opening a scene discards the
+## in-memory `MapData` the overlay has been painting into, so the draft of this
+## called `save_map_data()` on the way past. That is wrong twice over: this
+## addon's standing rule is that **writes happen only on explicit buttons** —
+## the `EditorFileSystem` rescan is the ~5 s stall that forced Save Map Data to
+## exist — so a navigation gesture would inject an unpredictable multi-second
+## freeze AND silently commit edits the author may have been about to undo.
+## Refusing is the only option that neither loses work nor writes behind your
+## back. The overlay's own UNSAVED EDITS banner is already on screen whenever
+## this can fire, so the refusal is not silent; `push_warning` names it too.
+##
+## Returns true ONLY when it actually navigated, so every other click still
+## reaches `_select_entity_at` — the same fall-through rule that function
+## records, and for the same reason.
+func _follow_warp_at(event: InputEvent) -> bool:
+	if not (event is InputEventMouseButton):
+		return false
+	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
+		return false
+	if not event.double_click:
+		return false
+
+	var xf: Transform2D = _target.get_viewport_transform() * _target.get_global_transform()
+	var cell: Vector2i = _target.cell_at(xf.affine_inverse() * event.position)
+	# Which warp, and whether it can be followed, is MapOverlay's decision.
+	var t: Dictionary = _target.warp_target(cell)
+	if t.is_empty():
+		return false
+	if not bool(t["openable"]):
+		push_warning("map_overlay: cannot follow this warp — %s" % str(t["reason"]))
+		return true
+
+	if _target.has_unsaved_edits():
+		push_warning("map_overlay: refusing to follow a warp with unsaved "
+				+ "edits on this map — press Save Map Data first (opening "
+				+ "another scene would discard them).")
+		return true
+
+	EditorInterface.open_scene_from_path(str(t["scene_path"]))
+	return true
 
 
 ## Puts the clicked entity in the inspector.

@@ -3794,6 +3794,26 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	if target_node == null:
 		return
 
+	# A HAND-AUTHORED animation, if this move has one, gets first refusal of
+	# all — ahead of the ported engine below. Explicit registration beats a
+	# default, which is the only precedence that makes registering mean
+	# anything.
+	#
+	# ⚠️ WHICH IS EXACTLY WHY THE REGISTRY IS EMPTY BY DEFAULT. Overriding a
+	# faithfully-ported animation is a fidelity decision about something a
+	# player can see, not a convenience; `AuthoredAnims` is for original
+	# content. See that file's own header.
+	#
+	# The three-way order is: authored -> ported -> legacy hit-effect. Each
+	# tier declines by answering false, so an absent scene, a typo'd path or
+	# an unported behavior all degrade the same way and none of them can
+	# break a battle.
+	if anim_route_for(move_id, _anim_dispatcher) == ROUTE_AUTHORED:
+		var authored_stage := _make_anim_stage(attacker, target_mon)
+		_queue_anim_beat({"kind": "anim_async", "start": func():
+			await _run_authored_anim(move_id, authored_stage)})
+		return
+
 	# [M36B] The ported animation engine gets first refusal on every move.
 	# `_anim_dispatcher` answers from the extracted scripts plus whatever
 	# behaviors are registered right now; with none registered (M36B ships
@@ -3881,6 +3901,57 @@ func _partner_of(mon: BattlePokemon) -> BattlePokemon:
 # an off-tree instance, which several suites construct deliberately.
 func _anim_turn_for(_attacker: BattlePokemon) -> int:
 	return _bm.anim_turn if _bm != null else 0
+
+
+const ROUTE_AUTHORED := &"authored"
+const ROUTE_PORTED := &"ported"
+const ROUTE_LEGACY := &"legacy"
+
+
+# Which of the three animation tiers owns this move. Expressed once, here,
+# rather than as the reading order of two `if`s buried in the dispatch —
+# precedence is the whole contract, and an ordering you can only observe by
+# playing the game is an ordering nobody can regression-test.
+#
+# STATIC on purpose. `hit_effect_dispatch_test`'s own doc comment records why
+# a suite cannot instantiate the real battle screen here (the project's
+# `--autoplay`/`get_tree().quit()` collision), so a decision that needs an
+# instance is a decision that stays unproven. This one needs neither the tree
+# nor any battle state — the same shape as `AnimDispatcher.verdict_for_move`.
+static func anim_route_for(move_id: int, dispatcher: AnimDispatcher) -> StringName:
+	if AuthoredAnims.has(move_id):
+		return ROUTE_AUTHORED
+	if dispatcher != null and dispatcher.can_play_move(move_id):
+		return ROUTE_PORTED
+	return ROUTE_LEGACY
+
+
+# Plays a hand-authored animation scene. Occupies the same "anim_async" slot
+# the ported engine and the legacy hit-effect do, so the reference's
+# damage -> anim -> flicker -> HP-drain ordering is untouched either way.
+#
+# Every rule worth breaking lives in `AuthoredAnimRunner`, which a suite drives
+# directly; this is only the wiring. A bad report is surfaced as a warning
+# rather than an error, and the battle continues regardless — an animation is
+# never worth ending a fight over, which is the same call `_run_anim_script`
+# already makes for a VM that aborts mid-run.
+func _run_authored_anim(move_id: int, stage: AnimStage) -> void:
+	# Shares the ported path's signal so the screenshot harness and any
+	# side-by-side comparison see authored and ported animations identically.
+	anim_script_started.emit(move_id)
+	var report: Dictionary = await AuthoredAnimRunner.play(self,
+			AuthoredAnims.scene_for(move_id), stage)
+	if bool(report.get("timed_out", false)):
+		push_warning("[authored anim] move %d never freed itself; reaped after %.1fs"
+				% [move_id, float(report.get("seconds", 0.0))])
+	if bool(report.get("leaked", false)):
+		push_warning("[authored anim] move %d left nodes on the effect layer"
+				% move_id)
+	# Defensive, and cheap: the authored contract is "only touch nodes you
+	# spawned", so this should be a no-op. It is kept because the cost of the
+	# contract being broken is a Pokemon or health box left hidden for the
+	# rest of the battle, which is exactly what the ported path restores for.
+	_restore_stage_battler_visibility(stage)
 
 
 # Pumps a VM at the real GBA frame rate until it finishes. Runs inside an

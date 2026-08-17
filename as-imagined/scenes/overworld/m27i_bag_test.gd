@@ -7,7 +7,7 @@ extends Node
 ## question about slots. A dictionary would answer yes forever and make every
 ## bag-full branch in every script dead code.
 
-const EXPECTED_TOTAL := 46
+const EXPECTED_TOTAL := 52
 
 var _total := 0
 var _failed := 0
@@ -42,6 +42,7 @@ func _ready() -> void:
 	_test_single_stack()
 	_test_opcodes()
 	_test_obtain()
+	_test_find_item_removes_object()
 	_test_save_shape()
 
 	var accounted := _total + _gated
@@ -274,6 +275,79 @@ func _test_obtain() -> void:
 	vm4.step()
 	_chk("E.09 finditem uses the FOUND wording, not OBTAINED",
 			vm4.buffers.expand(vm4.pending_pages[0]).contains("found one Potion"))
+
+
+## --- G. the ball removes itself (finditem only) ---
+##
+## Driven against the REAL compiled forest script, because the whole point is
+## that the map script does NOT contain the removal -- asserting it on a
+## fixture would prove nothing about where the behaviour has to live.
+func _test_find_item_removes_object() -> void:
+	if not FileAccess.file_exists("res://data/map_scripts.json"):
+		_gated += 6
+		return
+	var ops: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var label := "ViridianForest_EventScript_ItemAntidote"
+	if not ops.has(label):
+		_gated += 6
+		return
+	var texts: Dictionary = {}
+	if FileAccess.file_exists("res://data/map_texts.json"):
+		texts = JSON.parse_string(
+				FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var src := ScriptVM.ScriptSource.new()
+	src.ops_by_label = ops
+	src.texts = texts
+
+	# The premise: nothing in the ball's own script hides it. If this ever
+	# fails, the removal moved into the corpus and this whole section is moot.
+	var names := PackedStringArray()
+	for o: Dictionary in ops[label]:
+		names.append(str(o.get("op", "")))
+	_chk("G.01 the real ball script never removes anything itself (%s)"
+			% ", ".join(names), not names.has("removeobject"))
+
+	var vm := ScriptVM.new(src, FlagStore.new())
+	vm.bag = Bag.new()
+	vm.start(label)
+	vm.step()
+	var removes := vm.pending_object_ops.filter(
+			func(o: Dictionary) -> bool: return str(o.get("op", "")) == "remove")
+	_chk("G.02 picking it up queues a removal", removes.size() == 1)
+	# `VAR_LAST_TALKED` is not decoration: item balls carry NO `local_id`
+	# anywhere in the corpus, so it is the only token that can address one.
+	# `ScriptDriver.resolve_movement_entity` maps it to `vm.subject`.
+	_chk("G.03 targeted at VAR_LAST_TALKED, the only handle a ball has",
+			removes.size() == 1 and str(removes[0].get("target", "")) == "VAR_LAST_TALKED")
+
+	# ⚠️ THE DISCRIMINATOR. `giveitem` shares `_obtain_item`, and source keeps
+	# it in a standard script that removes NOTHING. Hoisting the removal out of
+	# the `finditem` check deletes every NPC who hands the player an item.
+	var gsrc := ScriptVM.ScriptSource.new()
+	gsrc.texts = texts
+	gsrc.ops_by_label = {"GIVE": [_op("giveitem", ["ITEM_POTION"]), _op("end")]}
+	var gvm := ScriptVM.new(gsrc, FlagStore.new())
+	gvm.bag = Bag.new()
+	gvm.start("GIVE")
+	gvm.step()
+	_chk("G.04 giveitem removes NOTHING (a gift-giver must survive)",
+			gvm.pending_object_ops.filter(func(o: Dictionary) -> bool:
+					return str(o.get("op", "")) == "remove").is_empty())
+	_chk("G.05 and it really did give the item (G.04 is not vacuous)",
+			gvm.bag.count_of(_id("ITEM_POTION")) == 1)
+
+	# Success branch only -- source gates on `VAR_0x8007 == TRUE`, so a full
+	# bag leaves the ball standing and you can come back for it.
+	var fvm := ScriptVM.new(src, FlagStore.new())
+	var full := Bag.new()
+	full.add(_id("ITEM_ANTIDOTE"), Bag.MAX_STACK * int(Bag.CAPACITY[ItemManager.POCKET_ITEMS]))
+	fvm.bag = full
+	fvm.start(label)
+	fvm.step()
+	_chk("G.06 a full bag leaves the ball standing",
+			fvm.pending_object_ops.filter(func(o: Dictionary) -> bool:
+					return str(o.get("op", "")) == "remove").is_empty())
 
 
 ## --- F. the save shape M27L will serialise ---

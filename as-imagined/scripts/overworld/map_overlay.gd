@@ -387,6 +387,79 @@ func next_in_stack(cell: Vector2i, current: Node) -> OverworldEntity:
 	return stack[0]
 
 
+## The live overlay on `root`, or null. Direct children only, matching how the
+## Overlay toggle adds it and how the addon's dialogs already look for it.
+##
+## ⚠️ **THIS EXISTS SO THE PLUGIN CAN KEEP RECEIVING CLICKS AFTER THE SELECTION
+## MOVES OFF THE OVERLAY**, which it always does: `_select_entity_at` falls
+## through on a miss (deliberately), Godot then selects whatever TileMapLayer
+## was under the cursor, and with `_handles` accepting only a MapOverlay the
+## plugin would stop being asked about every click from then on. One click on
+## empty ground locked you out of clicking any event at all.
+static func overlay_in(root: Node) -> MapOverlay:
+	if root == null:
+		return null
+	for c in root.get_children():
+		if c is MapOverlay:
+			return c as MapOverlay
+	return null
+
+
+## Where the warp on `cell` goes, for double-click-to-follow. `{}` when there
+## is no warp there.
+##
+## PURE, for the same reason `next_in_stack` above is: the plugin's click path
+## is editor-only and cannot be tested headlessly, so the decision lives here
+## and the untestable half is left with nothing but the act of opening.
+##
+## ⚠️ **RESOLVED BY CELL, DELIBERATELY IGNORING THE CLICK CYCLE — and that is
+## safe by MEASUREMENT, not by hope.** A double-click's first press has already
+## run `next_in_stack` and advanced the selection, so following "whatever is
+## selected now" would make the destination depend on how many times you had
+## clicked before. Measured across all 421 maps: **1,294 warps sit on 1,294
+## distinct cells — not one cell anywhere in Kanto holds two warps**, so "the
+## warp on this cell" names exactly one thing. The 22 stacked cells stack a warp
+## with a SIGN, which this skips past without ambiguity.
+##
+## `openable` is what a caller gates on. The `reason` is filled only when it is
+## false, and says which of the two failures it was: 19 warps region-wide are
+## `MAP_DYNAMIC`, source's own sentinel for a destination chosen at runtime
+## ("used for warps that need to change destinations, e.g. when stepping off an
+## elevator", `include/constants/maps.h`) — not a broken link, and worth saying
+## so rather than reading as a dead door.
+func warp_target(cell: Vector2i) -> Dictionary:
+	var w: Warp = null
+	for e in entities_at(cell):
+		if e is Warp:
+			w = e as Warp
+			break
+	if w == null:
+		return {}
+	var out := {
+		"dest_map": w.dest_map,
+		"dest_warp_id": w.dest_warp_id,
+		"triggers": w.triggers,
+		"map": "",
+		"scene_path": "",
+		"openable": false,
+		"reason": "",
+	}
+	if w.dest_map == "MAP_DYNAMIC":
+		out["reason"] = "destination is chosen at runtime (MAP_DYNAMIC)"
+		return out
+	var nb := MapConstants.map_name_for(w.dest_map)
+	if nb == "":
+		out["reason"] = "%s is not a map constant" % w.dest_map
+		return out
+	out["map"] = nb
+	out["scene_path"] = "res://scenes/maps/%s.tscn" % nb
+	if not ResourceLoader.exists(str(out["scene_path"])):
+		out["reason"] = "%s is not baked" % nb
+		return out
+	out["openable"] = true
+	return out
+
+
 ## Which marker an entity gets.
 ##
 ## TrainerNPC is checked BEFORE NPC and the order is load-bearing: TrainerNPC
@@ -1140,6 +1213,7 @@ func _draw_review_banner(at: Vector2, font: Font) -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 9,
 			review_color if n > 0 else Color(1, 1, 1, 0.75))
 	_draw_unsaved_banner(at + Vector2(0.0, 16.0), font)
+	_draw_size_mismatch_banner(at + Vector2(0.0, 32.0), font)
 
 
 ## The dirty indicator. Drawn whenever there are unsaved edits and NOT drawn
@@ -1165,6 +1239,40 @@ func _draw_unsaved_banner(at: Vector2, font: Font) -> void:
 	draw_rect(box, review_color, false, 2.0)
 	draw_string(font, at + Vector2(4.0, 10.5), text,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, review_color)
+
+
+## [M27M5c Phase 4] The picture and the cell data disagree about this map's size.
+##
+## ⚠️ **THE LOUDEST THING THIS OVERLAY DRAWS, AND IT HAS EARNED IT.** Found on
+## the first real drive of the resize tool: saving the scene without pressing
+## Save Map Data persists shifted tiles and entities against unshifted collision,
+## and the result is a map that loads, looks correct, and has its movement rules
+## several rows out of register. There was no symptom until you walked into a
+## wall that was not drawn.
+##
+## Distinct from the UNSAVED EDITS banner above and deliberately not folded into
+## it: that one says the file is behind the view and clears on a save. This one
+## says the two files on disk contradict each other, which a save does not fix
+## and which survives closing the editor.
+##
+## The rule is `MapResize.size_mismatch`, not written here — it is the one part
+## of this that a headless suite can drive.
+func _draw_size_mismatch_banner(at: Vector2, font: Font) -> void:
+	if map_data == null:
+		return
+	var m := MapResize.size_mismatch(map_data, entity_root() as Node2D)
+	if not bool(m["mismatch"]):
+		return
+	var over: Vector2i = m["overhang"]
+	var data: Vector2i = m["data"]
+	var text := ("SIZE MISMATCH — tiles painted %d,%d past the cell data (%dx%d). "
+			+ "Resize, or reload the scene.") % [over.x, over.y, data.x, data.y]
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
+	var box := Rect2(at, Vector2(w + 8.0, 14.0))
+	draw_rect(box, Color(0, 0, 0, 0.92))
+	draw_rect(box, broken_warp_color, false, 2.0)
+	draw_string(font, at + Vector2(4.0, 10.5), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, broken_warp_color)
 
 
 ## Everything the events banner reports, in one pass.
@@ -1775,6 +1883,33 @@ var _unsaved_edits: bool = false
 ## Whether the .tres is behind the current view.
 func has_unsaved_edits() -> bool:
 	return _unsaved_edits
+
+
+## [M27M5c Phase 4] Put the map back to a `MapResize.snapshot`, and redraw.
+##
+## The undo half of a resize, and the redo half too — both directions restore a
+## snapshot, so there is one path to get right rather than an apply and its
+## inverse. Shaped exactly like `restore_cells` above because it is invoked the
+## same way, through `EditorUndoRedoManager`, which discards return values.
+##
+## ⚠️ **A RESIZE IS NOT COVERED BY `restore_cells`, AND THE FAILURE WOULD BE
+## SILENT.** That snapshot holds the seven arrays and the tile blobs but neither
+## the dimensions nor the entities, so undoing through it would restore
+## new-shaped arrays into a `MapData` still claiming the old `width` — every row
+## then reads offset from the one before it, and the map is sheared rather than
+## broken. `_conn_cache` is dropped too: the seam offsets may have moved with the
+## resize, and a cached placement would draw the old ones.
+func restore_resize(snap: Dictionary) -> void:
+	if map_data == null or snap.is_empty():
+		return
+	MapResize.restore(map_data, entity_root() as Node2D, snap)
+	_conn_cache = {}
+	_sync_previews()
+	queue_redraw()
+	# Dirties rather than saves, for the reason `restore_cells` records at
+	# length: the file reflects the last SAVE, and moving memory away from it in
+	# either direction is exactly what the banner is for.
+	_unsaved_edits = true
 
 
 ## [M27M5c Phase 2] Re-read this map's seams from disk and redraw them.

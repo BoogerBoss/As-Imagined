@@ -75,7 +75,20 @@ const MAP_DATA_ASSERTIONS := 8
 ## BC (the connections view, offset editor + legend toggle, 6) and
 ## BD (Part B behaviour override + hiding the metatile brush, 7) and
 ## BE (I6a mart stock through the compiler, 6).
-const EXPECTED_TOTAL := 646
+## ⚠️ **646 → 640 on 2026-08-13, and the arithmetic is worth showing because a
+## silently-adjusted total is how a dropped assertion hides.** Xanadu Nursery
+## was deleted, taking BA.04-BA.09 (-6, the whole authored-map block) and
+## BB.09/BB.16 (-2, the authored encounter table and the authored connect-guest)
+## with it; Y.13b (+1) and AL.12b (+1) were added by the Kanto-wide bake. The
+## three `_gated` blocks those assertions sat behind are gone too, so a fresh
+## checkout no longer gates 14 — it gates none of these.
+## [M27M5c Phase 4] 649 -> 688: section BH adds 39, all ungated (34 for the
+## resize itself, 5 for the size-mismatch detector added after the first real
+## drive found the two-save defect). The section is
+## fully synthetic — it builds its own MapData and its own scene root — so a
+## fresh checkout runs every one of them and this number does not move with what
+## happens to be baked.
+const EXPECTED_TOTAL := 688
 
 ## [M27S] Distinct unresolved symbolic constants reachable from a baked map.
 ## ⚠️ A BASELINE TO SHRINK, not a target to meet — see `_test_m27s_corpus_audit`.
@@ -87,7 +100,26 @@ const EXPECTED_TOTAL := 646
 ## LEFT SLACK**: leaving it at 30 would let seven new silent-zero constants
 ## arrive before the guard noticed, which is exactly the leniency that lets a
 ## baseline stop being one. If this grows, a new constant is silently reading 0.
-const CORRIDOR_UNRESOLVED_BASELINE := 23
+##
+## ⚠️ **RE-MEASURED 2026-08-13 AT 110, AND THE JUMP IS SCOPE, NOT REGRESSION.**
+## `ScriptAudit.corridor_prefixes()` derives from what is BAKED, so the
+## Kanto-wide bake took this tool from 38 maps to all 421 — it is now a
+## region-wide audit and the name "corridor" is stale. Nothing resolves worse
+## than it did; 87 more constants simply became reachable.
+##
+## ⚠️ **AND THE 87 ARE ALMOST ENTIRELY CONTENT THIS PROJECT HAS EXCLUDED**, so
+## do not read the number as 87 latent bugs. By family: `MULTI_*` (40 distinct)
+## and `SCROLL_MULTI_*` are `multichoice` menu ids, `SEAGALLOP_*` the Sevii
+## ferry, `UR_*`/`MULTI_LINKED_*` the Union Room, `NEWS_*` Mystery Gift, `TT_*`
+## Trainer Tower, `FANCLUB_*`/`FCPICKSTATE_*` the Saffron Fan Club, `DAYCARE_*`
+## the Day Care (M31), `DEOXYS_*` the Birth Island puzzle. Every one belongs to
+## a subsystem that is deferred or permanently excluded.
+##
+## Two are real and small, flagged not fixed: **`MAX_MON_MOVES`** (4, one
+## `_literal` case) and **`MON_ICON_TINT_*`**. **`SPECIES_NONE` is a
+## `LEGIT_ZERO` candidate** — it genuinely is 0, so it is reported for the
+## blind spot BF.10 already pins rather than because it is wrong.
+const CORRIDOR_UNRESOLVED_BASELINE := 110
 
 ## The three baked tile planes, in source-id order. Part C's coverage proof
 ## walks all three, because a metatile routes to one or TWO of them and a
@@ -285,6 +317,7 @@ func _ready() -> void:
 	_test_m27m5_creator()
 	_test_m27m5_connection_view()
 	_test_m27t_encounter_stamp()
+	_test_m27m5_resize()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -1135,14 +1168,22 @@ func _test_events_mode_table() -> void:
 					== "res://scenes/maps/Route3_Frlg.tscn")
 	_chk("S.06 and stays empty for an undefined constant",
 			MapConstants.scene_path_for("MAP_NOT_A_REAL_PLACE") == "")
-	# A known interior nobody has baked: the dangling stem this mode draws.
-	# This fixture has now moved TWICE — Viridian's gym, then Pewter's, each
-	# baked out from under it. So it is pinned to a map that cannot move:
-	# TradeCenter and UnionRoom are PERMANENTLY excluded (link-cable rooms, see
-	# decisions.md), which makes "known but never baked" a property of the
-	# fixture rather than a race against the bake list.
-	_chk("S.07 a permanently-excluded map reads as not baked",
-			not MapConstants.is_baked("MAP_TRADE_CENTER_FRLG"))
+	# A known map nobody has baked: the dangling stem this mode draws.
+	# ⚠️ **THIS FIXTURE HAS NOW MOVED THREE TIMES, AND THE THIRD MOVE IS THE
+	# ONE THAT SETTLES IT.** Viridian's gym, then Pewter's, each baked out from
+	# under it; then `MAP_TRADE_CENTER_FRLG`, chosen because the link-cable
+	# rooms were PERMANENTLY excluded by decision — which held right up until
+	# the Kanto-wide bake took "every REGION_KANTO map" literally and baked
+	# them too. A decision to exclude is not a property of the data; the next
+	# person to run a region-wide bake will exclude nothing.
+	#
+	# So it is pinned to a HOENN map. `MapConstants` knows all 939 constants
+	# across every region, and this project bakes Kanto only — so "defined but
+	# structurally never baked" is now a fact about the region rather than a
+	# promise anyone has to keep.
+	_chk("S.07 a map outside the baked region reads as not baked",
+			MapConstants.NAME_BY_CONSTANT.has("MAP_LITTLEROOT_TOWN")
+			and not MapConstants.is_baked("MAP_LITTLEROOT_TOWN"))
 
 	# The overlay must survive being asked about events with no map under it.
 	var orphan := MapOverlay.new()
@@ -1455,6 +1496,59 @@ func _test_stacks_and_counts() -> void:
 			int(counts["dead_doors"]) == 0)
 	_chk("V.11 and none of them counts as a defect",
 			int(counts["broken_warps"]) == 0 and int(counts["typo_trainers"]) == 0)
+
+	# --- following a warp to its destination (double-click in EVENTS mode).
+	#
+	# ⚠️ **THE GYM DOOR IS THE FIXTURE ON PURPOSE: IT IS ONE OF THE 22 STACKED
+	# CELLS**, so it is the case where "which entity did the click land on"
+	# could go wrong. `warp_target` resolves by CELL and skips the sign, which
+	# is what makes the destination independent of how many times you clicked.
+	var door_warp: Warp = null
+	for e in stack:
+		if e is Warp:
+			door_warp = e as Warp
+	var t := ov.warp_target(gym_door)
+	_chk("V.11b the warp on a stacked cell resolves to its own destination",
+			door_warp != null and not t.is_empty()
+			and str(t["dest_map"]) == door_warp.dest_map
+			and bool(t["openable"])
+			and ResourceLoader.exists(str(t["scene_path"])))
+	# ⚠️ **WHAT THIS CAN AND CANNOT PROVE, STATED RATHER THAN IMPLIED.** It
+	# proves the SIGN is skipped: the cell genuinely holds a non-warp event, and
+	# the answer is still the warp's own destination. It CANNOT express the
+	# negation of "independent of the click cycle", because `warp_target` takes
+	# no selection argument at all — the independence is structural, and a
+	# fixture cannot fail a parameter that does not exist. Recorded here so a
+	# green run is never read as coverage of a cycle-following implementation.
+	var non_warp := 0
+	for e in stack:
+		if not (e is Warp):
+			non_warp += 1
+	_chk("V.11c and skips the non-warp event sharing the cell",
+			non_warp == 1
+			and str(ov.warp_target(gym_door).get("dest_map", ""))
+					== door_warp.dest_map)
+	_chk("V.11d a cell with no warp answers empty, not a stray destination",
+			ov.warp_target(Vector2i(1, 1)).is_empty())
+	# ⚠️ The lookup behind `_handles` accepting a TileMapLayer. Without it one
+	# click on empty ground moved the selection off the overlay and the plugin
+	# was never asked about a click again — see `plugin._handles`.
+	# Never parented, so nothing frees it for us — the same housekeeping the
+	# bare-overlay sections already have to do.
+	var bare_root := Node2D.new()
+	_chk("V.11f the overlay is findable from its own map root, and only there",
+			MapOverlay.overlay_in(vroot) == ov
+			and MapOverlay.overlay_in(null) == null
+			and MapOverlay.overlay_in(bare_root) == null)
+	bare_root.free()
+	# ⚠️ Source's own sentinel for "destination decided at runtime" (19 warps
+	# region-wide, elevators). It must report a REASON rather than read as a
+	# dead door — mutated on a throwaway instantiated scene, never on disk.
+	door_warp.dest_map = "MAP_DYNAMIC"
+	var dyn := ov.warp_target(gym_door)
+	_chk("V.11e a MAP_DYNAMIC warp is refused WITH a reason, not silently",
+			not bool(dyn["openable"]) and str(dyn["reason"]).contains("MAP_DYNAMIC")
+			and str(dyn["scene_path"]) == "")
 	vroot.free()
 
 	# Route 22: three stacked cells, all paired triggers on one VAR. Not
@@ -1924,11 +2018,28 @@ func _test_connections_and_border() -> void:
 	# --- loadable_connections() is the question a chunk loader actually asks ---
 	_chk("Y.12 a map with no connections has none to load",
 			f.connections.is_empty() and f.loadable_connections().is_empty())
-	# Pallet Town's south neighbour (Route 21 North) is real in source but not
-	# baked — a dangling connection, real in source but with nothing to load.
-	_chk("Y.13 an unbaked destination is excluded from the loadable set",
-			p.loadable_connections().size() == 1
-			and str(p.loadable_connections()[0]["map"]) == "MAP_ROUTE1")
+	# ⚠️ **SYNTHETIC, AND IT HAS TO BE NOW.** This asserted on Pallet Town
+	# directly, whose south neighbour (Route 21 North) was real in source and
+	# unbaked — a genuine dangling connection. The Kanto-wide bake baked it,
+	# and every other Kanto destination with it, so **no real Kanto map has a
+	# dangling connection any more**: Kanto maps only ever connect to Kanto
+	# maps, and all 421 are baked. The rule under test is still live (a Hoenn
+	# destination, or a typo'd constant, must still be dropped) but the corpus
+	# no longer contains a case, so the fixture is built rather than found.
+	var dangling := MapData.new()
+	dangling.connections = [
+		{"direction": MapData.Connection.NORTH, "map": "MAP_ROUTE1", "offset": 0},
+		{"direction": MapData.Connection.SOUTH, "map": "MAP_LITTLEROOT_TOWN", "offset": 0},
+	]
+	_chk("Y.13 a destination outside the baked region is excluded from the "
+			+ "loadable set",
+			dangling.connections.size() == 2
+			and dangling.loadable_connections().size() == 1
+			and str(dangling.loadable_connections()[0]["map"]) == "MAP_ROUTE1")
+	# The real map's own side of the same fact, recorded rather than asserted
+	# against a hardcoded count: both its neighbours are baked now.
+	_chk("Y.13b and Pallet Town's own two connections both load today",
+			p.connections.size() == 2 and p.loadable_connections().size() == 2)
 
 
 ## Section W — the baker's own re-bake guard.
@@ -2479,12 +2590,19 @@ func _test_warp_dispatch() -> void:
 	# empty region rather than simply doing nothing.
 	var chunks_before: int = man.loaded_chunks().size()
 	var dead := Warp.new()
-	# Permanently excluded rather than merely not-yet-baked. Pewter's gym was
-	# used here and then got baked, at which point this "dead door" warped for
-	# real — unloading the chunk that owned `door` and taking the remaining ten
-	# assertions of this section down with it. A fixture that can be baked is a
-	# fixture that will be.
-	dead.dest_map = "MAP_TRADE_CENTER_FRLG"
+	# ⚠️ **OUTSIDE THE BAKED REGION, not merely unbaked and not merely excluded
+	# — and this fixture has now been wrong twice in exactly the same way.**
+	# Pewter's gym was used here and got baked, at which point this "dead door"
+	# warped for real, unloading the chunk that owned `door` and taking the
+	# remaining ten assertions of this section down with it. It was repointed
+	# at `MAP_TRADE_CENTER_FRLG` on the strength of the link rooms being
+	# permanently excluded by decision — and the Kanto-wide bake baked them
+	# anyway, reproducing the identical cascade.
+	#
+	# A Hoenn constant cannot be baked out from under it while this remains a
+	# Kanto project, which is the first version of this fixture that rests on
+	# the shape of the data rather than on someone remembering a decision.
+	dead.dest_map = "MAP_LITTLEROOT_TOWN"
 	await ow._do_warp(dead)
 	_chk("AE.06 a dead door changes nothing rather than stranding the player",
 			man.loaded_chunks().size() == chunks_before
@@ -3122,6 +3240,7 @@ func _test_object_event_sprites() -> void:
 	# Every id the corridor actually names must resolve, or an NPC somewhere
 	# silently becomes Ninja Boy.
 	var unknown: Array[String] = []
+	var numeric: Array[String] = []
 	var seen := {}
 	var mm := MapManager.new()
 	add_child(mm)
@@ -3135,14 +3254,37 @@ func _test_object_event_sprites() -> void:
 			seen[gid] = true
 			# VAR_* is the one legitimate exception: source resolves those from
 			# a script variable at runtime, so there is nothing to pull.
-			if not ObjectEventGraphics.is_known(gid) \
-					and not gid.begins_with("OBJ_EVENT_GFX_VAR_"):
+			if gid.begins_with("OBJ_EVENT_GFX_VAR_"):
+				continue
+			# ⚠️ **A RAW NUMBER IS UPSTREAM DATA, NOT AN IMPORTER FAULT** —
+			# asserted separately below rather than swallowed here, per AL.12's
+			# own history of being loosened when it should have been made
+			# explicit.
+			if gid.is_valid_int():
+				if not numeric.has(gid):
+					numeric.append(gid)
+				continue
+			if not ObjectEventGraphics.is_known(gid):
 				unknown.append(gid)
 		mm.unload_chunk(map_name)
 	mm.queue_free()
-	_chk("AL.12 every graphics id the corridor uses resolves, bar VAR_* (%d distinct)%s"
+	_chk("AL.12 every graphics id the region uses resolves, bar VAR_* and raw "
+			+ "numbers (%d distinct)%s"
 			% [seen.size(), "" if unknown.is_empty() else " — " + ", ".join(unknown)],
 			seen.size() > 0 and unknown.is_empty())
+	# ⚠️ **FOUND BY BAKING THE WHOLE REGION, AND IT IS UPSTREAM'S OWN DATA.**
+	# `data/maps/FuchsiaCity_WardensHouse_Frlg/map.json` really does read
+	# `"graphics_id": "0"` — 19 object events across 10 maps, every one an NPC,
+	# and the reference resolves it as an ordinary table index (0 is the first
+	# enum entry, `OBJ_EVENT_GFX_BRENDAN_NORMAL`). Nothing in the corridor's 38
+	# maps carried one, so this surfaced the moment the bake widened.
+	#
+	# Pinned rather than excused: the carve-out is exactly one token, so a
+	# SECOND raw id — or a raw id appearing where a real constant regressed to
+	# a number — fails here instead of quietly drawing Ninja Boy.
+	_chk("AL.12b the only raw-number graphics id is upstream's own \"0\" (%s)"
+			% [", ".join(numeric)],
+			numeric.size() == 1 and numeric[0] == "0")
 	# The corridor really does contain one, so the fallback is a live path
 	# rather than a theoretical one — Viridian City's tutorial NPC.
 	_chk("AL.13 and the corridor's own VAR_* NPC still draws something",
@@ -4273,56 +4415,19 @@ func _test_m27m5_authored_map() -> void:
 	_chk("BA.03 an unknown constant still answers empty, not a stray name",
 			MapConstants.map_name_for("MAP_AUTHORED_NO_SUCH_MAP") == "")
 
-	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres") \
-			or not ResourceLoader.exists("res://scenes/maps/Route2_Frlg_data.tres"):
-		_gated += 6
-		return
-	var xd := load("res://scenes/maps/XanaduNursery_data.tres") as MapData
-	var r2 := load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
-
-	_chk("BA.04 the authored map is baked and reachable by its constant",
-			MapConstants.is_baked("MAP_AUTHORED_XANADU_NURSERY")
-			and xd.width == 20 and xd.height == 18)
-
-	# ⚠️ Every cell AUTHORED is what makes the baker's re-import guard protect
-	# it — a map it would otherwise happily overwrite.
-	var all_authored := true
-	for i in range(xd.metatile.size()):
-		if xd.provenance[i] != MapData.Provenance.AUTHORED:
-			all_authored = false
-	_chk("BA.05 every cell is AUTHORED, so a re-bake cannot silently claim it",
-			all_authored and xd.has_authored_cells())
-
-	# The reciprocal pair. A link recorded on one side only loads one way, and
-	# walking back would drop the player into an unloaded chunk.
-	var west := {}
-	for c in r2.connections:
-		if str(c.get("map", "")) == "MAP_AUTHORED_XANADU_NURSERY":
-			west = c
-	var east := {}
-	for c in xd.connections:
-		if str(c.get("map", "")) == "MAP_ROUTE2":
-			east = c
-	_chk("BA.06 Route 2 links WEST to it and it links EAST back, offsets agreeing",
-			int(west.get("direction", -1)) == MapData.Connection.WEST
-			and int(east.get("direction", -1)) == MapData.Connection.EAST
-			and int(west.get("offset", 99)) == -int(east.get("offset", 99)))
-
-	# ⚠️ The geometry, computed through the real placement rule rather than
-	# eyeballed: the authored map's EAST column must land exactly one cell west
-	# of Route 2's own x=0, or the two render adjacent and do not join.
-	var origin := MapManager.neighbour_origin(Vector2i.ZERO, r2, west, xd)
-	_chk("BA.07 its east edge sits directly against Route 2's west edge",
-			origin == Vector2i(-xd.width, 0)
-			and origin.x + xd.width - 1 == -1)
-
-	# The doorway is on the authored side already; Route 2's wall is not cut,
-	# which is a deliberate hand-off, not an oversight.
-	_chk("BA.08 the seam rows are walkable on the authored side",
-			xd.collision_at(19, 4) == 0 and xd.collision_at(19, 5) == 0
-			and xd.elevation_at(19, 4) == 3)
-	_chk("BA.09 ...and its wall is still solid away from the seam",
-			xd.collision_at(19, 0) == 1 and xd.collision_at(0, 9) == 1)
+	# ⚠️ **BA.04-BA.09 ARE GONE, AND THE COVERAGE THEY HELD IS GENUINELY GONE
+	# WITH THEM — Rob's call, 2026-08-13.** They asserted the one authored map
+	# (Xanadu Nursery) end to end: all-cells-AUTHORED, the reciprocal Route 2
+	# seam, its computed origin, the hand-cut doorway. That map was deleted
+	# alongside the Kanto-wide bake, so every one of them was asserting a file
+	# that no longer exists.
+	#
+	# What is lost is the only live test of the AUTHORED-map path — a map the
+	# importer never produced, carrying `Provenance.AUTHORED` cells and a
+	# `MAP_AUTHORED_` connection. BA.01-BA.03 above still cover the naming and
+	# delegation rules, and the placement/seam maths BA.06/BA.07 exercised is
+	# independently covered by section AC against imported maps. **Authoring a
+	# second map is what restores this**, not rewriting these.
 
 
 ## [M27M5 C1/C2/C3] The map creator's rules, and authored encounters.
@@ -4342,13 +4447,26 @@ func _test_m27m5_creator() -> void:
 	_chk("BB.01 usable_pairs is exactly the built TileSets (%d)" % pairs.size(),
 			pairs.size() == on_disk and on_disk > 0)
 
-	# ⚠️ The claim that makes the tool usable before M27M6's picker exists: a
+	# ⚠️ The claim that makes the tool usable before a metatile picker exists: a
 	# map can be created without knowing any metatile id.
-	var all_resolve := true
+	#
+	# ⚠️ **"EVERY PAIR" WAS TRUE OF 16 PAIRS AND IS FALSE OF 60 — measured
+	# after the Kanto-wide bake, and it is a real property of the tilesets
+	# rather than a defect.** `default_fill_for` looks for the most common cell
+	# that is walkable AND `MB_NORMAL` AND elevation 3; three pairs contain no
+	# such cell anywhere in the region, because their floors are not elevation
+	# 3 at all. Creating a map on one of those needs a fill chosen by hand.
+	var no_fill: Array[String] = []
 	for p in pairs:
 		if MapAuthoring.default_fill_for(p) < 0:
-			all_resolve = false
-	_chk("BB.02 a fill metatile is derivable for EVERY usable pair", all_resolve)
+			no_fill.append(str(p))
+	no_fill.sort()
+	_chk("BB.02 a fill metatile is derivable for every pair bar the three "
+			+ "measured exceptions (%s)" % [", ".join(no_fill)],
+			no_fill.size() == 3
+			and no_fill[0] == "building_frlg__power_plant_frlg"
+			and no_fill[1] == "building_frlg__tanoby_ruins_frlg"
+			and no_fill[2] == "general_frlg__rock_tunnel_frlg")
 	# ⚠️ And it must be STABLE. An earlier draft stopped at the first baked map
 	# it found and answered 371 here where the whole-corpus measurement says 8 —
 	# a valid tile picked by directory order, which is not a default.
@@ -4373,18 +4491,21 @@ func _test_m27m5_creator() -> void:
 	_chk("BB.06 every direction's opposite is an involution",
 			opp_ok and MapAuthoring.OPPOSITE.size() == 4)
 
-	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres"):
-		_gated += 4
-		return
-
-	# ⚠️ Placement is not a property of ONE edge — a map two hops away can land
-	# on top of you. Pewter is two hops from Xanadu and is the one that nearly
-	# collided; asserting its real rect is what proves the walk works.
+	# ⚠️ Placement is not a property of ONE edge — a map several hops away can
+	# land on top of you, which is why the walk exists at all.
+	#
+	# ⚠️ **RE-ANCHORED OFF XANADU, 2026-08-13.** This used the authored map as
+	# its far anchor ("Pewter is two hops from Xanadu"); with that map deleted
+	# the walk starts at Route 2 instead, where Pewter is one hop and **Pallet
+	# Town is three** — so the multi-hop claim is stronger than it was, not
+	# weaker. Both origins are the real computed values, not eyeballed.
 	var rects := MapAuthoring.placed_rects("Route2_Frlg")
-	_chk("BB.07 the placement walk reaches maps TWO hops out, at real origins",
-			rects.has("XanaduNursery") and rects.has("PewterCity_Frlg")
-			and (rects["XanaduNursery"] as Rect2i).position == Vector2i(-20, 0)
-			and (rects["PewterCity_Frlg"] as Rect2i).position == Vector2i(-12, -40))
+	_chk("BB.07 the placement walk reaches maps SEVERAL hops out, at real "
+			+ "origins (%d reached)" % [rects.size()],
+			(rects["Route2_Frlg"] as Rect2i).position == Vector2i.ZERO
+			and (rects["PewterCity_Frlg"] as Rect2i).position == Vector2i(-12, -40)
+			and rects.has("PalletTown_Frlg")
+			and (rects["PalletTown_Frlg"] as Rect2i).position == Vector2i(0, 160))
 
 	# ⚠️ REFUSAL ONLY — and the first draft of this assertion got it wrong in a
 	# way worth recording: it re-linked Route 2 WEST to Xanadu, expecting a
@@ -4393,24 +4514,27 @@ func _test_m27m5_creator() -> void:
 	# succeeded and WROTE to a tracked file. The refusal path writes nothing;
 	# the success path does. Pick a case that genuinely refuses.
 	#
-	# Route 2 NORTH would put Xanadu at (0,-18), straight through Pewter City —
-	# a two-hop collision no single edge reveals.
+	# Hanging Viridian Forest off Route 2's SOUTH edge lands it across Viridian
+	# City (one hop) AND Route 1 (TWO hops) — the far one is the whole point,
+	# since no single edge reveals it.
 	# ⚠️ Driven through the PURE `would_overlap`, never `connect_maps`. Breaking
 	# the guard inside the writing function makes the call stop refusing — so
 	# the injection performs the very write the test exists to prevent, which is
 	# exactly how this assertion corrupted two tracked .tres files on its first
 	# draft. Assert the decision, not the act.
 	var clash := MapAuthoring.would_overlap("Route2_Frlg",
-			MapData.Connection.NORTH, "XanaduNursery", 0)
-	_chk("BB.08 a two-hop overlap is detected and NAMES what it would hit",
-			"PewterCity_Frlg" in clash)
+			MapData.Connection.SOUTH, "ViridianForest_Frlg", 0)
+	_chk("BB.08 a two-hop overlap is detected and NAMES what it would hit (%s)"
+			% [", ".join(clash)],
+			"Route1_Frlg" in clash)
 
 	# --- C3
-	var t := WildEncounters.table_for("XanaduNursery")
-	_chk("BB.09 an authored map resolves an encounter table",
-			WildEncounters.has_table("XanaduNursery")
-			and int(t.get("encounter_rate", 0)) > 0
-			and (t.get("slots", []) as Array).size() == 15)
+	# ⚠️ **BB.09 IS GONE WITH XANADU, AND IT WAS THE ONLY TEST OF THE AUTHORED
+	# ENCOUNTER PATH.** It asserted that a hand-authored map resolves its own
+	# table (rate > 0, 15 slots) through the name-keyed side table. Nothing
+	# else exercises that fallback with a real entry — BB.11 below only proves
+	# the table is not DANGLING, which is vacuously true while it is empty.
+	# Authoring another map with grass restores it.
 	# ⚠️ The generated corpus must be untouched by the fallback — they are
 	# disjoint by construction, so this is a fallback, not a precedence rule.
 	_chk("BB.10 an imported map still answers from the GENERATED table",
@@ -4432,8 +4556,15 @@ func _test_m27m5_creator() -> void:
 	# ⚠️ BAKED, not DEFINED. MapConstants knows 939 map constants; only the ones
 	# with a real scene can be stitched to, and offering the rest would be
 	# offering choices that silently do nothing.
-	_chk("BB.13 baked_maps lists real scenes, far fewer than the 939 constants",
-			baked.size() > 0 and baked.size() < 100
+	# ⚠️ **THE BOUND WAS `< 100` AND THE KANTO-WIDE BAKE MADE IT 421.** The
+	# claim being pinned is BAKED-not-DEFINED, so the honest bound is the one
+	# that still separates the two: every Kanto map is baked now, and the 939
+	# constants span every region, so the gap is Hoenn's half of the table
+	# rather than a corridor-sized slice.
+	_chk("BB.13 baked_maps lists real scenes, fewer than the 939 constants (%d)"
+			% [baked.size()],
+			baked.size() > 0
+			and baked.size() < MapConstants.NAME_BY_CONSTANT.size()
 			and baked.has("Route2_Frlg") and baked.has("PalletTown_Frlg"))
 	var every_real := true
 	for m in baked:
@@ -4445,10 +4576,11 @@ func _test_m27m5_creator() -> void:
 	_chk("BB.15 the excluded host is absent, and only it",
 			not MapAuthoring.baked_maps("Route2_Frlg").has("Route2_Frlg")
 			and MapAuthoring.baked_maps("Route2_Frlg").size() == baked.size() - 1)
-	# An authored map is a legal destination — it is baked like any other, and
-	# Xanadu is exactly the case Phase 2 exists to serve.
-	_chk("BB.16 an authored map is offerable, not just imported ones",
-			baked.has("XanaduNursery"))
+	# ⚠️ **BB.16 IS GONE WITH XANADU.** It asserted an AUTHORED map is offerable
+	# as a connect-dialog guest alongside imported ones — the case Phase 2 was
+	# built to serve. `baked_maps()` scans the directory and has no notion of
+	# provenance, so nothing about it regressed; there is simply no authored
+	# map left for it to find.
 
 	# [M27M5c Phase 3] Removing a seam.
 	#
@@ -4457,22 +4589,30 @@ func _test_m27m5_creator() -> void:
 	# WRITING function makes the injection perform the very write the test
 	# exists to prevent, which is how that assertion corrupted two tracked
 	# .tres files on its first draft. Assert the decision, not the act.
+	# ⚠️ **RE-ANCHORED, 2026-08-13.** This dropped Route 2's WEST seam to Xanadu
+	# and required `before >= 3`. The force re-bake regenerated Route 2 from
+	# source, which has never heard of Xanadu, so that seam is gone and the map
+	# is back to its own two imported connections — the rule is unchanged, only
+	# the seam being dropped is.
 	var r2 := load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
 	var copy := r2.duplicate(true) as MapData
 	var before := copy.connections.size()
 	var gone := MapAuthoring._drop_connection(copy,
-			MapData.Connection.WEST, "XanaduNursery")
+			MapData.Connection.NORTH, "PewterCity_Frlg")
 	_chk("BB.17 dropping a seam removes exactly it, leaving the rest",
 			gone == 1 and copy.connections.size() == before - 1
-			and before >= 3)
+			and before >= 2)
 	# ⚠️ THE DISCRIMINATOR FOR THE WHOLE KEYING DECISION. Measured across all
 	# 939 reference map.json files: 3 maps carry MORE THAN ONE connection on a
 	# single edge (SixIsland_WaterPath_Frlg has three on its left), so a
 	# direction-only key would drop the wrong seam there. Zero (direction, map)
 	# pairs repeat anywhere, so the pair is unique.
+	# ⚠️ The guest is wrong on an edge that GENUINELY HAS a seam — Route 2's
+	# NORTH really does hold Pewter, so a direction-only implementation would
+	# drop it here. Aiming at an empty edge would pass either way.
 	var copy2 := r2.duplicate(true) as MapData
 	var wrong := MapAuthoring._drop_connection(copy2,
-			MapData.Connection.WEST, "PewterCity_Frlg")
+			MapData.Connection.NORTH, "ViridianCity_Frlg")
 	_chk("BB.18 the right direction with the WRONG guest removes nothing",
 			wrong == 0 and copy2.connections.size() == before)
 	# The multi-seam-on-one-edge shape the keying exists for, synthesised
@@ -4502,6 +4642,57 @@ func _test_m27m5_creator() -> void:
 			MapAuthoring._drop_connection(dupes, MapData.Connection.EAST,
 					"Route2_Frlg") == 2 and dupes.connections.is_empty())
 
+	# --- Go To Edge: navigating the graph instead of the 421-file list.
+	#
+	# ⚠️ The dialog holds none of this — it renders rows and calls
+	# `open_scene_from_path`. Everything decidable is here.
+	var nb := MapAuthoring.neighbours_of("Route2_Frlg")
+	var dirs := {}
+	for n in nb:
+		dirs[MapAuthoring.direction_name(int(n["direction"]))] = str(n["map"])
+	_chk("BB.21 a map's edges resolve to real neighbour scenes, keyed by "
+			+ "direction (%s)" % [str(dirs)],
+			nb.size() == 2
+			and dirs.get("NORTH", "") == "PewterCity_Frlg"
+			and dirs.get("SOUTH", "") == "ViridianCity_Frlg")
+	var all_openable := true
+	for n in nb:
+		if not bool(n["openable"]) \
+				or not ResourceLoader.exists(str(n["scene_path"])):
+			all_openable = false
+	_chk("BB.22 and each carries the scene path the button actually opens",
+			all_openable)
+
+	# ⚠️ **THE DISCRIMINATOR, AND IT IS WHY THIS IS NOT JUST
+	# `loadable_connections()`.** That one DROPS an unbaked destination, which
+	# is right for a chunk loader and wrong here: an author standing on an edge
+	# needs to be told the other side is unbaked, not shown a shorter list. A
+	# Hoenn destination stands in for one, since every Kanto map is baked.
+	var far := MapData.new()
+	far.map_name = "SyntheticHost"
+	far.connections = [
+		{"direction": MapData.Connection.EAST, "map": "MAP_ROUTE1", "offset": 0},
+		{"direction": MapData.Connection.WEST, "map": "MAP_LITTLEROOT_TOWN",
+				"offset": 0},
+	]
+	var listed := 0
+	var openable := 0
+	for c in far.connections:
+		listed += 1
+		var n2 := MapConstants.map_name_for(str(c.get("map", "")))
+		if n2 != "" and ResourceLoader.exists(MapAuthoring.OUT_DIR + n2 + ".tscn"):
+			openable += 1
+	_chk("BB.23 an unbaked edge is LISTED but not openable, where "
+			+ "loadable_connections drops it entirely",
+			listed == 2 and openable == 1
+			and far.loadable_connections().size() == 1)
+	# A warp-only map has no edges at all, which the panel says out loud rather
+	# than showing an empty box.
+	_chk("BB.24 a warp-only map reports no edges rather than failing",
+			MapAuthoring.neighbours_of("ViridianForest_Frlg").is_empty()
+			and MapAuthoring.neighbours_of("NoSuchMapAnywhere").is_empty())
+
+
 
 ## [M27M5] Seeing connections, and moving one.
 ##
@@ -4513,21 +4704,22 @@ func _test_m27m5_connection_view() -> void:
 			MapOverlay.Mode.OFF == 0 and MapOverlay.Mode.EVENTS == 5
 			and MapOverlay.Mode.CONNECTIONS == 6)
 
-	if not ResourceLoader.exists("res://scenes/maps/XanaduNursery_data.tres"):
-		_gated += 4
-		return
 	var r2 := (load("res://scenes/maps/Route2_Frlg_data.tres") as MapData
 			).duplicate(true) as MapData
 	var ov := MapOverlay.new()
 	ov.map_data = r2
 
-	# Which connection is Xanadu's?
+	# ⚠️ **RE-ANCHORED OFF XANADU ONTO ROUTE 2'S OWN PEWTER SEAM, 2026-08-13 —
+	# and BC.02 got STRONGER for it.** The authored seam sat at offset 0, which
+	# is also what a `connection_offset` that read nothing back would return;
+	# Pewter's real offset is -12, so this now distinguishes "read the seam" from
+	# "returned the default".
 	var idx := -1
 	for i in range(r2.connections.size()):
-		if str(r2.connections[i].get("map", "")) == "MAP_AUTHORED_XANADU_NURSERY":
+		if str(r2.connections[i].get("map", "")) == "MAP_PEWTER_CITY":
 			idx = i
 	_chk("BC.02 selecting a connection reads its current offset back",
-			idx >= 0 and _select(ov, idx) == 0)
+			idx >= 0 and _select(ov, idx) == -12)
 
 	# ⚠️ THE INVARIANT THE EDITOR EXISTS TO PROTECT. Moving a seam must move
 	# BOTH sides; one side alone is not a partial edit, it is two maps that
@@ -4535,7 +4727,7 @@ func _test_m27m5_connection_view() -> void:
 	ov.connection_offset = 3
 	_chk("BC.03 moving the offset moves THIS side",
 			int(r2.connections[idx].get("offset", 99)) == 3)
-	var nb: MapData = ov._dirty_neighbours.get("XanaduNursery")
+	var nb: MapData = ov._dirty_neighbours.get("PewterCity_Frlg")
 	var recip := 99
 	if nb != null:
 		for c in nb.connections:
@@ -4544,7 +4736,7 @@ func _test_m27m5_connection_view() -> void:
 	_chk("BC.04 ...and the RECIPROCAL on the neighbour, negated",
 			nb != null and recip == -3)
 	_chk("BC.05 the neighbour is queued for saving, not silently left behind",
-			ov._dirty_neighbours.has("XanaduNursery") and ov.has_unsaved_edits())
+			ov._dirty_neighbours.has("PewterCity_Frlg") and ov.has_unsaved_edits())
 
 	# ⚠️ **THIS ASSERTS THE STATE, NOT THE DRAWING, AND CANNOT ASSERT MORE.**
 	# `_draw_legend` needs a live canvas, so a headless run cannot observe
@@ -5037,9 +5229,10 @@ func _test_m27t_encounter_stamp() -> void:
 	_chk("BG.03 and only NONE/LAND/WATER ever appear (stray %s)"
 			% [bad_values.keys()], bad_values.is_empty())
 
-	# The pair Xanadu Nursery is built on, so these two are the live authoring
-	# case rather than an arbitrary fixture: metatile 13 is the real grass tile
-	# and 8 is the plain floor fill the painted grass currently sits on.
+	# Viridian City's pair — chosen because Xanadu Nursery was built on it and
+	# hand-painted grass sat here, which made it the live authoring case rather
+	# than an arbitrary fixture. That map is gone; the PAIR is unaffected, and
+	# metatile 13 is still the real grass tile against 8's plain floor.
 	const XANADU_PAIR := "general_frlg__viridian_city_frlg"
 	_chk("BG.04 the grass metatile is stamped LAND",
 			MapManager.encounter_type_for(XANADU_PAIR, 13) == 1)
@@ -5111,3 +5304,279 @@ func _read_int_table(path: String) -> Array:
 	for v in parsed:
 		out.append(int(v))
 	return out
+
+
+## [M27M5c Phase 4] Section BH — resizing a map that already exists.
+##
+## Fully synthetic and therefore UNGATED: every assertion builds its own MapData
+## and its own scene root, so a fresh checkout with nothing baked runs the whole
+## section. Deliberate — this is the one M27M piece whose failure mode is a map
+## that still LOADS and is silently sheared, which is exactly the class of defect
+## a suite has to catch before anything is baked.
+##
+## The fixture makes every cell identifiable (`metatile = y * 100 + x`, collision
+## and elevation varying by row), because a re-layout that got the row stride
+## wrong produces a map of entirely plausible values in the wrong places.
+func _test_m27m5_resize() -> void:
+	var md := _resize_fixture(4, 3)
+
+	# --- the plan, which decides everything before anything is touched -----
+	var p := MapResize.plan(md, 1, 2, 3, 4)
+	_chk("BH.01 size is derived from the four edge deltas",
+			bool(p["ok"]) and p["size"] == Vector2i(4 + 3 + 4, 3 + 1 + 2))
+	_chk("BH.02 the offset is (west, north) — where the old map lands",
+			p["offset"] == Vector2i(3, 1))
+	_chk("BH.03 all-zero deltas are refused rather than doing nothing quietly",
+			not bool(MapResize.plan(md, 0, 0, 0, 0)["ok"]))
+	_chk("BH.04 deltas that trim past nothing are refused",
+			not bool(MapResize.plan(md, 0, 0, -4, 0)["ok"]))
+
+	# Source's own ceiling, restated so a change to it fails LOUDLY rather than
+	# silently widening what this tool will build. It is a PRODUCT of the two
+	# dimensions, so 404x3 is legal while 200x200 is not — a per-axis cap could
+	# not express that.
+	_chk("BH.05 the size cap is source's (w+15)*(h+14) <= 10240",
+			MapResize.data_words(Vector2i(85, 80)) == 100 * 94
+			and MapResize.fits(Vector2i(404, 3))
+			and not MapResize.fits(Vector2i(200, 200)))
+	var huge := MapResize.plan(md, 0, 0, 0, 600)
+	_chk("BH.06 a resize over that cap is refused, naming the budget",
+			not bool(huge["ok"]) and str(huge["reason"]).contains("10240"))
+
+	# ⚠️ The guard against the worst outcome: arrays disagreeing with the
+	# dimensions would re-lay-out into a sheared map that still loads.
+	var short := _resize_fixture(4, 3)
+	short.metatile.resize(5)
+	_chk("BH.07 a map whose arrays disagree with its own size is refused",
+			not bool(MapResize.plan(short, 1, 0, 0, 0)["ok"]))
+
+	# --- the data re-layout. plan(1,0,2,0): 4x3 -> 6x4, offset (2,1) --------
+	var grown := _resize_fixture(4, 3)
+	MapResize.resize_data(grown, MapResize.plan(grown, 1, 0, 2, 0))
+	_chk("BH.08 the new dimensions and all seven arrays agree",
+			grown.width == 6 and grown.height == 4
+			and grown.metatile.size() == 24 and grown.collision.size() == 24
+			and grown.elevation.size() == 24 and grown.behavior.size() == 24
+			and grown.layer_type.size() == 24
+			and grown.provenance.size() == 24
+			and grown.attr_explicit.size() == 24)
+	# THE shear test. Old (1,2) must be readable at (1+2, 2+1) and NOT where it
+	# was; a plain resize() of the backing arrays passes every size check above
+	# and fails exactly here.
+	_chk("BH.09 an existing cell is found at old + offset, not at old",
+			grown.metatile_at(3, 3) == 201 and grown.metatile_at(1, 2) == 100)
+	_chk("BH.10 a surviving cell brings its collision and elevation with it",
+			grown.metatile_at(3, 2) == 101 and grown.collision_at(3, 2) == 1
+			and grown.elevation_at(3, 2) == 4)
+
+	# --- what fills the cells that did not exist ---------------------------
+	_chk("BH.11 a new corner cell replicates the old corner",
+			grown.metatile_at(0, 0) == 0 and grown.elevation_at(0, 0) == 3)
+	# The NEAREST row, not the corner: (0,3) clamps on x only and must reach the
+	# old bottom row, elevation 5 — the corner would have given 3.
+	_chk("BH.12 a new cell west of a row replicates THAT row, not the corner",
+			grown.metatile_at(0, 3) == 200 and grown.elevation_at(0, 3) == 5)
+	_chk("BH.13 replicated collision comes from the same edge cell",
+			grown.collision_at(0, 2) == 1 and grown.elevation_at(0, 2) == 4)
+	# ⚠️ The half that matters: the VALUES are replicated, the DECISIONS are not.
+	_chk("BH.14 a new cell is AUTHORED",
+			grown.is_authored(0, 0) and grown.is_authored(0, 3))
+	_chk("BH.15 and reads needs_review — a replicated guess is not a decision",
+			grown.needs_review(0, 0)
+			and not grown.collision_is_explicit(0, 0)
+			and not grown.elevation_is_explicit(0, 0))
+	_chk("BH.16 a surviving IMPORTED cell stays imported and stays explicit",
+			not grown.is_authored(3, 2) and grown.collision_is_explicit(3, 2)
+			and not grown.needs_review(3, 2))
+
+	# --- trimming. plan(0,-1,-1,0): 4x3 -> 3x2, offset (-1,0) --------------
+	var trimmed := _resize_fixture(4, 3)
+	var tp := MapResize.plan(trimmed, 0, -1, -1, 0)
+	_chk("BH.17 a trim reports the cells it will discard and adds none",
+			int(tp["added"]) == 0 and int(tp["trimmed"]) == 6)
+	MapResize.resize_data(trimmed, tp)
+	_chk("BH.18 the surviving cells are the ones that were kept",
+			trimmed.width == 3 and trimmed.height == 2
+			and trimmed.metatile_at(0, 0) == 1
+			and trimmed.metatile_at(2, 1) == 103)
+
+	# --- seam correction ----------------------------------------------------
+	# Which delta applies is decided by the AXIS the shared edge runs along, not
+	# by which edge it is.
+	var conns: Array = [
+		{"direction": MapData.Connection.NORTH, "map": "MAP_A", "offset": 5},
+		{"direction": MapData.Connection.EAST, "map": "MAP_B", "offset": 5},
+		{"direction": MapData.Connection.DIVE, "map": "MAP_C", "offset": 5},
+	]
+	var fixed := MapResize.realigned_connections(conns,
+			MapResize.plan(_resize_fixture(4, 3), 1, 0, 2, 0))
+	_chk("BH.19 a NORTH/SOUTH seam slides by the WEST delta",
+			int((fixed[0] as Dictionary)["offset"]) == 5 + 2)
+	_chk("BH.20 a WEST/EAST seam slides by the NORTH delta",
+			int((fixed[1] as Dictionary)["offset"]) == 5 + 1)
+	_chk("BH.21 DIVE/EMERGE warp rather than stitch, so they are left alone",
+			int((fixed[2] as Dictionary)["offset"]) == 5)
+	# Growing south/east moves no existing content, so there is nothing to
+	# correct — the neighbour re-derives flush against the longer edge.
+	_chk("BH.22 growing south/east corrects nothing",
+			int((MapResize.realigned_connections(conns,
+					MapResize.plan(_resize_fixture(4, 3), 0, 3, 0, 3))[0]
+					as Dictionary)["offset"]) == 5)
+	_chk("BH.23 the original connections are not mutated in place",
+			int((conns[0] as Dictionary)["offset"]) == 5)
+
+	# --- the scene half. plan(0,0,2,-1): 4x3 -> 5x3, offset (2,0) ----------
+	var scene := _resize_scene_fixture()
+	var sd := _resize_fixture(4, 3)
+	var sp := MapResize.plan(sd, 0, 0, 2, -1)
+	MapResize.resize_data(sd, sp)
+	var report := MapResize.resize_scene(scene, sd, sp)
+	var moved := scene.get_node_or_null("Triggers/Warp_3_1") as OverworldEntity
+	_chk("BH.24 an entity moves by the offset and its name follows its cell",
+			moved != null and moved.cell == Vector2i(3, 1))
+	# ⚠️ `Sign_0_0_2` does not END with its own cell tag — it ends with `_0_2` —
+	# so a single ends_with test both misses the real tag and matches a
+	# coordinate pair that is not one. 7 real entities region-wide are shaped
+	# like this.
+	var stacked := scene.get_node_or_null("Triggers/Sign_2_0_2") as OverworldEntity
+	_chk("BH.25 a stacked _x_y_k name shifts without losing its suffix",
+			stacked != null and stacked.cell == Vector2i(2, 0))
+	var hand := scene.get_node_or_null("Triggers/HandNamed") as OverworldEntity
+	_chk("BH.26 a hand-named node moves but keeps the name a human gave it",
+			hand != null and hand.cell == Vector2i(2, 1))
+	var removed: Array = report["removed"]
+	_chk("BH.27 an entity trimmed out of bounds is detached, NOT freed",
+			removed.size() == 1 and is_instance_valid(removed[0])
+			and removed[0].get_parent() == null)
+	_chk("BH.28 and the survivors are all counted as moved",
+			int(report["entities_moved"]) == 3)
+	# `paint_metatile` refuses an unroutable id rather than erasing all three
+	# planes; this fixture has no TileSet, so every added cell takes that path.
+	_chk("BH.29 an unpaintable new cell is reported, not silently blank",
+			int(report["unroutable"]) == int(sp["added"]))
+
+	# --- undo ---------------------------------------------------------------
+	var undo_scene := _resize_scene_fixture()
+	var ud := _resize_fixture(4, 3)
+	var before := MapResize.snapshot(ud, undo_scene)
+	var up := MapResize.plan(ud, 0, 0, 2, -1)
+	MapResize.resize_data(ud, up)
+	var ureport := MapResize.resize_scene(undo_scene, ud, up)
+	MapResize.restore(ud, undo_scene, before)
+	_chk("BH.30 restoring puts the DIMENSIONS back, not just the arrays",
+			ud.width == 4 and ud.height == 3 and ud.metatile.size() == 12)
+	_chk("BH.31 and the cells are the originals",
+			ud.metatile_at(1, 2) == 201 and ud.metatile_at(3, 0) == 3)
+	var back := undo_scene.get_node_or_null("Triggers/Warp_1_1") as OverworldEntity
+	_chk("BH.32 an entity is back at its own cell under its own name",
+			back != null and back.cell == Vector2i(1, 1))
+	# ⚠️ The case that makes the trim reversible at all — a freed node could not
+	# come back, and the trim half of a resize would be permanent while the rest
+	# undid cleanly.
+	var restored := undo_scene.get_node_or_null("Triggers/Warp_3_0") as OverworldEntity
+	_chk("BH.33 a trimmed entity is REATTACHED, owned, by the undo",
+			restored != null and restored.cell == Vector2i(3, 0)
+			and restored.owner == undo_scene)
+	_chk("BH.34 no throwaway parking name survives the restore",
+			not _resize_names(undo_scene).contains("__resize_parked"))
+
+	# --- the two-artifact mismatch -----------------------------------------
+	# ⚠️ Regression cover for a defect found by Rob on the first real drive:
+	# saving the scene without saving the .tres left Pallet Town's tiles four
+	# rows out of register with its collision, and nothing said so.
+	var mm_root := Node2D.new()
+	var mm_layer := TileMapLayer.new()
+	mm_layer.name = "Ground"
+	mm_root.add_child(mm_layer)
+	var mm_data := _resize_fixture(4, 3)
+	_chk("BH.35 an unpainted scene reports no mismatch",
+			not bool(MapResize.size_mismatch(mm_data, mm_root)["mismatch"]))
+	# Paint inside the data's own bounds — the ordinary state of every map.
+	for y in range(3):
+		for x in range(4):
+			mm_layer.set_cell(Vector2i(x, y), 0, Vector2i.ZERO)
+	_chk("BH.36 paint matching the data reports no mismatch",
+			not bool(MapResize.size_mismatch(mm_data, mm_root)["mismatch"]))
+	# ⚠️ A SMALLER painted extent is normal, not a fault — plenty of maps have
+	# unpainted edge cells, and keying on a size comparison would light up
+	# hundreds of them.
+	var mm_big := _resize_fixture(4, 3)
+	mm_big.width = 8
+	mm_big.height = 6
+	_chk("BH.37 paint smaller than the data is NOT a mismatch",
+			not bool(MapResize.size_mismatch(mm_big, mm_root)["mismatch"]))
+	# The real case: the scene was saved after a +4 north resize, the data was
+	# not, so tiles are painted below the row the data thinks is last.
+	mm_layer.set_cell(Vector2i(1, 6), 0, Vector2i.ZERO)
+	var mm := MapResize.size_mismatch(mm_data, mm_root)
+	_chk("BH.38 paint past the data bounds IS a mismatch, with the overhang",
+			bool(mm["mismatch"]) and (mm["overhang"] as Vector2i).y == 4
+			and (mm["overhang"] as Vector2i).x == 0)
+	_chk("BH.39 painted_extent unions the planes rather than taking the first",
+			MapResize.painted_extent(mm_root) == Rect2i(0, 0, 4, 7))
+	mm_root.free()
+
+	_resize_free(ureport["removed"], undo_scene)
+	_resize_free(removed, scene)
+
+
+## Every cell identifiable: `metatile = y * 100 + x`, collision alternating by
+## row, elevation `3 + y`. Every cell IMPORTED-and-explicit, so the provenance
+## assertions have something real to preserve rather than a zeroed default.
+func _resize_fixture(w: int, h: int) -> MapData:
+	var m := MapData.new()
+	m.map_name = "resize_fixture"
+	m.width = w
+	m.height = h
+	for y in range(h):
+		for x in range(w):
+			m.metatile.append(y * 100 + x)
+			m.collision.append(y % 2)
+			m.elevation.append(3 + y)
+			m.behavior.append(y)
+			m.layer_type.append(0)
+			m.provenance.append(MapData.Provenance.IMPORTED)
+			m.attr_explicit.append(MapData.ATTR_ALL_EXPLICIT)
+	return m
+
+
+## Four placed entities covering the four naming cases: an ordinary cell-named
+## one, a stacked `_x_y_k` one, one a human renamed, and one at x=3 that a
+## one-column east trim puts outside the new bounds.
+func _resize_scene_fixture() -> Node2D:
+	var root := Node2D.new()
+	root.name = "ResizeFixture"
+	var triggers := Node2D.new()
+	triggers.name = "Triggers"
+	root.add_child(triggers)
+	triggers.owner = root
+	for spec in [["Warp_1_1", Vector2i(1, 1)], ["Sign_0_0_2", Vector2i(0, 0)],
+			["HandNamed", Vector2i(0, 1)], ["Warp_3_0", Vector2i(3, 0)]]:
+		var w := Warp.new()
+		w.cell = spec[1]
+		triggers.add_child(w)
+		w.name = str(spec[0])
+		w.owner = root
+	return root
+
+
+## Every entity name in a fixture scene, as one string, for a contains-check.
+func _resize_names(root: Node2D) -> String:
+	var out := ""
+	for container_name in MapResize.ENTITY_CONTAINERS:
+		var c := root.get_node_or_null(container_name) as Node2D
+		if c == null:
+			continue
+		for kid in c.get_children():
+			out += String(kid.name) + " "
+	return out
+
+
+## Detached entities are owned by nothing once a resize has trimmed them — in
+## the editor the undo manager holds them, but a test has to free them itself or
+## the run leaks a node per trim.
+func _resize_free(detached: Array, root: Node2D) -> void:
+	for n in detached:
+		if n != null and is_instance_valid(n) and n.get_parent() == null:
+			n.free()
+	root.free()

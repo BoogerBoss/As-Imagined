@@ -12,7 +12,7 @@ extends Node
 ##   * `MB_SHALLOW_WATER` is NOT surfable, which source is explicit about and
 ##     which looks like an omission if you reason from the name.
 
-const EXPECTED_TOTAL := 73
+const EXPECTED_TOTAL := 81
 
 var _total := 0
 var _failed := 0
@@ -78,6 +78,7 @@ func _ready() -> void:
 	_test_blob()
 	_test_player_wiring()
 	_test_shoreline_elevation()
+	_test_ledge_hop()
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
 			% [_total, _gated, EXPECTED_TOTAL], accounted == EXPECTED_TOTAL)
@@ -654,3 +655,73 @@ func _test_ride_out() -> void:
 	root.free()
 	mgr.free()
 	OverworldSession.reset()
+
+
+## --- I. the ledge hop: pace and shadow ---
+##
+## [Bugfix, live-reported: "ledge jump doesn't feel canon — speed is fast" and
+## "there is no shadow below player"]
+##
+## ⚠️ **A LEDGE HOP IS TWO TILES AT WALKING PACE.** Source:
+## `distanceToTime[JUMP_DISTANCE_FAR] = 32` frames
+## (`DoJumpSpriteMovement`, `event_object_movement.c:10916`) against a walk's 16
+## per tile. The old value covered BOTH tiles in 0.26s — 0.13s each, ~1.7x too
+## fast — which is why it read as wrong without looking obviously broken.
+##
+## ⚠️ **THE SHADOW IS LEDGE-ONLY, AND THE ASYMMETRY IS SOURCE'S.**
+## `InitJumpRegular` ends with `DoShadowFieldEffect`; the surf mount/dismount
+## goes through `InitJumpSpecial`, which does not. Giving `_add_jump_arc` a
+## shadow in general would be the tidy-looking mistake, so I.05 pins the
+## negative case as hard as I.03 pins the positive one.
+func _test_ledge_hop() -> void:
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+
+	# The RATIO is the claim, not the constant — a retuned walk must carry the
+	# hop with it. Asserting 0.4467 directly would pass while the invariant rots.
+	_chk("I.01 a hop is exactly two walk-steps of time",
+			is_equal_approx(ow._LEDGE_HOP_SECONDS, ow._WALK_STEP_SECONDS * 2.0))
+	# ⚠️ Guards the regression directly: the retired constant was 0.26, and any
+	# value not derived from the walk lands back near it.
+	_chk("I.02 and is therefore slower than the old hardcoded 0.26",
+			ow._LEDGE_HOP_SECONDS > 0.26)
+
+	_chk("I.03 no shadow while simply standing", ow._jump_shadow == null)
+
+	# ⚠️ **THE BODY SPRITE IS REAL, AND WITHOUT IT I.05 IS VACUOUS.** Injecting
+	# "parent the shadow to the arcing sprite instead" PASSED against an earlier
+	# draft of this fixture, because with no sprite `_player_sprite()` returns
+	# null and the broken code fell back to the player node — the two competing
+	# implementations agreed, so the assertion could not tell them apart. A real
+	# `make_sprite` child makes them disagree. (Same trap as G.03's own flat
+	# elevations, recorded above.)
+	var pnode := Node2D.new()
+	ow.add_child(pnode)
+	ow._player = pnode
+	var body := OverworldEntity.make_sprite(ow.PLAYER_GRAPHICS_ID, "SOUTH")
+	pnode.add_child(body)
+	_chk("I.03b the fixture really has a body sprite distinct from the node",
+			ow._player_sprite() != null and ow._player_sprite() != ow._player)
+
+	ow._spawn_jump_shadow()
+	var sh: Sprite2D = ow._jump_shadow
+	_chk("I.04 a hop puts a real shadow sprite under the player",
+			sh != null and is_instance_valid(sh) and sh.texture != null)
+	# ⚠️ **THE PROPERTY THAT MAKES IT A JUMP SHADOW.** Source sets the shadow's
+	# y from the linked sprite's BASE y, never its `y2` arc — the body rises and
+	# the shadow does not. Here that falls out of parenting to the player NODE,
+	# which tweens along the ground, while `_add_jump_arc` drives the BODY
+	# SPRITE (a separate node, pinned by sections E-G above). If this ever
+	# reparents onto the sprite, the shadow starts flying with the player.
+	_chk("I.05 parented to the ground-travelling player node, NOT the arcing sprite",
+			sh != null and sh.get_parent() == ow._player
+			and sh.get_parent() != ow._player_sprite())
+	# Half a tile right, and behind the body — the same two corrections
+	# `EmoteIcon` documents for its own overlay.
+	_chk("I.06 offset half a tile right and drawn behind the body",
+			sh != null and is_equal_approx(sh.position.x, float(OverworldEntity.CELL) * 0.5)
+			and sh.z_index < 0 and sh.centered)
+	ow._clear_jump_shadow()
+	_chk("I.07 and it is gone once the hop lands", ow._jump_shadow == null)
+
+	ow.queue_free()
